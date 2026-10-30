@@ -1,0 +1,3273 @@
+=== FILE: ./AGENTS.md ===
+# Obsidian community plugin
+
+## Project overview
+
+- Target: Obsidian Community Plugin (TypeScript → bundled JavaScript).
+- Entry point: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
+- Required release artifacts: `main.js`, `manifest.json`, and optional `styles.css`.
+
+## Environment & tooling
+
+- Node.js: use current LTS (Node 18+ recommended).
+- **Package manager: npm** (required for this sample - `package.json` defines npm scripts and dependencies).
+- **Bundler: esbuild** (required for this sample - `esbuild.config.mjs` and build scripts depend on it). Alternative bundlers like Rollup or webpack are acceptable for other projects if they bundle all external dependencies into `main.js`.
+- Types: `obsidian` type definitions.
+
+**Note**: This sample project has specific technical dependencies on npm and esbuild. If you're creating a plugin from scratch, you can choose different tools, but you'll need to replace the build configuration accordingly.
+
+### Install
+
+```bash
+npm install
+```
+
+### Dev (watch)
+
+```bash
+npm run dev
+```
+
+### Production build
+
+```bash
+npm run build
+```
+
+## Linting
+
+- ESLint is preconfigured with `eslint-plugin-obsidianmd` for Obsidian-specific rules.
+- Run `npm run lint` to lint the project.
+- A GitHub Action automatically lints every commit on all branches.
+
+## File & folder conventions
+
+- **Organize code into multiple files**: Split functionality across separate modules rather than putting everything in `main.ts`.
+- Source lives in `src/`. Keep `main.ts` small and focused on plugin lifecycle (loading, unloading, registering commands).
+- **Example file structure**:
+    ```
+    src/
+      main.ts           # Plugin entry point, lifecycle management
+      settings.ts       # Settings interface and defaults
+      commands/         # Command implementations
+        command1.ts
+        command2.ts
+      ui/              # UI components, modals, views
+        modal.ts
+        view.ts
+      utils/           # Utility functions, helpers
+        helpers.ts
+        constants.ts
+      types.ts         # TypeScript interfaces and types
+    ```
+- **Do not commit build artifacts**: Never commit `node_modules/`, `main.js`, or other generated files to version control.
+- Keep the plugin small. Avoid large dependencies. Prefer browser-compatible packages.
+- Generated output should be placed at the plugin root or `dist/` depending on your build setup. Release artifacts must end up at the top level of the plugin folder in the vault (`main.js`, `manifest.json`, `styles.css`).
+
+## Manifest rules (`manifest.json`)
+
+- Must include (non-exhaustive):
+    - `id` (plugin ID; for local dev it should match the folder name)
+    - `name`
+    - `version` (Semantic Versioning `x.y.z`)
+    - `minAppVersion`
+    - `description`
+    - `isDesktopOnly` (boolean)
+    - Optional: `author`, `authorUrl`, `fundingUrl` (string or map)
+- Never change `id` after release. Treat it as stable API.
+- Keep `minAppVersion` accurate when using newer APIs.
+- Canonical requirements are coded here: https://github.com/obsidianmd/obsidian-releases/blob/master/.github/workflows/validate-plugin-entry.yml
+
+## Testing
+
+- Manual install for testing: copy `main.js`, `manifest.json`, `styles.css` (if any) to:
+    ```
+    <Vault>/.obsidian/plugins/<plugin-id>/
+    ```
+- Reload Obsidian and enable the plugin in **Settings → Community plugins**.
+
+## Commands & settings
+
+- Any user-facing commands should be added via `this.addCommand(...)`.
+- If the plugin has configuration, provide a settings tab and sensible defaults.
+- Persist settings using `this.loadData()` / `this.saveData()`.
+- Use stable command IDs; avoid renaming once released.
+
+## Versioning & releases
+
+- Bump `version` in `manifest.json` (SemVer) and update `versions.json` to map plugin version → minimum app version.
+- Create a GitHub release whose tag exactly matches `manifest.json`'s `version`. Do not use a leading `v`.
+- Attach `manifest.json`, `main.js`, and `styles.css` (if present) to the release as individual assets.
+- After the initial release, follow the process to add/update your plugin in the community catalog as required.
+
+## Security, privacy, and compliance
+
+Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particular:
+
+- Default to local/offline operation. Only make network requests when essential to the feature.
+- No hidden telemetry. If you collect optional analytics or call third-party services, require explicit opt-in and document clearly in `README.md` and in settings.
+- Never execute remote code, fetch and eval scripts, or auto-update plugin code outside of normal releases.
+- Minimize scope: read/write only what's necessary inside the vault. Do not access files outside the vault.
+- Clearly disclose any external services used, data sent, and risks.
+- Respect user privacy. Do not collect vault contents, filenames, or personal information unless absolutely necessary and explicitly consented.
+- Avoid deceptive patterns, ads, or spammy notifications.
+- Register and clean up all DOM, app, and interval listeners using the provided `register*` helpers so the plugin unloads safely.
+
+## UX & copy guidelines (for UI text, commands, settings)
+
+- Prefer sentence case for headings, buttons, and titles.
+- Use clear, action-oriented imperatives in step-by-step copy.
+- Use **bold** to indicate literal UI labels. Prefer "select" for interactions.
+- Use arrow notation for navigation: **Settings → Community plugins**.
+- Keep in-app strings short, consistent, and free of jargon.
+
+## Performance
+
+- Keep startup light. Defer heavy work until needed.
+- Avoid long-running tasks during `onload`; use lazy initialization.
+- Batch disk access and avoid excessive vault scans.
+- Debounce/throttle expensive operations in response to file system events.
+
+## Coding conventions
+
+- TypeScript with `"strict": true` preferred.
+- **Keep `main.ts` minimal**: Focus only on plugin lifecycle (onload, onunload, addCommand calls). Delegate all feature logic to separate modules.
+- **Split large files**: If any file exceeds ~200-300 lines, consider breaking it into smaller, focused modules.
+- **Use clear module boundaries**: Each file should have a single, well-defined responsibility.
+- Bundle everything into `main.js` (no unbundled runtime deps).
+- Avoid Node/Electron APIs if you want mobile compatibility; set `isDesktopOnly` accordingly.
+- Prefer `async/await` over promise chains; handle errors gracefully.
+
+## Mobile
+
+- Where feasible, test on iOS and Android.
+- Don't assume desktop-only behavior unless `isDesktopOnly` is `true`.
+- Avoid large in-memory structures; be mindful of memory and storage constraints.
+
+## Agent do/don't
+
+**Do**
+
+- Add commands with stable IDs (don't rename once released).
+- Provide defaults and validation in settings.
+- Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
+- Use `this.register*` helpers for everything that needs cleanup.
+
+**Don't**
+
+- Introduce network calls without an obvious user-facing reason and documentation.
+- Ship features that require cloud services without clear disclosure and explicit opt-in.
+- Store or transmit vault contents unless essential and consented.
+
+## Common tasks
+
+### Organize code across multiple files
+
+**main.ts** (minimal, lifecycle only):
+
+```ts
+import { Plugin } from 'obsidian';
+import { MySettings, DEFAULT_SETTINGS } from './settings';
+import { registerCommands } from './commands';
+
+export default class MyPlugin extends Plugin {
+	settings!: MySettings;
+
+	async onload() {
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			(await this.loadData()) as Partial<MySettings>,
+		);
+		registerCommands(this);
+	}
+}
+```
+
+**settings.ts**:
+
+```ts
+export interface MySettings {
+	enabled: boolean;
+	apiKey: string;
+}
+
+export const DEFAULT_SETTINGS: MySettings = {
+	enabled: true,
+	apiKey: '',
+};
+```
+
+**commands/index.ts**:
+
+```ts
+import { Plugin } from 'obsidian';
+import { doSomething } from './my-command';
+
+export function registerCommands(plugin: Plugin) {
+	plugin.addCommand({
+		id: 'do-something',
+		name: 'Do something',
+		callback: () => doSomething(plugin),
+	});
+}
+```
+
+### Add a command
+
+```ts
+this.addCommand({
+	id: 'your-command-id',
+	name: 'Do the thing',
+	callback: () => this.doTheThing(),
+});
+```
+
+### Persist settings
+
+```ts
+interface MySettings { enabled: boolean }
+const DEFAULT_SETTINGS: MySettings = { enabled: true };
+
+async onload() {
+  this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MySettings>);
+  await this.saveData(this.settings);
+}
+```
+
+### Register listeners safely
+
+```ts
+this.registerEvent(
+	this.app.workspace.on('file-open', (f) => {
+		/* ... */
+	}),
+);
+this.registerDomEvent(activeWindow, 'resize', () => {
+	/* ... */
+});
+this.registerInterval(
+	window.setInterval(() => {
+		/* ... */
+	}, 1000),
+);
+```
+
+## Troubleshooting
+
+- Plugin doesn't load after build: ensure `main.js` and `manifest.json` are at the top level of the plugin folder under `<Vault>/.obsidian/plugins/<plugin-id>/`.
+- Build issues: if `main.js` is missing, run `npm run build` or `npm run dev` to compile your TypeScript source code.
+- Commands not appearing: verify `addCommand` runs after `onload` and IDs are unique.
+- Settings not persisting: ensure `loadData`/`saveData` are awaited and you re-render the UI after changes.
+- Mobile-only issues: confirm you're not using desktop-only APIs; check `isDesktopOnly` and adjust.
+
+## References
+
+- Obsidian sample plugin: https://github.com/obsidianmd/obsidian-sample-plugin
+- API documentation: https://docs.obsidian.md
+- Developer policies: https://docs.obsidian.md/Developer+policies
+- Plugin guidelines: https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines
+- Style guide: https://help.obsidian.md/style-guide
+
+
+=== FILE: ./manifest.json ===
+{
+  "id": "my-study-compiler",
+  "name": "Конструктор учебных работ",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
+  "author": "Mersinho",
+  "isDesktopOnly": false
+}
+
+=== FILE: ./styles.css ===
+.modal.my-sc-modal-container {
+  width: min(900px, 96vw) !important;
+  max-width: 900px !important;
+  max-height: 92vh !important;
+  padding: 18px 22px !important;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal.my-sc-modal-container > .modal-close-button {
+  display: none !important;
+}
+
+.my-sc-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.my-sc-modal * {
+  box-sizing: border-box;
+}
+
+.my-sc-head-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-head-title {
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: var(--text-normal);
+}
+
+.my-sc-close-btn {
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-project-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.my-sc-project-select-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+
+.my-sc-work-select {
+  flex: 1 1 260px;
+  min-width: 0;
+  min-height: 38px;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.my-sc-chip-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.my-sc-chip-btn.is-active {
+  border: 1px solid var(--interactive-accent) !important;
+  color: var(--interactive-accent) !important;
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.my-sc-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.my-sc-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--kpi-color, #599ed6) 12%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--kpi-color, #599ed6) 38%, var(--background-modifier-border));
+}
+
+.my-sc-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.my-sc-kpi-val {
+  font-size: 0.92rem;
+  font-weight: 750;
+  color: var(--kpi-color, var(--text-normal));
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-tabs-row {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 8px;
+}
+
+.my-sc-tab-btn {
+  flex: 1 1 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.my-sc-tab-btn.is-active {
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+}
+
+.my-sc-body {
+  flex: 1 1 auto;
+  min-height: 260px;
+  max-height: 48vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.my-sc-struct-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.my-sc-add-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--interactive-accent);
+}
+
+.my-sc-input {
+  flex: 1 1 200px;
+  min-height: 34px;
+  font-size: 0.84rem;
+}
+
+.my-sc-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.my-sc-tree-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-tree-row.is-excluded {
+  opacity: 0.52;
+}
+
+.my-sc-tree-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.my-sc-sec-num {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #e5a158;
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-node-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-node-title:hover {
+  color: var(--text-accent);
+}
+
+.my-sc-type-badge {
+  font-size: 0.68rem;
+  font-weight: 650;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
+  color: var(--badge-color, #599ed6);
+  white-space: nowrap;
+}
+
+.my-sc-tree-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.my-sc-word-count {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+.my-sc-move-btn {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.my-sc-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.my-sc-audit-box {
+  padding: 12px;
+  border-radius: 9px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.my-sc-audit-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-normal);
+  margin-bottom: 4px;
+}
+
+.my-sc-audit-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+.my-sc-audit-k {
+  color: var(--text-muted);
+}
+
+.my-sc-audit-v {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-audit-ok {
+  font-size: 0.82rem;
+  color: #4aab80;
+  font-weight: 600;
+}
+
+.my-sc-audit-warn {
+  font-size: 0.8rem;
+  color: #e5a158;
+  font-weight: 650;
+  margin-top: 4px;
+}
+
+.my-sc-audit-link {
+  font-size: 0.8rem;
+  color: var(--text-accent);
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.my-sc-opts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-preview-textarea {
+  width: 100%;
+  min-height: 220px;
+  font-family: var(--font-monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  resize: vertical;
+}
+
+.my-sc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-footer-path {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.my-sc-footer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.my-sc-primary-btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.my-sc-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 640px) {
+  .modal.my-sc-modal-container {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
+    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
+    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
+  }
+
+  .my-sc-kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .my-sc-tabs-row {
+    flex-wrap: wrap;
+  }
+
+  .my-sc-body {
+    max-height: none;
+  }
+}
+
+=== FILE: ./package-lock.json ===
+{
+  "name": "my-study-compiler",
+  "version": "0.1.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "my-study-compiler",
+      "version": "0.1.0",
+      "license": "MIT",
+      "devDependencies": {
+        "@types/node": "^16.11.6",
+        "builtin-modules": "3.3.0",
+        "esbuild": "0.17.3",
+        "obsidian": "latest",
+        "tslib": "2.4.0",
+        "typescript": "4.7.4"
+      }
+    },
+    "node_modules/@esbuild/android-arm": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.17.3.tgz",
+      "integrity": "sha512-1Mlz934GvbgdDmt26rTLmf03cAgLg5HyOgJN+ZGCeP3Q9ynYTNMn2/LQxIl7Uy+o4K6Rfi2OuLsr12JQQR8gNg==",
+      "cpu": [
+        "arm"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/android-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.17.3.tgz",
+      "integrity": "sha512-XvJsYo3dO3Pi4kpalkyMvfQsjxPWHYjoX4MDiB/FUM4YMfWcXa5l4VCwFWVYI1+92yxqjuqrhNg0CZg3gSouyQ==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/android-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.17.3.tgz",
+      "integrity": "sha512-nuV2CmLS07Gqh5/GrZLuqkU9Bm6H6vcCspM+zjp9TdQlxJtIe+qqEXQChmfc7nWdyr/yz3h45Utk1tUn8Cz5+A==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/darwin-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.17.3.tgz",
+      "integrity": "sha512-01Hxaaat6m0Xp9AXGM8mjFtqqwDjzlMP0eQq9zll9U85ttVALGCGDuEvra5Feu/NbP5AEP1MaopPwzsTcUq1cw==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "darwin"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/darwin-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.17.3.tgz",
+      "integrity": "sha512-Eo2gq0Q/er2muf8Z83X21UFoB7EU6/m3GNKvrhACJkjVThd0uA+8RfKpfNhuMCl1bKRfBzKOk6xaYKQZ4lZqvA==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "darwin"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/freebsd-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.17.3.tgz",
+      "integrity": "sha512-CN62ESxaquP61n1ZjQP/jZte8CE09M6kNn3baos2SeUfdVBkWN5n6vGp2iKyb/bm/x4JQzEvJgRHLGd5F5b81w==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "freebsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/freebsd-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.17.3.tgz",
+      "integrity": "sha512-feq+K8TxIznZE+zhdVurF3WNJ/Sa35dQNYbaqM/wsCbWdzXr5lyq+AaTUSER2cUR+SXPnd/EY75EPRjf4s1SLg==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "freebsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-arm": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.17.3.tgz",
+      "integrity": "sha512-CLP3EgyNuPcg2cshbwkqYy5bbAgK+VhyfMU7oIYyn+x4Y67xb5C5ylxsNUjRmr8BX+MW3YhVNm6Lq6FKtRTWHQ==",
+      "cpu": [
+        "arm"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.17.3.tgz",
+      "integrity": "sha512-JHeZXD4auLYBnrKn6JYJ0o5nWJI9PhChA/Nt0G4MvLaMrvXuWnY93R3a7PiXeJQphpL1nYsaMcoV2QtuvRnF/g==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-ia32": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.17.3.tgz",
+      "integrity": "sha512-FyXlD2ZjZqTFh0sOQxFDiWG1uQUEOLbEh9gKN/7pFxck5Vw0qjWSDqbn6C10GAa1rXJpwsntHcmLqydY9ST9ZA==",
+      "cpu": [
+        "ia32"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-loong64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.17.3.tgz",
+      "integrity": "sha512-OrDGMvDBI2g7s04J8dh8/I7eSO+/E7nMDT2Z5IruBfUO/RiigF1OF6xoH33Dn4W/OwAWSUf1s2nXamb28ZklTA==",
+      "cpu": [
+        "loong64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-mips64el": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.17.3.tgz",
+      "integrity": "sha512-DcnUpXnVCJvmv0TzuLwKBC2nsQHle8EIiAJiJ+PipEVC16wHXaPEKP0EqN8WnBe0TPvMITOUlP2aiL5YMld+CQ==",
+      "cpu": [
+        "mips64el"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-ppc64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.17.3.tgz",
+      "integrity": "sha512-BDYf/l1WVhWE+FHAW3FzZPtVlk9QsrwsxGzABmN4g8bTjmhazsId3h127pliDRRu5674k1Y2RWejbpN46N9ZhQ==",
+      "cpu": [
+        "ppc64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-riscv64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.17.3.tgz",
+      "integrity": "sha512-WViAxWYMRIi+prTJTyV1wnqd2mS2cPqJlN85oscVhXdb/ZTFJdrpaqm/uDsZPGKHtbg5TuRX/ymKdOSk41YZow==",
+      "cpu": [
+        "riscv64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-s390x": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.17.3.tgz",
+      "integrity": "sha512-Iw8lkNHUC4oGP1O/KhumcVy77u2s6+KUjieUqzEU3XuWJqZ+AY7uVMrrCbAiwWTkpQHkr00BuXH5RpC6Sb/7Ug==",
+      "cpu": [
+        "s390x"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.17.3.tgz",
+      "integrity": "sha512-0AGkWQMzeoeAtXQRNB3s4J1/T2XbigM2/Mn2yU1tQSmQRmHIZdkGbVq2A3aDdNslPyhb9/lH0S5GMTZ4xsjBqg==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/netbsd-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.17.3.tgz",
+      "integrity": "sha512-4+rR/WHOxIVh53UIQIICryjdoKdHsFZFD4zLSonJ9RRw7bhKzVyXbnRPsWSfwybYqw9sB7ots/SYyufL1mBpEg==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "netbsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/openbsd-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.17.3.tgz",
+      "integrity": "sha512-cVpWnkx9IYg99EjGxa5Gc0XmqumtAwK3aoz7O4Dii2vko+qXbkHoujWA68cqXjhh6TsLaQelfDO4MVnyr+ODeA==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "openbsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/sunos-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.17.3.tgz",
+      "integrity": "sha512-RxmhKLbTCDAY2xOfrww6ieIZkZF+KBqG7S2Ako2SljKXRFi+0863PspK74QQ7JpmWwncChY25JTJSbVBYGQk2Q==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "sunos"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/win32-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.17.3.tgz",
+      "integrity": "sha512-0r36VeEJ4efwmofxVJRXDjVRP2jTmv877zc+i+Pc7MNsIr38NfsjkQj23AfF7l0WbB+RQ7VUb+LDiqC/KY/M/A==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/win32-ia32": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.17.3.tgz",
+      "integrity": "sha512-wgO6rc7uGStH22nur4aLFcq7Wh86bE9cOFmfTr/yxN3BXvDEdCSXyKkO+U5JIt53eTOgC47v9k/C1bITWL/Teg==",
+      "cpu": [
+        "ia32"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/win32-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.17.3.tgz",
+      "integrity": "sha512-FdVl64OIuiKjgXBjwZaJLKp0eaEckifbhn10dXWhysMJkWblg3OEEGKSIyhiD5RSgAya8WzP3DNkngtIg3Nt7g==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@types/codemirror": {
+      "version": "5.60.8",
+      "resolved": "https://registry.npmjs.org/@types/codemirror/-/codemirror-5.60.8.tgz",
+      "integrity": "sha512-VjFgDF/eB+Aklcy15TtOTLQeMjTo07k7KAjql8OK5Dirr7a6sJY4T1uVBDuTVG9VEmn1uUsohOpYnVfgC6/jyw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/tern": "*"
+      }
+    },
+    "node_modules/@types/estree": {
+      "version": "1.0.9",
+      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+      "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
+      "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/@types/node": {
+      "version": "16.18.126",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-16.18.126.tgz",
+      "integrity": "sha512-OTcgaiwfGFBKacvfwuHzzn1KLxH/er8mluiy8/uM3sGXHaRe73RrSIj01jow9t4kJEW633Ov+cOexXeiApTyAw==",
+      "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/@types/tern": {
+      "version": "0.23.9",
+      "resolved": "https://registry.npmjs.org/@types/tern/-/tern-0.23.9.tgz",
+      "integrity": "sha512-ypzHFE/wBzh+BlH6rrBgS5I/Z7RD21pGhZ2rltb/+ZrVM1awdZwjx7hE5XfuYgHWk9uvV5HLZN3SloevCAp3Bw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/estree": "*"
+      }
+    },
+    "node_modules/builtin-modules": {
+      "version": "3.3.0",
+      "resolved": "https://registry.npmjs.org/builtin-modules/-/builtin-modules-3.3.0.tgz",
+      "integrity": "sha512-zhaCDicdLuWN5UbN5IMnFqNMhNfo919sH85y2/ea+5Yg9TsTkeZxpL+JLbp6cgYFS4sRLp3YV4S6yDuqVWHYOw==",
+      "dev": true,
+      "license": "MIT",
+      "engines": {
+        "node": ">=6"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/sindresorhus"
+      }
+    },
+    "node_modules/esbuild": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.17.3.tgz",
+      "integrity": "sha512-9n3AsBRe6sIyOc6kmoXg2ypCLgf3eZSraWFRpnkto+svt8cZNuKTkb1bhQcitBcvIqjNiK7K0J3KPmwGSfkA8g==",
+      "dev": true,
+      "hasInstallScript": true,
+      "license": "MIT",
+      "bin": {
+        "esbuild": "bin/esbuild"
+      },
+      "engines": {
+        "node": ">=12"
+      },
+      "optionalDependencies": {
+        "@esbuild/android-arm": "0.17.3",
+        "@esbuild/android-arm64": "0.17.3",
+        "@esbuild/android-x64": "0.17.3",
+        "@esbuild/darwin-arm64": "0.17.3",
+        "@esbuild/darwin-x64": "0.17.3",
+        "@esbuild/freebsd-arm64": "0.17.3",
+        "@esbuild/freebsd-x64": "0.17.3",
+        "@esbuild/linux-arm": "0.17.3",
+        "@esbuild/linux-arm64": "0.17.3",
+        "@esbuild/linux-ia32": "0.17.3",
+        "@esbuild/linux-loong64": "0.17.3",
+        "@esbuild/linux-mips64el": "0.17.3",
+        "@esbuild/linux-ppc64": "0.17.3",
+        "@esbuild/linux-riscv64": "0.17.3",
+        "@esbuild/linux-s390x": "0.17.3",
+        "@esbuild/linux-x64": "0.17.3",
+        "@esbuild/netbsd-x64": "0.17.3",
+        "@esbuild/openbsd-x64": "0.17.3",
+        "@esbuild/sunos-x64": "0.17.3",
+        "@esbuild/win32-arm64": "0.17.3",
+        "@esbuild/win32-ia32": "0.17.3",
+        "@esbuild/win32-x64": "0.17.3"
+      }
+    },
+    "node_modules/moment": {
+      "version": "2.29.4",
+      "resolved": "https://registry.npmjs.org/moment/-/moment-2.29.4.tgz",
+      "integrity": "sha512-5LC9SOxjSc2HF6vO2CyuTDNivEdoz2IvyJJGj6X8DJ0eFyfszE0QiEd+iXmBvUP3WHxSjFH/vIsA0EN00cgr8w==",
+      "dev": true,
+      "license": "MIT",
+      "engines": {
+        "node": "*"
+      }
+    },
+    "node_modules/obsidian": {
+      "version": "1.12.3",
+      "resolved": "https://registry.npmjs.org/obsidian/-/obsidian-1.12.3.tgz",
+      "integrity": "sha512-HxWqe763dOqzXjnNiHmAJTRERN8KILBSqxDSEqbeSr7W8R8Jxezzbca+nz1LiiqXnMpM8lV2jzAezw3CZ4xNUw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/codemirror": "5.60.8",
+        "moment": "2.29.4"
+      },
+      "peerDependencies": {
+        "@codemirror/state": "6.5.0",
+        "@codemirror/view": "6.38.6"
+      }
+    },
+    "node_modules/tslib": {
+      "version": "2.4.0",
+      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.4.0.tgz",
+      "integrity": "sha512-d6xOpEDfsi2CZVlPQzGeux8XMwLT9hssAsaPYExaQMuYskwb+x1x7J371tWlbBdWHroy99KnVB6qIkUbs5X3UQ==",
+      "dev": true,
+      "license": "0BSD"
+    },
+    "node_modules/typescript": {
+      "version": "4.7.4",
+      "resolved": "https://registry.npmjs.org/typescript/-/typescript-4.7.4.tgz",
+      "integrity": "sha512-C0WQT0gezHuw6AdY1M2jxUO83Rjf0HP7Sk1DtXj6j1EwkQNZrHAg2XPWlq62oqEhYvONq5pkC2Y9oPljWToLmQ==",
+      "dev": true,
+      "license": "Apache-2.0",
+      "bin": {
+        "tsc": "bin/tsc",
+        "tsserver": "bin/tsserver"
+      },
+      "engines": {
+        "node": ">=4.2.0"
+      }
+    }
+  }
+}
+
+
+=== FILE: ./tsconfig.json ===
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "module": "ESNext",
+    "target": "ES2018",
+    "allowJs": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "importHelpers": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
+  },
+  "include": ["src/**/*.ts"]
+}
+
+=== FILE: ./README.md ===
+# Obsidian Sample Plugin
+
+This is a sample plugin for Obsidian (https://obsidian.md).
+
+This project uses TypeScript to provide type checking and documentation.
+The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+
+This sample plugin demonstrates some of the basic functionality the plugin API can do.
+
+- Adds a ribbon icon, which shows a Notice when clicked.
+- Adds a command "Open modal (simple)" which opens a Modal.
+- Adds a plugin setting tab to the settings page.
+- Registers a global click event and outputs a Notice on click.
+- Registers a global interval which logs 'setInterval' to the console.
+
+## First time developing plugins?
+
+Quick starting guide for new plugin devs:
+
+- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
+- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
+- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
+- Install NodeJS, then run `npm i` in the command line under your repo folder.
+- Run `npm run dev` to compile your plugin from `src/main.ts` to `main.js`.
+- Make changes to `src/main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
+- Reload Obsidian to load the new version of your plugin.
+- Enable plugin in settings window.
+- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+
+## Releasing new releases
+
+- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
+- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
+- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
+- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
+- Publish the release.
+
+> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
+> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+
+## Adding your plugin to the community plugin list
+
+- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
+- Publish an initial version.
+- Make sure you have a `README.md` file in the root of your repo.
+- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+
+## How to use
+
+- Clone this repo.
+- Make sure your NodeJS is at least v18 (`node --version`).
+- `npm i` to install dependencies.
+- `npm run dev` to start compilation in watch mode.
+
+## Manually installing the plugin
+
+- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+
+## Improve code quality with eslint
+
+- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code.
+- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
+- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
+- A GitHub action is preconfigured to automatically lint every commit on all branches.
+
+## Funding URL
+
+You can include funding URLs where people who use your plugin can financially support it.
+
+The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+
+```json
+{
+	"fundingUrl": "https://buymeacoffee.com"
+}
+```
+
+If you have multiple URLs, you can also do:
+
+```json
+{
+	"fundingUrl": {
+		"Buy Me a Coffee": "https://buymeacoffee.com",
+		"GitHub Sponsor": "https://github.com/sponsors",
+		"Patreon": "https://www.patreon.com/"
+	}
+}
+```
+
+## API Documentation
+
+See https://docs.obsidian.md
+
+
+=== FILE: ./versions.json ===
+{
+  "0.1.0": "1.5.0"
+}
+
+=== FILE: ./esbuild.config.mjs ===
+import esbuild from "esbuild";
+import process from "process";
+import builtins from "builtin-modules";
+
+const prod = process.argv[2] === "production";
+
+const context = await esbuild.context({
+  entryPoints: ["src/main.ts"],
+  bundle: true,
+  external: [
+    "obsidian",
+    "electron",
+    "@codemirror/autocomplete",
+    "@codemirror/collab",
+    "@codemirror/commands",
+    "@codemirror/language",
+    "@codemirror/lint",
+    "@codemirror/search",
+    "@codemirror/state",
+    "@codemirror/view",
+    "@lezer/common",
+    "@lezer/highlight",
+    "@lezer/lr",
+    ...builtins,
+  ],
+  format: "cjs",
+  target: "es2018",
+  logLevel: "info",
+  sourcemap: prod ? false : "inline",
+  treeShaking: true,
+  minify: prod,
+  outfile: "main.js",
+});
+
+if (prod) {
+  await context.rebuild();
+  process.exit(0);
+} else {
+  await context.watch();
+}
+
+=== FILE: ./src/compiler.ts ===
+import { App, TFile, normalizePath } from "obsidian";
+import {
+  CompilationResult,
+  HierarchyNode,
+  ProjectAuditReport,
+  ProjectCompileConfig,
+  StudyNoteItem,
+} from "./types";
+import { countWordsAndFormulas } from "./scanner";
+
+function removeLeadingHeadingIfMatches(body: string, noteTitle: string): string {
+  const lines = body.split(/\r?\n/);
+  let firstNonEmpty = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if ((lines[i] ?? "").trim().length > 0) {
+      firstNonEmpty = i;
+      break;
+    }
+  }
+  if (firstNonEmpty === -1) return "";
+
+  const firstLine = (lines[firstNonEmpty] ?? "").trim();
+  if (firstLine.startsWith("#")) {
+    const cleanHeading = firstLine.replace(/^#+\s*/, "").trim().toLowerCase();
+    const cleanTitle = noteTitle.trim().toLowerCase();
+    if (cleanHeading === cleanTitle || firstLine.startsWith("# ")) {
+      lines.splice(firstNonEmpty, 1);
+      return lines.join("\n").trim();
+    }
+  }
+  return body.trim();
+}
+
+function adjustInternalHeadings(body: string, baseHashesCount: number): string {
+  const shift = Math.max(0, baseHashesCount - 1);
+  if (shift <= 0) return body;
+
+  let inCodeBlock = false;
+  return body
+    .split(/\r?\n/)
+    .map((line) => {
+      if (line.trimStart().startsWith("```")) {
+        inCodeBlock = !inCodeBlock;
+        return line;
+      }
+      if (inCodeBlock) return line;
+      const m = line.match(/^(#{1,6})(\s+.*)$/);
+      if (!m || !m[1] || !m[2]) return line;
+      const nextCount = Math.min(6, m[1].length + shift);
+      return "#".repeat(nextCount) + m[2];
+    })
+    .join("\n");
+}
+
+function extractWikiLinksFromText(text: string): string[] {
+  const results: string[] = [];
+  const regex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(text)) !== null) {
+    const rawTarget = (m[1] ?? "").trim();
+    if (rawTarget) results.push(rawTarget);
+  }
+  return results;
+}
+
+function formatBibliographyEntry(sourceNote: StudyNoteItem, body: string): string {
+  const firstParagraph = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0 && !l.startsWith("#"));
+
+  if (firstParagraph) {
+    const clean = firstParagraph.replace(/^[-*+]\s+/, "").trim();
+    if (clean.length >= 10) {
+      return clean;
+    }
+  }
+  if (sourceNote.sourceProp) {
+    return `${sourceNote.name} — ${sourceNote.sourceProp}`;
+  }
+  return sourceNote.name;
+}
+
+export function buildAuditAndCompileProject(
+  rootWork: StudyNoteItem,
+  rootBodyText: string,
+  nodes: HierarchyNode[],
+  config: ProjectCompileConfig,
+  outputFolder: string
+): CompilationResult {
+  const includedNodes = nodes.filter((n) => n.included);
+
+  // Собираем весь текст включённых разделов (кроме самих карточек источников) для проверки цитирований
+  const narrativeChunks: string[] = [];
+  if (config.includeRootBody && rootBodyText) {
+    narrativeChunks.push(rootBodyText);
+  }
+  for (const n of includedNodes) {
+    if (n.item.noteType !== "Источник") {
+      narrativeChunks.push(n.bodyText);
+    }
+  }
+  const combinedNarrative = narrativeChunks.join("\n\n");
+  const allLinkedTargetsLower = new Set(
+    extractWikiLinksFromText(combinedNarrative).map((s) =>
+      s.replace(/\.md$/i, "").toLowerCase()
+    )
+  );
+
+  const isNoteReferencedInNarrative = (item: StudyNoteItem): boolean => {
+    const nameLower = item.name.toLowerCase();
+    const pathLower = item.path.replace(/\.md$/i, "").toLowerCase();
+    return (
+      allLinkedTargetsLower.has(nameLower) ||
+      allLinkedTargetsLower.has(pathLower)
+    );
+  };
+
+  const sourcesTotal = includedNodes
+    .filter((n) => n.item.noteType === "Источник")
+    .map((n) => n.item);
+  const sourcesCited = sourcesTotal.filter(isNoteReferencedInNarrative);
+  const sourcesUncited = sourcesTotal.filter(
+    (s) => !isNoteReferencedInNarrative(s)
+  );
+
+  const visualsTotal = includedNodes
+    .filter((n) =>
+      ["Рисунок", "Схема", "Таблица"].includes(n.item.noteType)
+    )
+    .map((n) => n.item);
+  const visualsReferenced = visualsTotal.filter(isNoteReferencedInNarrative);
+  const visualsUnreferenced = visualsTotal.filter(
+    (v) => !isNoteReferencedInNarrative(v)
+  );
+
+  const emptySectionNotes = includedNodes
+    .filter(
+      (n) =>
+        n.item.noteType !== "Источник" &&
+        n.item.noteType !== "Рисунок" &&
+        n.item.noteType !== "Схема" &&
+        n.wordCount < 5
+    )
+    .map((n) => n.item);
+
+  // Сквозная нумерация источников в порядке первого упоминания (затем остальные привязанные источники)
+  const sourceNumberMap = new Map<string, number>();
+  const orderedSourcesForBib: HierarchyNode[] = [];
+  const sourceNodes = includedNodes.filter(
+    (n) => n.item.noteType === "Источник"
+  );
+  const sourceByLowerName = new Map<string, HierarchyNode>();
+  for (const sn of sourceNodes) {
+    sourceByLowerName.set(sn.item.name.toLowerCase(), sn);
+    sourceByLowerName.set(sn.item.path.replace(/\.md$/i, "").toLowerCase(), sn);
+  }
+
+  for (const linkTarget of extractWikiLinksFromText(combinedNarrative)) {
+    const key = linkTarget.replace(/\.md$/i, "").toLowerCase();
+    const matchedSource = sourceByLowerName.get(key);
+    if (matchedSource && !sourceNumberMap.has(matchedSource.item.path)) {
+      const nextNum = orderedSourcesForBib.length + 1;
+      sourceNumberMap.set(matchedSource.item.path, nextNum);
+      orderedSourcesForBib.push(matchedSource);
+    }
+  }
+  for (const sn of sourceNodes) {
+    if (!sourceNumberMap.has(sn.item.path)) {
+      const nextNum = orderedSourcesForBib.length + 1;
+      sourceNumberMap.set(sn.item.path, nextNum);
+      orderedSourcesForBib.push(sn);
+    }
+  }
+
+  const replaceCitationsInText = (text: string): string => {
+    if (!config.replaceSourceLinksWithNumbers || sourceNumberMap.size === 0) {
+      return text;
+    }
+    return text.replace(
+      /(?<!!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g,
+      (fullMatch, rawTarget: string) => {
+        const key = String(rawTarget ?? "")
+          .trim()
+          .replace(/\.md$/i, "")
+          .toLowerCase();
+        const found = sourceByLowerName.get(key);
+        if (!found) return fullMatch;
+        const num = sourceNumberMap.get(found.item.path);
+        return num !== undefined ? `[${num}]` : fullMatch;
+      }
+    );
+  };
+
+  // Сборка итогового Markdown-документа
+  const outLines: string[] = [];
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  outLines.push("---");
+  outLines.push(`направление: "Учёба"`);
+  outLines.push(`тип: "Сборка"`);
+  outLines.push(`проект: "[[${rootWork.name}]]"`);
+  outLines.push(`дата_сборки: "${todayISO}"`);
+  if (rootWork.discipline) {
+    outLines.push(`дисциплина: ${JSON.stringify(rootWork.discipline)}`);
+  }
+  outLines.push("---");
+  outLines.push("");
+  outLines.push(`# ${rootWork.name}`);
+  outLines.push("");
+
+  if (config.includeRootBody && rootBodyText) {
+    const cleanedRoot = config.stripLeadingH1
+      ? removeLeadingHeadingIfMatches(rootBodyText, rootWork.name)
+      : rootBodyText;
+    if (cleanedRoot) {
+      outLines.push(replaceCitationsInText(cleanedRoot));
+      outLines.push("");
+    }
+  }
+
+  let figureCounter = 0;
+  let tableCounter = 0;
+
+  // 1. Глоссарий терминов (если включён сбор терминов в отдельный раздел)
+  const termNodes = includedNodes.filter((n) => n.item.noteType === "Термин");
+  if (config.groupTermsIntoGlossary && termNodes.length > 0) {
+    outLines.push("## Термины и определения");
+    outLines.push("");
+    for (const tn of termNodes) {
+      const cleanTermBody = removeLeadingHeadingIfMatches(
+        tn.bodyText,
+        tn.item.name
+      )
+        .replace(/\r?\n+/g, " ")
+        .trim();
+      outLines.push(
+        `- **${tn.item.name}** — ${replaceCitationsInText(cleanTermBody || "определение не заполнено")}`
+      );
+    }
+    outLines.push("");
+  }
+
+  // 2. Основные разделы работы по дереву иерархии
+  for (const node of includedNodes) {
+    const t = node.item.noteType;
+    if (config.buildBibliography && t === "Источник") continue;
+    if (config.groupTermsIntoGlossary && t === "Термин") continue;
+
+    const headingLevel = Math.min(6, node.depth + 2);
+    const hashes = "#".repeat(headingLevel);
+    const numPrefix =
+      config.numberSections && node.sectionNumber !== "—"
+        ? `${node.sectionNumber}. `
+        : "";
+
+    let sectionTitle = `${hashes} ${numPrefix}${node.item.name}`;
+    if (config.autoNumberFiguresAndTables) {
+      if (t === "Рисунок" || t === "Схема") {
+        figureCounter++;
+        sectionTitle = `${hashes} Рисунок ${figureCounter} — ${node.item.name}`;
+      } else if (t === "Таблица") {
+        tableCounter++;
+        sectionTitle = `${hashes} Таблица ${tableCounter} — ${node.item.name}`;
+      }
+    }
+
+    outLines.push(sectionTitle);
+    outLines.push("");
+
+    let body = config.stripLeadingH1
+      ? removeLeadingHeadingIfMatches(node.bodyText, node.item.name)
+      : node.bodyText;
+    body = adjustInternalHeadings(body, headingLevel);
+    body = replaceCitationsInText(body);
+
+    if (body) {
+      outLines.push(body);
+      outLines.push("");
+    }
+  }
+
+  // 3. Список использованных источников
+  if (config.buildBibliography && orderedSourcesForBib.length > 0) {
+    outLines.push("## Список использованных источников");
+    outLines.push("");
+    orderedSourcesForBib.forEach((sn, idx) => {
+      const num = idx + 1;
+      const entryText = formatBibliographyEntry(sn.item, sn.bodyText);
+      outLines.push(`${num}. ${entryText}`);
+    });
+    outLines.push("");
+  }
+
+  const finalMarkdown = outLines.join("\n").trim() + "\n";
+  const finalStats = countWordsAndFormulas(finalMarkdown);
+  const markdownTablesCount =
+    visualsTotal.filter((v) => v.noteType === "Таблица").length +
+    (finalMarkdown.match(/\n\|[-:\s|]+\|\r?\n/g) ?? []).length;
+  const embeddedImagesCount =
+    visualsTotal.filter(
+      (v) => v.noteType === "Рисунок" || v.noteType === "Схема"
+    ).length +
+    (finalMarkdown.match(/!\[\[[^\]]+\.(?:png|jpg|jpeg|webp|svg|gif)/gi) ?? [])
+      .length;
+
+  const audit: ProjectAuditReport = {
+    totalNodes: nodes.length,
+    includedNodes: includedNodes.length,
+    totalWords: finalStats.words,
+    totalCharsWithSpaces: finalStats.chars,
+    authorSheets: (finalStats.chars / 40_000).toFixed(2).replace(".", ","),
+    approxPages: Math.max(1, Math.ceil(finalStats.chars / 1800)),
+    totalFormulas: finalStats.formulas,
+    totalTables: markdownTablesCount,
+    totalFigures: embeddedImagesCount,
+    sourcesTotal,
+    sourcesCited,
+    sourcesUncited,
+    visualsTotal,
+    visualsReferenced,
+    visualsUnreferenced,
+    emptySectionNotes,
+  };
+
+  const safeFolder = (outputFolder || "Знания/Сборки").replace(/\/+$/, "");
+  const safeName = rootWork.name.replace(/[\\/:*?"<>|]/g, "").trim();
+  const outputFilePath = normalizePath(
+    `${safeFolder}/Сборка — ${safeName}.md`
+  );
+
+  return {
+    markdown: finalMarkdown,
+    outputFilePath,
+    audit,
+  };
+}
+
+export async function ensureVaultFolderExists(app: App, folderPath: string) {
+  let current = "";
+  for (const part of normalizePath(folderPath).split("/").filter(Boolean)) {
+    current = current ? `${current}/${part}` : part;
+    if (!app.vault.getAbstractFileByPath(current)) {
+      try {
+        await app.vault.createFolder(current);
+      } catch {
+        // Игнорируем, если папка уже создана параллельно
+      }
+    }
+  }
+}
+
+export async function writeCompiledFileToVault(
+  app: App,
+  outputFilePath: string,
+  markdown: string
+): Promise<TFile> {
+  const folder = outputFilePath.includes("/")
+    ? outputFilePath.slice(0, outputFilePath.lastIndexOf("/"))
+    : "";
+  if (folder) {
+    await ensureVaultFolderExists(app, folder);
+  }
+
+  const existing = app.vault.getAbstractFileByPath(outputFilePath);
+  if (existing instanceof TFile) {
+    await app.vault.modify(existing, markdown);
+    return existing;
+  }
+  return await app.vault.create(outputFilePath, markdown);
+}
+
+=== FILE: ./src/modal.ts ===
+import { App, Modal, Notice, normalizePath } from "obsidian";
+import type MyStudyCompilerPlugin from "./main";
+import {
+  CompilationResult,
+  DEFAULT_COMPILE_CONFIG,
+  HierarchyNode,
+  MATERIAL_TYPES,
+  ProjectCompileConfig,
+  StudyNoteItem,
+  TYPE_COLORS,
+} from "./types";
+import {
+  buildProjectHierarchy,
+  getWorkMeta,
+  scanStudyVault,
+} from "./scanner";
+import {
+  buildAuditAndCompileProject,
+  ensureVaultFolderExists,
+  writeCompiledFileToVault,
+} from "./compiler";
+
+type CompilerTab = "structure" | "audit" | "preview";
+
+export class StudyCompilerModal extends Modal {
+  plugin: MyStudyCompilerPlugin;
+  selectedWorkPath = "";
+  activeTab: CompilerTab = "structure";
+
+  works: StudyNoteItem[] = [];
+  byPath = new Map<string, StudyNoteItem>();
+  childrenOf = new Map<string, string[]>();
+
+  rootBodyText = "";
+  rootWords = 0;
+  nodes: HierarchyNode[] = [];
+  compiled: CompilationResult | null = null;
+
+  isAddingSectionOpen = false;
+  newSectionTitle = "";
+  newSectionType = "Конспект";
+  newSectionParentPath = "";
+
+  constructor(app: App, plugin: MyStudyCompilerPlugin, initialWorkPath?: string) {
+    super(app);
+    (
+      this as unknown as { shouldRestoreSelection?: boolean }
+    ).shouldRestoreSelection = false;
+    this.plugin = plugin;
+    if (initialWorkPath) {
+      this.selectedWorkPath = initialWorkPath;
+    }
+  }
+
+  safeClose() {
+    try {
+      (
+        this as unknown as { shouldRestoreSelection?: boolean }
+      ).shouldRestoreSelection = false;
+      this.close();
+    } catch {
+      // Игнорируем
+    }
+  }
+
+  async onOpen() {
+    (
+      this as unknown as { shouldRestoreSelection?: boolean }
+    ).shouldRestoreSelection = false;
+    this.modalEl.addClass("my-sc-modal-container");
+    this.contentEl.addClass("my-sc-modal");
+
+    await this.reloadVaultAndRebuild();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+
+  private getActiveWork(): StudyNoteItem | null {
+    if (!this.works.length) return null;
+    const found = this.works.find((w) => w.path === this.selectedWorkPath);
+    if (found) return found;
+    const first = this.works[0] ?? null;
+    if (first) this.selectedWorkPath = first.path;
+    return first;
+  }
+
+  private getConfigForWork(workPath: string): ProjectCompileConfig {
+    const existing = this.plugin.settings.projectConfigs[workPath];
+    if (existing) {
+      return {
+        ...DEFAULT_COMPILE_CONFIG,
+        ...existing,
+        orderedPaths: Array.isArray(existing.orderedPaths)
+          ? [...existing.orderedPaths]
+          : [],
+        excludedPaths: Array.isArray(existing.excludedPaths)
+          ? [...existing.excludedPaths]
+          : [],
+      };
+    }
+    const fresh: ProjectCompileConfig = {
+      ...DEFAULT_COMPILE_CONFIG,
+      orderedPaths: [],
+      excludedPaths: [],
+    };
+    this.plugin.settings.projectConfigs[workPath] = fresh;
+    return fresh;
+  }
+
+  private saveConfigForWork(workPath: string, cfg: ProjectCompileConfig) {
+    this.plugin.settings.projectConfigs[workPath] = cfg;
+    this.plugin.requestSaveSettings();
+  }
+
+  async reloadVaultAndRebuild() {
+    const scanned = scanStudyVault(this.app, this.plugin.settings);
+    this.works = scanned.works;
+    this.byPath = scanned.byPath;
+    this.childrenOf = scanned.childrenOf;
+
+    const activeWork = this.getActiveWork();
+    if (!activeWork) {
+      this.nodes = [];
+      this.compiled = null;
+      this.render();
+      return;
+    }
+
+    const cfg = this.getConfigForWork(activeWork.path);
+    const built = await buildProjectHierarchy(
+      this.app,
+      activeWork,
+      this.byPath,
+      this.childrenOf,
+      cfg
+    );
+    this.rootBodyText = built.rootBodyText;
+    this.rootWords = built.rootWords;
+    this.nodes = built.nodes;
+
+    // Синхронизируем массив orderedPaths с текущим деревом
+    const currentOrder = this.nodes.map((n) => n.item.path);
+    cfg.orderedPaths = currentOrder;
+    this.saveConfigForWork(activeWork.path, cfg);
+
+    this.compiled = buildAuditAndCompileProject(
+      activeWork,
+      this.rootBodyText,
+      this.nodes,
+      cfg,
+      this.plugin.settings.outputFolder
+    );
+
+    this.render();
+  }
+
+  private async moveNodeInSiblingGroup(node: HierarchyNode, delta: -1 | 1) {
+    const activeWork = this.getActiveWork();
+    if (!activeWork) return;
+
+    const siblings = this.nodes.filter(
+      (n) => n.parentPath === node.parentPath && n.depth === node.depth
+    );
+    const idxInSiblings = siblings.findIndex(
+      (s) => s.item.path === node.item.path
+    );
+    const targetSibling = siblings[idxInSiblings + delta];
+    if (idxInSiblings === -1 || !targetSibling) return;
+
+    const cfg = this.getConfigForWork(activeWork.path);
+    const list = [...this.nodes.map((n) => n.item.path)];
+    const iA = list.indexOf(node.item.path);
+    const iB = list.indexOf(targetSibling.item.path);
+    if (iA === -1 || iB === -1) return;
+
+    list[iA] = targetSibling.item.path;
+    list[iB] = node.item.path;
+    cfg.orderedPaths = list;
+    this.saveConfigForWork(activeWork.path, cfg);
+    await this.reloadVaultAndRebuild();
+  }
+
+  private async toggleNodeIncluded(node: HierarchyNode) {
+    const activeWork = this.getActiveWork();
+    if (!activeWork) return;
+
+    const cfg = this.getConfigForWork(activeWork.path);
+    const set = new Set(cfg.excludedPaths);
+    if (set.has(node.item.path)) {
+      set.delete(node.item.path);
+    } else {
+      set.add(node.item.path);
+    }
+    cfg.excludedPaths = [...set];
+    this.saveConfigForWork(activeWork.path, cfg);
+    await this.reloadVaultAndRebuild();
+  }
+
+  private async handleCompileAndOpenFile() {
+    const activeWork = this.getActiveWork();
+    if (!activeWork || !this.compiled) return;
+
+    try {
+      const file = await writeCompiledFileToVault(
+        this.app,
+        this.compiled.outputFilePath,
+        this.compiled.markdown
+      );
+      new Notice(`✓ Собрано: «${file.path}»`);
+      this.safeClose();
+      await this.app.workspace.openLinkText(file.path, "", true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      new Notice("Ошибка сохранения сборки: " + msg);
+    }
+  }
+
+  private async handleCopyMarkdown() {
+    if (!this.compiled) return;
+    try {
+      await navigator.clipboard.writeText(this.compiled.markdown);
+      new Notice("📋 Текст рукописи скопирован в буфер обмена");
+    } catch {
+      new Notice("Не удалось скопировать в буфер обмена");
+    }
+  }
+
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    // 1. Шапка окна
+    const headBar = contentEl.createDiv("my-sc-head-bar");
+    const titleWrap = headBar.createDiv("my-sc-head-title");
+    titleWrap.createSpan({ text: "🎓 Конструктор научных работ и проектов" });
+
+    const closeBtn = headBar.createEl("button", {
+      cls: "my-sc-close-btn",
+      text: "✕",
+      attr: {
+        type: "button",
+        title: "Закрыть (Esc)",
+        "aria-label": "Закрыть конструктор",
+      },
+    });
+    closeBtn.onclick = () => this.safeClose();
+
+    const activeWork = this.getActiveWork();
+    if (!activeWork) {
+      const emptyBox = contentEl.createDiv("my-sc-empty");
+      emptyBox.setText(
+        "В хранилище не найдено активных учебных проектов (направление: «Учёба»)."
+      );
+      return;
+    }
+
+    const workMeta = getWorkMeta(activeWork.noteType, activeWork.customIcon);
+    const cfg = this.getConfigForWork(activeWork.path);
+    const audit = this.compiled?.audit;
+
+    // 2. Панель выбора проекта и быстрых показателей
+    const projectBar = contentEl.createDiv("my-sc-project-bar");
+    const selectWrap = projectBar.createDiv("my-sc-project-select-wrap");
+
+    const workSel = selectWrap.createEl("select", {
+      cls: "dropdown my-sc-work-select",
+      attr: { title: "Выбор учебного проекта или работы" },
+    });
+    for (const w of this.works) {
+      const meta = getWorkMeta(w.noteType, w.customIcon);
+      const statusSuffix = !w.isActiveWork ? " [завершён]" : "";
+      const o = workSel.createEl("option", {
+        text: `${meta.icon} ${w.name} (${w.noteType})${statusSuffix}`,
+        value: w.path,
+      });
+      if (w.path === activeWork.path) o.selected = true;
+    }
+    workSel.onchange = () => {
+      this.selectedWorkPath = workSel.value;
+      void this.reloadVaultAndRebuild();
+    };
+
+    const showDoneBtn = selectWrap.createEl("button", {
+      cls:
+        "my-sc-chip-btn" +
+        (this.plugin.settings.showCompletedWorks ? " is-active" : ""),
+      text: this.plugin.settings.showCompletedWorks
+        ? "✓ Все проекты"
+        : "В работе",
+      attr: {
+        type: "button",
+        title: "Показывать также завершённые проекты",
+      },
+    });
+    showDoneBtn.onclick = () => {
+      this.plugin.settings.showCompletedWorks =
+        !this.plugin.settings.showCompletedWorks;
+      this.plugin.requestSaveSettings();
+      void this.reloadVaultAndRebuild();
+    };
+
+    const openWorkBtn = selectWrap.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "📄 Открыть корень",
+      attr: { type: "button", title: "Открыть корневую заметку проекта" },
+    });
+    openWorkBtn.onclick = () => {
+      this.safeClose();
+      void this.app.workspace.openLinkText(activeWork.path, "", false);
+    };
+
+    // Сводные плашки объёма
+    if (audit) {
+      const kpiRow = contentEl.createDiv("my-sc-kpi-row");
+      const kpis = [
+        {
+          label: "Разделов",
+          val: `${audit.includedNodes} / ${audit.totalNodes}`,
+          color: workMeta.color,
+        },
+        {
+          label: "Слов / стр.",
+          val: `${audit.totalWords.toLocaleString("ru-RU")} (~${audit.approxPages} стр.)`,
+          color: "#599ed6",
+        },
+        {
+          label: "Авт. листов",
+          val: `${audit.authorSheets} а.л.`,
+          color: "#9c83e8",
+        },
+        {
+          label: "Источники",
+          val: `${audit.sourcesCited.length} / ${audit.sourcesTotal.length} процит.`,
+          color:
+            audit.sourcesUncited.length > 0 ? "#e5a158" : "#4aab80",
+        },
+      ];
+      for (const k of kpis) {
+        const box = kpiRow.createDiv("my-sc-kpi-card");
+        box.style.setProperty("--kpi-color", k.color);
+        box.createSpan({ cls: "my-sc-kpi-label", text: k.label });
+        box.createSpan({ cls: "my-sc-kpi-val", text: k.val });
+      }
+    }
+
+    // 3. Вкладки: Структура | Аудит | Предпросмотр
+    const tabsRow = contentEl.createDiv("my-sc-tabs-row");
+    const uncitedCount =
+      (audit?.sourcesUncited.length ?? 0) +
+      (audit?.visualsUnreferenced.length ?? 0);
+    const tabs: Array<{ id: CompilerTab; label: string }> = [
+      {
+        id: "structure",
+        label: `📐 Структура (${this.nodes.length})`,
+      },
+      {
+        id: "audit",
+        label:
+          uncitedCount > 0
+            ? `🔍 Аудит и источники (⚠️ ${uncitedCount})`
+            : "🔍 Аудит и источники (✓)",
+      },
+      {
+        id: "preview",
+        label: "📄 Настройки и предпросмотр",
+      },
+    ];
+
+    for (const t of tabs) {
+      const b = tabsRow.createEl("button", {
+        cls: "my-sc-tab-btn" + (this.activeTab === t.id ? " is-active" : ""),
+        text: t.label,
+        attr: { type: "button" },
+      });
+      b.onclick = () => {
+        this.activeTab = t.id;
+        this.render();
+      };
+    }
+
+    // 4. Тело активной вкладки
+    const bodyEl = contentEl.createDiv("my-sc-body");
+
+    if (this.activeTab === "structure") {
+      this.renderStructureTab(bodyEl, activeWork, cfg);
+    } else if (this.activeTab === "audit") {
+      this.renderAuditTab(bodyEl, activeWork);
+    } else {
+      this.renderPreviewTab(bodyEl, activeWork, cfg);
+    }
+
+    // 5. Нижняя панель действий
+    const footerEl = contentEl.createDiv("my-sc-footer");
+    const outHint = footerEl.createDiv("my-sc-footer-path");
+    outHint.setText(
+      `Файл сборки: ${this.compiled?.outputFilePath ?? "Знания/Сборки/..."}`
+    );
+
+    const actionsWrap = footerEl.createDiv("my-sc-footer-actions");
+    const copyBtn = actionsWrap.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "📋 Скопировать текст",
+      attr: { type: "button" },
+    });
+    copyBtn.onclick = () => void this.handleCopyMarkdown();
+
+    const compileBtn = actionsWrap.createEl("button", {
+      cls: "mod-cta my-sc-primary-btn",
+      text: "📄 Собрать и открыть рукопись",
+      attr: { type: "button" },
+    });
+    compileBtn.onclick = () => void this.handleCompileAndOpenFile();
+  }
+
+  private renderStructureTab(
+    parent: HTMLElement,
+    activeWork: StudyNoteItem,
+    cfg: ProjectCompileConfig
+  ) {
+    const topBar = parent.createDiv("my-sc-struct-topbar");
+
+    const rootChkLabel = topBar.createEl("label", {
+      cls: "my-sc-check-label",
+    });
+    const rootChk = rootChkLabel.createEl("input", {
+      attr: { type: "checkbox" },
+    });
+    rootChk.checked = cfg.includeRootBody;
+    rootChkLabel.createSpan({
+      text: `Включать вступление из корневой заметки (${this.rootWords} сл.)`,
+    });
+    rootChk.onchange = () => {
+      cfg.includeRootBody = rootChk.checked;
+      this.saveConfigForWork(activeWork.path, cfg);
+      void this.reloadVaultAndRebuild();
+    };
+
+    const rightBtns = topBar.createDiv("my-sc-struct-btns");
+    const addSecBtn = rightBtns.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.isAddingSectionOpen ? " is-active" : ""),
+      text: this.isAddingSectionOpen ? "✕ Отмена" : "+ Новый раздел",
+      attr: { type: "button" },
+    });
+    addSecBtn.onclick = () => {
+      this.isAddingSectionOpen = !this.isAddingSectionOpen;
+      if (!this.newSectionParentPath) {
+        this.newSectionParentPath = activeWork.path;
+      }
+      this.render();
+    };
+
+    if (this.isAddingSectionOpen) {
+      const formBox = parent.createDiv("my-sc-add-box");
+      const typeSel = formBox.createEl("select", { cls: "dropdown" });
+      for (const mt of MATERIAL_TYPES) {
+        const o = typeSel.createEl("option", { text: mt, value: mt });
+        if (mt === this.newSectionType) o.selected = true;
+      }
+      typeSel.onchange = () => {
+        this.newSectionType = typeSel.value;
+      };
+
+      const titleInp = formBox.createEl("input", {
+        cls: "my-sc-input",
+        attr: {
+          type: "text",
+          placeholder: "Название нового раздела или материала…",
+          value: this.newSectionTitle,
+        },
+      });
+      titleInp.oninput = () => {
+        this.newSectionTitle = titleInp.value;
+      };
+
+      const parentSel = formBox.createEl("select", { cls: "dropdown" });
+      parentSel.createEl("option", {
+        text: `↳ В корень: ${activeWork.name}`,
+        value: activeWork.path,
+      });
+      for (const n of this.nodes) {
+        const indent = "  ".repeat(n.depth + 1);
+        const o = parentSel.createEl("option", {
+          text: `${indent}↳ Внутрь: ${n.item.name}`,
+          value: n.item.path,
+        });
+        if (this.newSectionParentPath === n.item.path) o.selected = true;
+      }
+      parentSel.onchange = () => {
+        this.newSectionParentPath = parentSel.value;
+      };
+
+      const createBtn = formBox.createEl("button", {
+        cls: "mod-cta my-sc-action-btn",
+        text: "Создать",
+        attr: { type: "button" },
+      });
+
+      const doCreate = async () => {
+        const cleanTitle = this.newSectionTitle
+          .trim()
+          .replace(/[\\/:*?"<>|]/g, "");
+        if (!cleanTitle) {
+          new Notice("Введи название заметки.");
+          return;
+        }
+        const targetPath = normalizePath(`Знания/${cleanTitle}.md`);
+        if (this.app.vault.getAbstractFileByPath(targetPath)) {
+          new Notice("Заметка с таким именем уже существует в папке Знания.");
+          return;
+        }
+        const parentItem =
+          this.byPath.get(this.newSectionParentPath) ?? activeWork;
+        createBtn.disabled = true;
+        try {
+          await ensureVaultFolderExists(this.app, "Знания");
+          const discLine = activeWork.discipline
+            ? `дисциплина: ${JSON.stringify(activeWork.discipline)}\n`
+            : "";
+          const content =
+            `---\n` +
+            `направление: "${this.plugin.settings.studyAreaName}"\n` +
+            `тип: ${JSON.stringify(this.newSectionType)}\n` +
+            `родитель: "[[${parentItem.name}]]"\n` +
+            discLine +
+            `---\n\n# ${cleanTitle}\n\n`;
+          await this.app.vault.create(targetPath, content);
+          this.newSectionTitle = "";
+          this.isAddingSectionOpen = false;
+          new Notice(`Создан раздел «${cleanTitle}»`);
+          setTimeout(() => void this.reloadVaultAndRebuild(), 120);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          new Notice("Ошибка создания: " + msg);
+          createBtn.disabled = false;
+        }
+      };
+      createBtn.onclick = () => void doCreate();
+    }
+
+    if (this.nodes.length === 0) {
+      parent.createDiv({
+        cls: "my-sc-empty",
+        text: "К этому проекту ещё не привязано ни одной заметки через свойство «родитель».",
+      });
+      return;
+    }
+
+    const listEl = parent.createDiv("my-sc-tree-list");
+
+    for (const node of this.nodes) {
+      const row = listEl.createDiv(
+        "my-sc-tree-row" + (!node.included ? " is-excluded" : "")
+      );
+      row.style.paddingLeft = `${10 + node.depth * 20}px`;
+
+      const left = row.createDiv("my-sc-tree-left");
+
+      const chk = left.createEl("input", {
+        attr: {
+          type: "checkbox",
+          title: "Включить или исключить из сборки",
+        },
+      });
+      chk.checked = node.included;
+      chk.onchange = () => void this.toggleNodeIncluded(node);
+
+      if (node.sectionNumber !== "—") {
+        left.createSpan({
+          cls: "my-sc-sec-num",
+          text: node.sectionNumber,
+        });
+      }
+
+      const titleLink = left.createSpan({
+        cls: "my-sc-node-title",
+        text: node.item.name,
+        attr: { title: "Открыть заметку" },
+      });
+      titleLink.onclick = () => {
+        this.safeClose();
+        void this.app.workspace.openLinkText(node.item.path, "", false);
+      };
+
+      const tColor = TYPE_COLORS[node.item.noteType] ?? "#8a8f98";
+      const badge = left.createSpan({
+        cls: "my-sc-type-badge",
+        text: node.item.noteType,
+      });
+      badge.style.setProperty("--badge-color", tColor);
+
+      const right = row.createDiv("my-sc-tree-right");
+      right.createSpan({
+        cls: "my-sc-word-count",
+        text: `${node.wordCount} сл.`,
+      });
+
+      const siblings = this.nodes.filter(
+        (n) => n.parentPath === node.parentPath && n.depth === node.depth
+      );
+      const sibIdx = siblings.findIndex(
+        (s) => s.item.path === node.item.path
+      );
+
+      const upBtn = right.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "▲",
+        attr: { type: "button", title: "Переместить выше" },
+      });
+      upBtn.disabled = sibIdx <= 0;
+      upBtn.onclick = () => void this.moveNodeInSiblingGroup(node, -1);
+
+      const downBtn = right.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "▼",
+        attr: { type: "button", title: "Переместить ниже" },
+      });
+      downBtn.disabled = sibIdx === -1 || sibIdx >= siblings.length - 1;
+      downBtn.onclick = () => void this.moveNodeInSiblingGroup(node, 1);
+    }
+  }
+
+  private renderAuditTab(parent: HTMLElement, _activeWork: StudyNoteItem) {
+    const audit = this.compiled?.audit;
+    if (!audit) return;
+
+    const grid = parent.createDiv("my-sc-audit-grid");
+
+    // 1. Сводка объёма и элементов
+    const statsBox = grid.createDiv("my-sc-audit-box");
+    statsBox.createDiv({
+      cls: "my-sc-audit-title",
+      text: "📊 Метрики рукописи",
+    });
+    const rows: Array<[string, string]> = [
+      ["Печатных знаков (с пробелами)", audit.totalCharsWithSpaces.toLocaleString("ru-RU")],
+      ["Авторских листов (40 000 зн.)", `${audit.authorSheets} а.л.`],
+      ["Расчётных страниц (~1800 зн.)", `${audit.approxPages} стр.`],
+      ["Слов в чистовом тексте", audit.totalWords.toLocaleString("ru-RU")],
+      ["Математических формул", String(audit.totalFormulas)],
+      ["Таблиц / Иллюстраций", `${audit.totalTables} табл. · ${audit.totalFigures} рис.`],
+    ];
+    for (const [k, v] of rows) {
+      const r = statsBox.createDiv("my-sc-audit-row");
+      r.createSpan({ cls: "my-sc-audit-k", text: k });
+      r.createSpan({ cls: "my-sc-audit-v", text: v });
+    }
+
+    // 2. Контроль цитирования источников
+    const srcBox = grid.createDiv("my-sc-audit-box");
+    srcBox.createDiv({
+      cls: "my-sc-audit-title",
+      text: `📚 Цитирование источников (${audit.sourcesCited.length} из ${audit.sourcesTotal.length})`,
+    });
+
+    if (audit.sourcesTotal.length === 0) {
+      srcBox.createDiv({
+        cls: "my-sc-audit-hint",
+        text: "В проекте пока нет заметок с типом «Источник».",
+      });
+    } else if (audit.sourcesUncited.length === 0) {
+      srcBox.createDiv({
+        cls: "my-sc-audit-ok",
+        text: "✓ Все привязанные источники упомянуты в тексте разделов [[...]].",
+      });
+    } else {
+      srcBox.createDiv({
+        cls: "my-sc-audit-warn",
+        text: `⚠️ Не упомянуты в тексте (${audit.sourcesUncited.length}):`,
+      });
+      for (const s of audit.sourcesUncited) {
+        const item = srcBox.createDiv("my-sc-audit-link");
+        item.setText(`• [[${s.name}]]`);
+        item.onclick = () => {
+          this.safeClose();
+          void this.app.workspace.openLinkText(s.path, "", false);
+        };
+      }
+    }
+
+    // 3. Неиспользованные рисунки / таблицы и пустые разделы
+    if (
+      audit.visualsUnreferenced.length > 0 ||
+      audit.emptySectionNotes.length > 0
+    ) {
+      const warnBox = parent.createDiv("my-sc-audit-box");
+      warnBox.createDiv({
+        cls: "my-sc-audit-title",
+        text: "⚠️ Замечания по структуре",
+      });
+
+      if (audit.visualsUnreferenced.length > 0) {
+        warnBox.createDiv({
+          cls: "my-sc-audit-warn",
+          text: `Не вставлены ссылки на рисунки/таблицы (${audit.visualsUnreferenced.length}):`,
+        });
+        for (const v of audit.visualsUnreferenced) {
+          const item = warnBox.createDiv("my-sc-audit-link");
+          item.setText(`• ${v.noteType}: [[${v.name}]]`);
+          item.onclick = () => {
+            this.safeClose();
+            void this.app.workspace.openLinkText(v.path, "", false);
+          };
+        }
+      }
+
+      if (audit.emptySectionNotes.length > 0) {
+        warnBox.createDiv({
+          cls: "my-sc-audit-warn",
+          text: `Почти пустые разделы (< 5 слов):`,
+        });
+        for (const e of audit.emptySectionNotes) {
+          const item = warnBox.createDiv("my-sc-audit-link");
+          item.setText(`• ${e.name} (${e.noteType})`);
+          item.onclick = () => {
+            this.safeClose();
+            void this.app.workspace.openLinkText(e.path, "", false);
+          };
+        }
+      }
+    }
+  }
+
+  private renderPreviewTab(
+    parent: HTMLElement,
+    activeWork: StudyNoteItem,
+    cfg: ProjectCompileConfig
+  ) {
+    const optsGrid = parent.createDiv("my-sc-opts-grid");
+
+    const toggles: Array<{
+      key: keyof Pick<
+        ProjectCompileConfig,
+        | "numberSections"
+        | "stripLeadingH1"
+        | "groupTermsIntoGlossary"
+        | "buildBibliography"
+        | "replaceSourceLinksWithNumbers"
+        | "autoNumberFiguresAndTables"
+      >;
+      label: string;
+    }> = [
+      {
+        key: "numberSections",
+        label: "Нумеровать заголовки разделов (1., 1.1., 1.2.)",
+      },
+      {
+        key: "stripLeadingH1",
+        label: "Убирать дублирующий верхний # Заголовок внутри заметок",
+      },
+      {
+        key: "groupTermsIntoGlossary",
+        label: "Собирать заметки «Термин» в раздел «Термины и определения»",
+      },
+      {
+        key: "buildBibliography",
+        label: "Формировать «Список использованных источников» в конце",
+      },
+      {
+        key: "replaceSourceLinksWithNumbers",
+        label: "Заменять [[Ссылки на источники]] в тексте на сноски [1], [2]",
+      },
+      {
+        key: "autoNumberFiguresAndTables",
+        label: "Автонумерация заголовков «Рисунок N» и «Таблица N»",
+      },
+    ];
+
+    for (const tg of toggles) {
+      const lbl = optsGrid.createEl("label", { cls: "my-sc-check-label" });
+      const inp = lbl.createEl("input", { attr: { type: "checkbox" } });
+      inp.checked = cfg[tg.key];
+      lbl.createSpan({ text: tg.label });
+      inp.onchange = () => {
+        cfg[tg.key] = inp.checked;
+        this.saveConfigForWork(activeWork.path, cfg);
+        void this.reloadVaultAndRebuild();
+      };
+    }
+
+    const previewArea = parent.createEl("textarea", {
+      cls: "my-sc-preview-textarea",
+      attr: { readonly: "true", rows: "14" },
+    });
+    previewArea.value = this.compiled?.markdown ?? "";
+  }
+}
+
+=== FILE: ./src/main.ts ===
+import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
+import {
+  DEFAULT_SETTINGS,
+  StudyCompilerSettings,
+} from "./types";
+import { StudyCompilerModal } from "./modal";
+
+function migrateSettings(raw: unknown): StudyCompilerSettings {
+  const source =
+    raw && typeof raw === "object"
+      ? (raw as Partial<StudyCompilerSettings>)
+      : {};
+  return {
+    ...DEFAULT_SETTINGS,
+    ...source,
+    projectConfigs:
+      source.projectConfigs && typeof source.projectConfigs === "object"
+        ? source.projectConfigs
+        : {},
+  };
+}
+
+class StudyCompilerSettingTab extends PluginSettingTab {
+  plugin: MyStudyCompilerPlugin;
+
+  constructor(app: App, plugin: MyStudyCompilerPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  display(): void {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    containerEl.createEl("h3", {
+      text: "Конструктор и сборщик научных работ",
+    });
+
+    new Setting(containerEl)
+      .setName("Папка для сохранения сборок")
+      .setDesc("По умолчанию: Знания/Сборки")
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.outputFolder)
+          .onChange((val) => {
+            this.plugin.settings.outputFolder =
+              val.trim() || "Знания/Сборки";
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Название направления учёбы в YAML")
+      .setDesc("По умолчанию: Учёба")
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.studyAreaName)
+          .onChange((val) => {
+            this.plugin.settings.studyAreaName = val.trim() || "Учёба";
+            this.plugin.requestSaveSettings();
+          })
+      );
+  }
+}
+
+export default class MyStudyCompilerPlugin extends Plugin {
+  settings!: StudyCompilerSettings;
+  private saveTimer: number | null = null;
+
+  async onload() {
+    this.settings = migrateSettings(await this.loadData());
+    this.addSettingTab(new StudyCompilerSettingTab(this.app, this));
+
+    this.addRibbonIcon(
+      "book-open-check",
+      "Открыть конструктор научных работ",
+      () => {
+        this.openCompiler();
+      }
+    );
+
+    this.registerObsidianProtocolHandler("my-compiler", (params) => {
+      this.openCompiler(params.project || undefined);
+    });
+
+    this.addCommand({
+      id: "open-study-compiler",
+      name: "Открыть конструктор и сборщик учебных работ",
+      callback: () => {
+        this.openCompiler();
+      },
+    });
+  }
+
+  openCompiler(projectPath?: string) {
+    new StudyCompilerModal(this.app, this, projectPath).open();
+  }
+
+  requestSaveSettings() {
+    if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => {
+      this.saveTimer = null;
+      void this.saveData(this.settings);
+    }, 300);
+  }
+
+  onunload() {
+    if (this.saveTimer !== null) {
+      window.clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+  }
+}
+
+=== FILE: ./src/scanner.ts ===
+import { App, TFile } from "obsidian";
+import {
+  DEFAULT_COMPILE_CONFIG,
+  DONE_STATUSES,
+  HierarchyNode,
+  MATERIAL_TYPES,
+  PRESET_WORK_TYPES,
+  ProjectCompileConfig,
+  StudyCompilerSettings,
+  StudyNoteItem,
+  WorkMetaBadge,
+} from "./types";
+
+function stripOuterWikiBrackets(str: string): string {
+  let s = String(str || "").trim();
+  if (s.startsWith("[[")) s = s.slice(2);
+  if (s.endsWith("]]")) s = s.slice(0, -2);
+  return s;
+}
+
+function flattenFrontmatterValue(val: unknown): string[] {
+  if (val === null || val === undefined) return [];
+  if (Array.isArray(val)) {
+    const res: string[] = [];
+    for (const item of val) {
+      res.push(...flattenFrontmatterValue(item));
+    }
+    return res;
+  }
+  if (typeof val === "object" && (val as { path?: unknown }).path) {
+    return [String((val as { path: unknown }).path).trim()];
+  }
+  const s = String(val).trim();
+  return s ? [s] : [];
+}
+
+export function resolveParentPaths(
+  app: App,
+  file: TFile,
+  rawParentProp: unknown
+): string[] {
+  const rawList = flattenFrontmatterValue(rawParentProp);
+  const resolved: string[] = [];
+
+  for (const raw of rawList) {
+    const clean = stripOuterWikiBrackets(raw)
+      .split("|")[0]
+      ?.split("#")[0]
+      ?.trim();
+    if (!clean) continue;
+
+    const direct = app.vault.getAbstractFileByPath(clean);
+    if (direct instanceof TFile) {
+      if (!resolved.includes(direct.path)) resolved.push(direct.path);
+      continue;
+    }
+
+    const withMd = app.vault.getAbstractFileByPath(
+      clean.endsWith(".md") ? clean : `${clean}.md`
+    );
+    if (withMd instanceof TFile) {
+      if (!resolved.includes(withMd.path)) resolved.push(withMd.path);
+      continue;
+    }
+
+    const dest = app.metadataCache.getFirstLinkpathDest(clean, file.path);
+    if (dest instanceof TFile && !resolved.includes(dest.path)) {
+      resolved.push(dest.path);
+    }
+  }
+
+  return resolved;
+}
+
+export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge {
+  const raw = String(typeStr || "Проект").trim();
+  const low = raw.toLowerCase();
+  let icon = "📁";
+  let color = "#599ed6";
+  const shortLabel = raw === "Лабораторная работа" ? "Лабораторная" : raw;
+
+  if (
+    low.includes("лаб") ||
+    low.includes("лр") ||
+    low.includes("опыт") ||
+    low.includes("эксперим")
+  ) {
+    icon = "🧪";
+    color = "#4aab80";
+  } else if (
+    low.includes("конф") ||
+    low.includes("доклад") ||
+    low.includes("выступ") ||
+    low.includes("семинар")
+  ) {
+    icon = "🎤";
+    color = "#e06c75";
+  } else if (
+    low.includes("диплом") ||
+    low.includes("диссер") ||
+    low.includes("магист") ||
+    low.includes("вкр")
+  ) {
+    icon = "🎓";
+    color = "#e5a158";
+  } else if (
+    low.includes("стать") ||
+    low.includes("публик") ||
+    low.includes("тезис") ||
+    low.includes("нир")
+  ) {
+    icon = "📄";
+    color = "#9c83e8";
+  } else if (
+    low.includes("курс") ||
+    low.includes("рефер") ||
+    low.includes("чертеж") ||
+    low.includes("расчетно")
+  ) {
+    icon = "📐";
+    color = "#d69852";
+  } else if (
+    low.includes("экзам") ||
+    low.includes("зачет") ||
+    low.includes("зачёт") ||
+    low.includes("коллок") ||
+    low.includes("тест")
+  ) {
+    icon = "⚡";
+    color = "#e5a158";
+  } else if (low.includes("практ") || low.includes("стажир")) {
+    icon = "🔬";
+    color = "#69b5aa";
+  }
+
+  if (customIcon && String(customIcon).trim()) {
+    icon = String(customIcon).trim();
+  }
+
+  return { icon, color, label: `${icon} ${shortLabel}` };
+}
+
+export function stripYamlFrontmatter(rawContent: string): string {
+  const text = String(rawContent ?? "");
+  if (!text.startsWith("---")) return text.trim();
+  const match = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+  if (!match || !match[0]) return text.trim();
+  return text.slice(match[0].length).trim();
+}
+
+export function stripDataviewCodeblocks(body: string): string {
+  return body
+    .replace(/```(?:dataviewjs|dataview|my-hub|my-study)[\s\S]*?```/gi, "")
+    .trim();
+}
+
+export function countWordsAndFormulas(cleanBody: string): {
+  words: number;
+  chars: number;
+  formulas: number;
+} {
+  const trimmed = cleanBody.trim();
+  if (!trimmed) return { words: 0, chars: 0, formulas: 0 };
+
+  const blockFormulas = (trimmed.match(/\$\$[\s\S]*?\$\$/g) ?? []).length;
+  const withoutBlock = trimmed.replace(/\$\$[\s\S]*?\$\$/g, " ");
+  const inlineFormulas = (withoutBlock.match(/\$[^\s$][^$\n]*?\$/g) ?? []).length;
+
+  const plain = trimmed
+    .replace(/!\[\[[^\]]+\]\]/g, " ")
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
+    .replace(/\[\[([^\]]+)\]\]/g, "$1")
+    .replace(/[#*_`~>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const words = plain ? plain.split(" ").filter(Boolean).length : 0;
+  return {
+    words,
+    chars: plain.length,
+    formulas: blockFormulas + inlineFormulas,
+  };
+}
+
+export function scanStudyVault(
+  app: App,
+  settings: StudyCompilerSettings
+): {
+  works: StudyNoteItem[];
+  byPath: Map<string, StudyNoteItem>;
+  childrenOf: Map<string, string[]>;
+} {
+  const areaTarget = (settings.studyAreaName || "Учёба").trim();
+  const decksPrefix =
+    (settings.decksFolder || "Знания/Карточки").replace(/\/+$/, "") + "/";
+  const outPrefix =
+    (settings.outputFolder || "Знания/Сборки").replace(/\/+$/, "") + "/";
+  const tplPrefix = settings.templatePrefix || "Учёба — ";
+
+  const byPath = new Map<string, StudyNoteItem>();
+  const childrenOf = new Map<string, string[]>();
+
+  for (const file of app.vault.getMarkdownFiles()) {
+    if (
+      file.basename.startsWith(tplPrefix) ||
+      file.path.startsWith("Шаблоны/") ||
+      file.path.startsWith("Templates/") ||
+      file.path.startsWith(decksPrefix) ||
+      file.path.startsWith(outPrefix)
+    ) {
+      continue;
+    }
+
+    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) continue;
+
+    const areaList = flattenFrontmatterValue(fm["направление"]);
+    if (!areaList.includes(areaTarget)) continue;
+
+    const isCardDeck =
+      Boolean(fm["колода_карточек"]) ||
+      String(fm["подтип"] ?? "").trim().toLowerCase() === "карточки";
+    if (isCardDeck) continue;
+
+    const noteType = String(fm["тип"] ?? "").trim();
+    const status = String(fm["статус"] ?? "").trim();
+    const discipline = String(fm["дисциплина"] ?? "").trim();
+    const sourceProp = String(fm["источник"] ?? "").trim();
+    const customIcon = String(fm["иконка"] ?? "").trim();
+    const rawDeadline = fm["срок"] ? String(fm["срок"]).slice(0, 10) : null;
+    const parentPaths = resolveParentPaths(app, file, fm["родитель"]);
+
+    const isWork =
+      Boolean(noteType) &&
+      !MATERIAL_TYPES.includes(noteType) &&
+      parentPaths.length === 0 &&
+      (PRESET_WORK_TYPES.includes(noteType) || fm["статус"] !== undefined);
+
+    const isActiveWork =
+      isWork && !DONE_STATUSES.includes(status.toLowerCase());
+
+    const item: StudyNoteItem = {
+      file,
+      path: file.path,
+      name: file.basename,
+      noteType: noteType || "Заметка",
+      status,
+      discipline,
+      deadlineISO: rawDeadline,
+      sourceProp,
+      customIcon,
+      parentPaths,
+      isWork,
+      isActiveWork,
+    };
+
+    byPath.set(file.path, item);
+
+    for (const pPath of parentPaths) {
+      const list = childrenOf.get(pPath) ?? [];
+      if (!list.includes(file.path)) {
+        list.push(file.path);
+        childrenOf.set(pPath, list);
+      }
+    }
+  }
+
+  const works = [...byPath.values()]
+    .filter((it) =>
+      settings.showCompletedWorks ? it.isWork : it.isActiveWork
+    )
+    .sort((a, b) => {
+      if (a.isActiveWork !== b.isActiveWork) return a.isActiveWork ? -1 : 1;
+      const dA = a.deadlineISO ?? "9999-99-99";
+      const dB = b.deadlineISO ?? "9999-99-99";
+      return dA.localeCompare(dB) || a.name.localeCompare(b.name, "ru");
+    });
+
+  return { works, byPath, childrenOf };
+}
+
+export async function buildProjectHierarchy(
+  app: App,
+  rootWork: StudyNoteItem,
+  byPath: Map<string, StudyNoteItem>,
+  childrenOf: Map<string, string[]>,
+  config: ProjectCompileConfig
+): Promise<{
+  rootBodyText: string;
+  rootWords: number;
+  nodes: HierarchyNode[];
+}> {
+  const cfg = { ...DEFAULT_COMPILE_CONFIG, ...config };
+  const orderIndexMap = new Map<string, number>();
+  cfg.orderedPaths.forEach((p, idx) => orderIndexMap.set(p, idx));
+  const excludedSet = new Set(cfg.excludedPaths);
+
+  const visited = new Set<string>([rootWork.path]);
+  const rawNodes: Array<{
+    item: StudyNoteItem;
+    depth: number;
+    parentPath: string;
+  }> = [];
+
+  const typePriority = (t: string): number => {
+    if (t === "Конспект" || t === "Заметка") return 1;
+    if (t === "Алгоритм" || t === "Расчёт") return 2;
+    if (t === "Таблица" || t === "Рисунок" || t === "Схема") return 3;
+    if (t === "Термин") return 4;
+    if (t === "Источник") return 5;
+    return 2;
+  };
+
+  const walk = (currentPath: string, depth: number) => {
+    const kids = (childrenOf.get(currentPath) ?? [])
+      .map((kPath) => byPath.get(kPath))
+      .filter((k): k is StudyNoteItem => Boolean(k && !k.isWork));
+
+    kids.sort((a, b) => {
+      const idxA = orderIndexMap.get(a.path);
+      const idxB = orderIndexMap.get(b.path);
+      if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
+      if (idxA !== undefined) return -1;
+      if (idxB !== undefined) return 1;
+      const pDiff = typePriority(a.noteType) - typePriority(b.noteType);
+      if (pDiff !== 0) return pDiff;
+      return a.name.localeCompare(b.name, "ru");
+    });
+
+    for (const kid of kids) {
+      if (visited.has(kid.path)) continue;
+      visited.add(kid.path);
+      rawNodes.push({ item: kid, depth, parentPath: currentPath });
+      walk(kid.path, depth + 1);
+    }
+  };
+
+  walk(rootWork.path, 0);
+
+  let rootBodyText = "";
+  try {
+    const rawRoot = await app.vault.cachedRead(rootWork.file);
+    rootBodyText = stripDataviewCodeblocks(stripYamlFrontmatter(rawRoot));
+  } catch {
+    rootBodyText = "";
+  }
+  const rootStats = countWordsAndFormulas(rootBodyText);
+
+  const counters: number[] = [];
+  const nodes: HierarchyNode[] = [];
+
+  for (const rn of rawNodes) {
+    let bodyText = "";
+    try {
+      const raw = await app.vault.cachedRead(rn.item.file);
+      bodyText = stripDataviewCodeblocks(stripYamlFrontmatter(raw));
+    } catch {
+      bodyText = "";
+    }
+
+    const included = !excludedSet.has(rn.item.path);
+    const isSpecialBottom =
+      (cfg.buildBibliography && rn.item.noteType === "Источник") ||
+      (cfg.groupTermsIntoGlossary && rn.item.noteType === "Термин");
+
+    let sectionNumber = "—";
+    if (included && !isSpecialBottom) {
+      const d = rn.depth;
+      while (counters.length <= d) counters.push(0);
+      counters.splice(d + 1);
+      counters[d] = (counters[d] ?? 0) + 1;
+      sectionNumber = counters.join(".");
+    }
+
+    const st = countWordsAndFormulas(bodyText);
+    nodes.push({
+      item: rn.item,
+      depth: rn.depth,
+      parentPath: rn.parentPath,
+      sectionNumber,
+      included,
+      wordCount: st.words,
+      charCount: st.chars,
+      formulaCount: st.formulas,
+      bodyText,
+    });
+  }
+
+  return {
+    rootBodyText,
+    rootWords: rootStats.words,
+    nodes,
+  };
+}
+
+=== FILE: ./src/types.ts ===
+import type { TFile } from "obsidian";
+
+export const STUDY_AREA = "Учёба";
+
+export const MATERIAL_TYPES = [
+  "Термин",
+  "Алгоритм",
+  "Заметка",
+  "Источник",
+  "Расчёт",
+  "Рисунок",
+  "Схема",
+  "Таблица",
+  "Конспект",
+];
+
+export const PRESET_WORK_TYPES = [
+  "Проект",
+  "Лабораторная работа",
+  "Конференция",
+  "Диссертация",
+  "Курсовая работа",
+  "Статья",
+  "Экзамен",
+  "Зачёт",
+  "Практика",
+];
+
+export const DONE_STATUSES = [
+  "завершён",
+  "завершена",
+  "сдана",
+  "сдан",
+  "готово",
+  "архив",
+  "отменён",
+  "отменена",
+];
+
+export const TYPE_COLORS: Record<string, string> = {
+  Термин: "#4fb3d9",
+  Алгоритм: "#9c83e8",
+  Заметка: "#4aab80",
+  Источник: "#d4c05a",
+  Расчёт: "#e06c75",
+  Рисунок: "#69b5aa",
+  Схема: "#d69852",
+  Таблица: "#5c8df6",
+  Конспект: "#8bac5e",
+};
+
+export interface ProjectCompileConfig {
+  includeRootBody: boolean;
+  numberSections: boolean;
+  stripLeadingH1: boolean;
+  groupTermsIntoGlossary: boolean;
+  buildBibliography: boolean;
+  replaceSourceLinksWithNumbers: boolean;
+  autoNumberFiguresAndTables: boolean;
+  orderedPaths: string[];
+  excludedPaths: string[];
+}
+
+export const DEFAULT_COMPILE_CONFIG: ProjectCompileConfig = {
+  includeRootBody: true,
+  numberSections: true,
+  stripLeadingH1: true,
+  groupTermsIntoGlossary: true,
+  buildBibliography: true,
+  replaceSourceLinksWithNumbers: true,
+  autoNumberFiguresAndTables: true,
+  orderedPaths: [],
+  excludedPaths: [],
+};
+
+export interface StudyCompilerSettings {
+  studyAreaName: string;
+  outputFolder: string;
+  decksFolder: string;
+  templatePrefix: string;
+  showCompletedWorks: boolean;
+  projectConfigs: Record<string, ProjectCompileConfig>;
+}
+
+export const DEFAULT_SETTINGS: StudyCompilerSettings = {
+  studyAreaName: "Учёба",
+  outputFolder: "Знания/Сборки",
+  decksFolder: "Знания/Карточки",
+  templatePrefix: "Учёба — ",
+  showCompletedWorks: false,
+  projectConfigs: {},
+};
+
+export interface WorkMetaBadge {
+  icon: string;
+  color: string;
+  label: string;
+}
+
+export interface StudyNoteItem {
+  file: TFile;
+  path: string;
+  name: string;
+  noteType: string;
+  status: string;
+  discipline: string;
+  deadlineISO: string | null;
+  sourceProp: string;
+  customIcon: string;
+  parentPaths: string[];
+  isWork: boolean;
+  isActiveWork: boolean;
+}
+
+export interface HierarchyNode {
+  item: StudyNoteItem;
+  depth: number;
+  parentPath: string;
+  sectionNumber: string;
+  included: boolean;
+  wordCount: number;
+  charCount: number;
+  formulaCount: number;
+  bodyText: string;
+}
+
+export interface ProjectAuditReport {
+  totalNodes: number;
+  includedNodes: number;
+  totalWords: number;
+  totalCharsWithSpaces: number;
+  authorSheets: string;
+  approxPages: number;
+  totalFormulas: number;
+  totalTables: number;
+  totalFigures: number;
+  sourcesTotal: StudyNoteItem[];
+  sourcesCited: StudyNoteItem[];
+  sourcesUncited: StudyNoteItem[];
+  visualsTotal: StudyNoteItem[];
+  visualsReferenced: StudyNoteItem[];
+  visualsUnreferenced: StudyNoteItem[];
+  emptySectionNotes: StudyNoteItem[];
+}
+
+export interface CompilationResult {
+  markdown: string;
+  outputFilePath: string;
+  audit: ProjectAuditReport;
+}
+
+=== FILE: ./package.json ===
+{
+  "name": "my-study-compiler",
+  "version": "0.1.0",
+  "description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "bump": "node version-bump.mjs"
+  },
+  "keywords": [],
+  "author": "Mersinho",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^16.11.6",
+    "builtin-modules": "3.3.0",
+    "esbuild": "0.17.3",
+    "obsidian": "latest",
+    "tslib": "2.4.0",
+    "typescript": "4.7.4"
+  }
+}
+
+=== FILE: ./version-bump.mjs ===
+import { readFileSync, writeFileSync, existsSync } from "fs";
+
+const targetVersion = process.argv[2] || process.env.npm_package_version;
+if (!targetVersion || !/^\d+\.\d+\.\d+$/.test(targetVersion)) {
+  console.error("Использование: npm run bump <версия>");
+  process.exit(1);
+}
+
+const manifest = JSON.parse(readFileSync("manifest.json", "utf8"));
+const { minAppVersion } = manifest;
+manifest.version = targetVersion;
+writeFileSync("manifest.json", JSON.stringify(manifest, null, "\t") + "\n");
+
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+pkg.version = targetVersion;
+writeFileSync("package.json", JSON.stringify(pkg, null, "\t") + "\n");
+
+let versions = {};
+if (existsSync("versions.json")) {
+  try { versions = JSON.parse(readFileSync("versions.json", "utf8")); } catch { versions = {}; }
+}
+versions[targetVersion] = minAppVersion;
+writeFileSync("versions.json", JSON.stringify(versions, null, "\t") + "\n");
+console.log(`Версия успешно обновлена до ${targetVersion}`);
+

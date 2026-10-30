@@ -1,9 +1,9 @@
 {
-  "id": "my-study-compiler",
-  "name": "Конструктор учебных работ",
-  "version": "0.1.0",
-  "minAppVersion": "1.5.0",
-  "description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
-  "author": "Mersinho",
-  "isDesktopOnly": false
+	"id": "my-study-compiler",
+	"name": "Конструктор учебных проектов",
+	"version": "0.2.0",
+	"minAppVersion": "1.5.0",
+	"description": "Дерево проектов и подпроектов для заметки «Учёба»: быстрое создание, смена родителя, статусы и прогресс",
+	"author": "Mersinho",
+	"isDesktopOnly": false
 }

@@ -1,788 +1,548 @@
-import { App, Modal, Notice, normalizePath } from "obsidian";
+import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
 import type MyStudyCompilerPlugin from "./main";
 import {
-  CompilationResult,
-  DEFAULT_COMPILE_CONFIG,
-  HierarchyNode,
+  KEYS,
   MATERIAL_TYPES,
-  ProjectCompileConfig,
+  NEW_NOTE_TYPES,
+  STATUS_ACTIVE,
+  STATUS_DONE,
   StudyNoteItem,
-  TYPE_COLORS,
 } from "./types";
 import {
-  buildProjectHierarchy,
+  ScanResult,
+  buildTree,
+  byName,
+  collectDescendants,
+  emptyScan,
+  ensureFolder,
+  findRootPath,
+  formatDeadline,
   getWorkMeta,
+  progressOf,
   scanStudyVault,
+  todayISO,
 } from "./scanner";
-import {
-  buildAuditAndCompileProject,
-  ensureVaultFolderExists,
-  writeCompiledFileToVault,
-} from "./compiler";
 
-type CompilerTab = "structure" | "audit" | "preview";
+export interface OpenOptions {
+  rootPath?: string;
+  addUnder?: string;
+}
+
+class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
+  private items: StudyNoteItem[];
+  private onPick: (item: StudyNoteItem) => void;
+
+  constructor(app: App, items: StudyNoteItem[], onPick: (item: StudyNoteItem) => void) {
+    super(app);
+    this.items = items;
+    this.onPick = onPick;
+    this.setPlaceholder("Новый родитель…");
+  }
+
+  getItems(): StudyNoteItem[] {
+    return this.items;
+  }
+
+  getItemText(item: StudyNoteItem): string {
+    return `${item.name} · ${item.noteType || "без типа"}`;
+  }
+
+  onChooseItem(item: StudyNoteItem): void {
+    this.onPick(item);
+  }
+}
 
 export class StudyCompilerModal extends Modal {
-  plugin: MyStudyCompilerPlugin;
-  selectedWorkPath = "";
-  activeTab: CompilerTab = "structure";
+  private plugin: MyStudyCompilerPlugin;
+  private options: OpenOptions;
+  private scan: ScanResult = emptyScan();
+  private selectedPath: string;
+  private expanded: Set<string>;
+  private cleanups: Array<() => void> = [];
+  private refreshTimer: number | null = null;
 
-  works: StudyNoteItem[] = [];
-  byPath = new Map<string, StudyNoteItem>();
-  childrenOf = new Map<string, string[]>();
+  private barEl!: HTMLElement;
+  private formEl!: HTMLElement;
+  private treeEl!: HTMLElement;
 
-  rootBodyText = "";
-  rootWords = 0;
-  nodes: HierarchyNode[] = [];
-  compiled: CompilationResult | null = null;
+  private form = {
+    open: false,
+    title: "",
+    type: "Подпроект",
+    parentPath: "",
+    deadline: "",
+  };
 
-  isAddingSectionOpen = false;
-  newSectionTitle = "";
-  newSectionType = "Конспект";
-  newSectionParentPath = "";
-
-  constructor(app: App, plugin: MyStudyCompilerPlugin, initialWorkPath?: string) {
+  constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
     super(app);
-    (
-      this as unknown as { shouldRestoreSelection?: boolean }
-    ).shouldRestoreSelection = false;
     this.plugin = plugin;
-    if (initialWorkPath) {
-      this.selectedWorkPath = initialWorkPath;
-    }
+    this.options = options;
+    this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
+    this.expanded = new Set(plugin.settings.expandedPaths);
+    this.noRestore();
+  }
+
+  private noRestore() {
+    (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
   }
 
   safeClose() {
     try {
-      (
-        this as unknown as { shouldRestoreSelection?: boolean }
-      ).shouldRestoreSelection = false;
+      this.noRestore();
       this.close();
     } catch {
-      // Игнорируем
+      // игнорируем
     }
   }
 
-  async onOpen() {
-    (
-      this as unknown as { shouldRestoreSelection?: boolean }
-    ).shouldRestoreSelection = false;
+  onOpen(): void {
+    this.noRestore();
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
 
-    await this.reloadVaultAndRebuild();
-  }
-
-  onClose() {
-    this.contentEl.empty();
-  }
-
-  private getActiveWork(): StudyNoteItem | null {
-    if (!this.works.length) return null;
-    const found = this.works.find((w) => w.path === this.selectedWorkPath);
-    if (found) return found;
-    const first = this.works[0] ?? null;
-    if (first) this.selectedWorkPath = first.path;
-    return first;
-  }
-
-  private getConfigForWork(workPath: string): ProjectCompileConfig {
-    const existing = this.plugin.settings.projectConfigs[workPath];
-    if (existing) {
-      return {
-        ...DEFAULT_COMPILE_CONFIG,
-        ...existing,
-        orderedPaths: Array.isArray(existing.orderedPaths)
-          ? [...existing.orderedPaths]
-          : [],
-        excludedPaths: Array.isArray(existing.excludedPaths)
-          ? [...existing.excludedPaths]
-          : [],
-      };
-    }
-    const fresh: ProjectCompileConfig = {
-      ...DEFAULT_COMPILE_CONFIG,
-      orderedPaths: [],
-      excludedPaths: [],
-    };
-    this.plugin.settings.projectConfigs[workPath] = fresh;
-    return fresh;
-  }
-
-  private saveConfigForWork(workPath: string, cfg: ProjectCompileConfig) {
-    this.plugin.settings.projectConfigs[workPath] = cfg;
-    this.plugin.requestSaveSettings();
-  }
-
-  async reloadVaultAndRebuild() {
-    const scanned = scanStudyVault(this.app, this.plugin.settings);
-    this.works = scanned.works;
-    this.byPath = scanned.byPath;
-    this.childrenOf = scanned.childrenOf;
-
-    const activeWork = this.getActiveWork();
-    if (!activeWork) {
-      this.nodes = [];
-      this.compiled = null;
-      this.render();
-      return;
-    }
-
-    const cfg = this.getConfigForWork(activeWork.path);
-    const built = await buildProjectHierarchy(
-      this.app,
-      activeWork,
-      this.byPath,
-      this.childrenOf,
-      cfg
-    );
-    this.rootBodyText = built.rootBodyText;
-    this.rootWords = built.rootWords;
-    this.nodes = built.nodes;
-
-    // Синхронизируем массив orderedPaths с текущим деревом
-    const currentOrder = this.nodes.map((n) => n.item.path);
-    cfg.orderedPaths = currentOrder;
-    this.saveConfigForWork(activeWork.path, cfg);
-
-    this.compiled = buildAuditAndCompileProject(
-      activeWork,
-      this.rootBodyText,
-      this.nodes,
-      cfg,
-      this.plugin.settings.outputFolder
-    );
-
-    this.render();
-  }
-
-  private async moveNodeInSiblingGroup(node: HierarchyNode, delta: -1 | 1) {
-    const activeWork = this.getActiveWork();
-    if (!activeWork) return;
-
-    const siblings = this.nodes.filter(
-      (n) => n.parentPath === node.parentPath && n.depth === node.depth
-    );
-    const idxInSiblings = siblings.findIndex(
-      (s) => s.item.path === node.item.path
-    );
-    const targetSibling = siblings[idxInSiblings + delta];
-    if (idxInSiblings === -1 || !targetSibling) return;
-
-    const cfg = this.getConfigForWork(activeWork.path);
-    const list = [...this.nodes.map((n) => n.item.path)];
-    const iA = list.indexOf(node.item.path);
-    const iB = list.indexOf(targetSibling.item.path);
-    if (iA === -1 || iB === -1) return;
-
-    list[iA] = targetSibling.item.path;
-    list[iB] = node.item.path;
-    cfg.orderedPaths = list;
-    this.saveConfigForWork(activeWork.path, cfg);
-    await this.reloadVaultAndRebuild();
-  }
-
-  private async toggleNodeIncluded(node: HierarchyNode) {
-    const activeWork = this.getActiveWork();
-    if (!activeWork) return;
-
-    const cfg = this.getConfigForWork(activeWork.path);
-    const set = new Set(cfg.excludedPaths);
-    if (set.has(node.item.path)) {
-      set.delete(node.item.path);
-    } else {
-      set.add(node.item.path);
-    }
-    cfg.excludedPaths = [...set];
-    this.saveConfigForWork(activeWork.path, cfg);
-    await this.reloadVaultAndRebuild();
-  }
-
-  private async handleCompileAndOpenFile() {
-    const activeWork = this.getActiveWork();
-    if (!activeWork || !this.compiled) return;
-
-    try {
-      const file = await writeCompiledFileToVault(
-        this.app,
-        this.compiled.outputFilePath,
-        this.compiled.markdown
-      );
-      new Notice(`✓ Собрано: «${file.path}»`);
-      this.safeClose();
-      await this.app.workspace.openLinkText(file.path, "", true);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      new Notice("Ошибка сохранения сборки: " + msg);
-    }
-  }
-
-  private async handleCopyMarkdown() {
-    if (!this.compiled) return;
-    try {
-      await navigator.clipboard.writeText(this.compiled.markdown);
-      new Notice("📋 Текст рукописи скопирован в буфер обмена");
-    } catch {
-      new Notice("Не удалось скопировать в буфер обмена");
-    }
-  }
-
-  render() {
-    const { contentEl } = this;
-    contentEl.empty();
-
-    // 1. Шапка окна
-    const headBar = contentEl.createDiv("my-sc-head-bar");
-    const titleWrap = headBar.createDiv("my-sc-head-title");
-    titleWrap.createSpan({ text: "🎓 Конструктор научных работ и проектов" });
-
-    const closeBtn = headBar.createEl("button", {
+    const head = this.contentEl.createDiv("my-sc-head-bar");
+    head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и подпроекты" });
+    const closeBtn = head.createEl("button", {
       cls: "my-sc-close-btn",
       text: "✕",
-      attr: {
-        type: "button",
-        title: "Закрыть (Esc)",
-        "aria-label": "Закрыть конструктор",
-      },
+      attr: { type: "button", title: "Закрыть (Esc)", "aria-label": "Закрыть" },
     });
     closeBtn.onclick = () => this.safeClose();
 
-    const activeWork = this.getActiveWork();
-    if (!activeWork) {
-      const emptyBox = contentEl.createDiv("my-sc-empty");
-      emptyBox.setText(
-        "В хранилище не найдено активных учебных проектов (направление: «Учёба»)."
-      );
-      return;
-    }
+    this.barEl = this.contentEl.createDiv("my-sc-project-bar");
+    this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
+    this.treeEl = this.contentEl.createDiv("my-sc-body");
 
-    const workMeta = getWorkMeta(activeWork.noteType, activeWork.customIcon);
-    const cfg = this.getConfigForWork(activeWork.path);
-    const audit = this.compiled?.audit;
-
-    // 2. Панель выбора проекта и быстрых показателей
-    const projectBar = contentEl.createDiv("my-sc-project-bar");
-    const selectWrap = projectBar.createDiv("my-sc-project-select-wrap");
-
-    const workSel = selectWrap.createEl("select", {
-      cls: "dropdown my-sc-work-select",
-      attr: { title: "Выбор учебного проекта или работы" },
-    });
-    for (const w of this.works) {
-      const meta = getWorkMeta(w.noteType, w.customIcon);
-      const statusSuffix = !w.isActiveWork ? " [завершён]" : "";
-      const o = workSel.createEl("option", {
-        text: `${meta.icon} ${w.name} (${w.noteType})${statusSuffix}`,
-        value: w.path,
-      });
-      if (w.path === activeWork.path) o.selected = true;
-    }
-    workSel.onchange = () => {
-      this.selectedWorkPath = workSel.value;
-      void this.reloadVaultAndRebuild();
-    };
-
-    const showDoneBtn = selectWrap.createEl("button", {
-      cls:
-        "my-sc-chip-btn" +
-        (this.plugin.settings.showCompletedWorks ? " is-active" : ""),
-      text: this.plugin.settings.showCompletedWorks
-        ? "✓ Все проекты"
-        : "В работе",
-      attr: {
-        type: "button",
-        title: "Показывать также завершённые проекты",
-      },
-    });
-    showDoneBtn.onclick = () => {
-      this.plugin.settings.showCompletedWorks =
-        !this.plugin.settings.showCompletedWorks;
-      this.plugin.requestSaveSettings();
-      void this.reloadVaultAndRebuild();
-    };
-
-    const openWorkBtn = selectWrap.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📄 Открыть корень",
-      attr: { type: "button", title: "Открыть корневую заметку проекта" },
-    });
-    openWorkBtn.onclick = () => {
-      this.safeClose();
-      void this.app.workspace.openLinkText(activeWork.path, "", false);
-    };
-
-    // Сводные плашки объёма
-    if (audit) {
-      const kpiRow = contentEl.createDiv("my-sc-kpi-row");
-      const kpis = [
-        {
-          label: "Разделов",
-          val: `${audit.includedNodes} / ${audit.totalNodes}`,
-          color: workMeta.color,
-        },
-        {
-          label: "Слов / стр.",
-          val: `${audit.totalWords.toLocaleString("ru-RU")} (~${audit.approxPages} стр.)`,
-          color: "#599ed6",
-        },
-        {
-          label: "Авт. листов",
-          val: `${audit.authorSheets} а.л.`,
-          color: "#9c83e8",
-        },
-        {
-          label: "Источники",
-          val: `${audit.sourcesCited.length} / ${audit.sourcesTotal.length} процит.`,
-          color:
-            audit.sourcesUncited.length > 0 ? "#e5a158" : "#4aab80",
-        },
-      ];
-      for (const k of kpis) {
-        const box = kpiRow.createDiv("my-sc-kpi-card");
-        box.style.setProperty("--kpi-color", k.color);
-        box.createSpan({ cls: "my-sc-kpi-label", text: k.label });
-        box.createSpan({ cls: "my-sc-kpi-val", text: k.val });
-      }
-    }
-
-    // 3. Вкладки: Структура | Аудит | Предпросмотр
-    const tabsRow = contentEl.createDiv("my-sc-tabs-row");
-    const uncitedCount =
-      (audit?.sourcesUncited.length ?? 0) +
-      (audit?.visualsUnreferenced.length ?? 0);
-    const tabs: Array<{ id: CompilerTab; label: string }> = [
-      {
-        id: "structure",
-        label: `📐 Структура (${this.nodes.length})`,
-      },
-      {
-        id: "audit",
-        label:
-          uncitedCount > 0
-            ? `🔍 Аудит и источники (⚠️ ${uncitedCount})`
-            : "🔍 Аудит и источники (✓)",
-      },
-      {
-        id: "preview",
-        label: "📄 Настройки и предпросмотр",
-      },
-    ];
-
-    for (const t of tabs) {
-      const b = tabsRow.createEl("button", {
-        cls: "my-sc-tab-btn" + (this.activeTab === t.id ? " is-active" : ""),
-        text: t.label,
-        attr: { type: "button" },
-      });
-      b.onclick = () => {
-        this.activeTab = t.id;
-        this.render();
-      };
-    }
-
-    // 4. Тело активной вкладки
-    const bodyEl = contentEl.createDiv("my-sc-body");
-
-    if (this.activeTab === "structure") {
-      this.renderStructureTab(bodyEl, activeWork, cfg);
-    } else if (this.activeTab === "audit") {
-      this.renderAuditTab(bodyEl, activeWork);
-    } else {
-      this.renderPreviewTab(bodyEl, activeWork, cfg);
-    }
-
-    // 5. Нижняя панель действий
-    const footerEl = contentEl.createDiv("my-sc-footer");
-    const outHint = footerEl.createDiv("my-sc-footer-path");
-    outHint.setText(
-      `Файл сборки: ${this.compiled?.outputFilePath ?? "Знания/Сборки/..."}`
+    const onChange = () => this.scheduleRefresh();
+    const r1 = this.app.metadataCache.on("changed", onChange);
+    const r2 = this.app.vault.on("delete", onChange);
+    const r3 = this.app.vault.on("rename", onChange);
+    this.cleanups.push(
+      () => this.app.metadataCache.offref(r1),
+      () => this.app.vault.offref(r2),
+      () => this.app.vault.offref(r3)
     );
 
-    const actionsWrap = footerEl.createDiv("my-sc-footer-actions");
-    const copyBtn = actionsWrap.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📋 Скопировать текст",
-      attr: { type: "button" },
-    });
-    copyBtn.onclick = () => void this.handleCopyMarkdown();
-
-    const compileBtn = actionsWrap.createEl("button", {
-      cls: "mod-cta my-sc-primary-btn",
-      text: "📄 Собрать и открыть рукопись",
-      attr: { type: "button" },
-    });
-    compileBtn.onclick = () => void this.handleCompileAndOpenFile();
+    this.scan = scanStudyVault(this.app, this.plugin.settings);
+    const addUnder = this.options.addUnder;
+    if (addUnder && this.scan.byPath.has(addUnder)) {
+      this.selectedPath = findRootPath(this.scan, addUnder);
+    }
+    this.refresh(false);
+    if (addUnder && this.scan.byPath.has(addUnder)) this.openForm(addUnder);
   }
 
-  private renderStructureTab(
-    parent: HTMLElement,
-    activeWork: StudyNoteItem,
-    cfg: ProjectCompileConfig
-  ) {
-    const topBar = parent.createDiv("my-sc-struct-topbar");
-
-    const rootChkLabel = topBar.createEl("label", {
-      cls: "my-sc-check-label",
-    });
-    const rootChk = rootChkLabel.createEl("input", {
-      attr: { type: "checkbox" },
-    });
-    rootChk.checked = cfg.includeRootBody;
-    rootChkLabel.createSpan({
-      text: `Включать вступление из корневой заметки (${this.rootWords} сл.)`,
-    });
-    rootChk.onchange = () => {
-      cfg.includeRootBody = rootChk.checked;
-      this.saveConfigForWork(activeWork.path, cfg);
-      void this.reloadVaultAndRebuild();
-    };
-
-    const rightBtns = topBar.createDiv("my-sc-struct-btns");
-    const addSecBtn = rightBtns.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.isAddingSectionOpen ? " is-active" : ""),
-      text: this.isAddingSectionOpen ? "✕ Отмена" : "+ Новый раздел",
-      attr: { type: "button" },
-    });
-    addSecBtn.onclick = () => {
-      this.isAddingSectionOpen = !this.isAddingSectionOpen;
-      if (!this.newSectionParentPath) {
-        this.newSectionParentPath = activeWork.path;
-      }
-      this.render();
-    };
-
-    if (this.isAddingSectionOpen) {
-      const formBox = parent.createDiv("my-sc-add-box");
-      const typeSel = formBox.createEl("select", { cls: "dropdown" });
-      for (const mt of MATERIAL_TYPES) {
-        const o = typeSel.createEl("option", { text: mt, value: mt });
-        if (mt === this.newSectionType) o.selected = true;
-      }
-      typeSel.onchange = () => {
-        this.newSectionType = typeSel.value;
-      };
-
-      const titleInp = formBox.createEl("input", {
-        cls: "my-sc-input",
-        attr: {
-          type: "text",
-          placeholder: "Название нового раздела или материала…",
-          value: this.newSectionTitle,
-        },
-      });
-      titleInp.oninput = () => {
-        this.newSectionTitle = titleInp.value;
-      };
-
-      const parentSel = formBox.createEl("select", { cls: "dropdown" });
-      parentSel.createEl("option", {
-        text: `↳ В корень: ${activeWork.name}`,
-        value: activeWork.path,
-      });
-      for (const n of this.nodes) {
-        const indent = "  ".repeat(n.depth + 1);
-        const o = parentSel.createEl("option", {
-          text: `${indent}↳ Внутрь: ${n.item.name}`,
-          value: n.item.path,
-        });
-        if (this.newSectionParentPath === n.item.path) o.selected = true;
-      }
-      parentSel.onchange = () => {
-        this.newSectionParentPath = parentSel.value;
-      };
-
-      const createBtn = formBox.createEl("button", {
-        cls: "mod-cta my-sc-action-btn",
-        text: "Создать",
-        attr: { type: "button" },
-      });
-
-      const doCreate = async () => {
-        const cleanTitle = this.newSectionTitle
-          .trim()
-          .replace(/[\\/:*?"<>|]/g, "");
-        if (!cleanTitle) {
-          new Notice("Введи название заметки.");
-          return;
-        }
-        const targetPath = normalizePath(`Знания/${cleanTitle}.md`);
-        if (this.app.vault.getAbstractFileByPath(targetPath)) {
-          new Notice("Заметка с таким именем уже существует в папке Знания.");
-          return;
-        }
-        const parentItem =
-          this.byPath.get(this.newSectionParentPath) ?? activeWork;
-        createBtn.disabled = true;
-        try {
-          await ensureVaultFolderExists(this.app, "Знания");
-          const discLine = activeWork.discipline
-            ? `дисциплина: ${JSON.stringify(activeWork.discipline)}\n`
-            : "";
-          const content =
-            `---\n` +
-            `направление: "${this.plugin.settings.studyAreaName}"\n` +
-            `тип: ${JSON.stringify(this.newSectionType)}\n` +
-            `родитель: "[[${parentItem.name}]]"\n` +
-            discLine +
-            `---\n\n# ${cleanTitle}\n\n`;
-          await this.app.vault.create(targetPath, content);
-          this.newSectionTitle = "";
-          this.isAddingSectionOpen = false;
-          new Notice(`Создан раздел «${cleanTitle}»`);
-          setTimeout(() => void this.reloadVaultAndRebuild(), 120);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          new Notice("Ошибка создания: " + msg);
-          createBtn.disabled = false;
-        }
-      };
-      createBtn.onclick = () => void doCreate();
+  onClose(): void {
+    for (const fn of this.cleanups) fn();
+    this.cleanups = [];
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
     }
+    this.contentEl.empty();
+  }
 
-    if (this.nodes.length === 0) {
-      parent.createDiv({
+  private scheduleRefresh() {
+    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      this.refresh(true);
+    }, 200);
+  }
+
+  private refresh(rescan: boolean) {
+    if (rescan) this.scan = scanStudyVault(this.app, this.plugin.settings);
+    this.renderBar();
+    this.renderTree();
+  }
+
+  private visibleRoots(): StudyNoteItem[] {
+    return this.scan.roots.filter(
+      (r) => this.plugin.settings.showCompletedWorks || !r.isDone
+    );
+  }
+
+  private getRoot(): StudyNoteItem | null {
+    const direct = this.scan.roots.find((r) => r.path === this.selectedPath);
+    if (direct) return direct;
+    const first = this.visibleRoots()[0] ?? null;
+    if (first) this.selectedPath = first.path;
+    return first;
+  }
+
+  private saveExpanded() {
+    this.plugin.settings.expandedPaths = [...this.expanded];
+    this.plugin.requestSaveSettings();
+  }
+
+  private renderBar() {
+    this.barEl.empty();
+    const root = this.getRoot();
+    if (!root) {
+      this.formEl.empty();
+      this.barEl.createDiv({
         cls: "my-sc-empty",
-        text: "К этому проекту ещё не привязано ни одной заметки через свойство «родитель».",
+        text: `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`,
       });
       return;
     }
 
-    const listEl = parent.createDiv("my-sc-tree-list");
+    const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
+    const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
+    let list = this.visibleRoots();
+    if (!list.some((r) => r.path === root.path)) list = [root, ...list];
+    for (const r of list) {
+      const meta = getWorkMeta(r.noteType, r.icon);
+      const o = sel.createEl("option", {
+        text: `${meta.icon} ${r.name}${r.isDone ? " [завершён]" : ""}`,
+        value: r.path,
+      });
+      if (r.path === root.path) o.selected = true;
+    }
+    sel.onchange = () => {
+      this.selectedPath = sel.value;
+      this.plugin.settings.lastWorkPath = sel.value;
+      this.plugin.requestSaveSettings();
+      this.form.open = false;
+      this.formEl.empty();
+      this.refresh(false);
+    };
 
-    for (const node of this.nodes) {
-      const row = listEl.createDiv(
-        "my-sc-tree-row" + (!node.included ? " is-excluded" : "")
-      );
-      row.style.paddingLeft = `${10 + node.depth * 20}px`;
+    const doneBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.plugin.settings.showCompletedWorks ? " is-active" : ""),
+      text: this.plugin.settings.showCompletedWorks ? "✓ Все проекты" : "В работе",
+      attr: { type: "button", title: "Показывать завершённые проекты" },
+    });
+    doneBtn.onclick = () => {
+      this.plugin.settings.showCompletedWorks = !this.plugin.settings.showCompletedWorks;
+      this.plugin.requestSaveSettings();
+      this.refresh(false);
+    };
+
+    const openBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "📄 Открыть",
+      attr: { type: "button", title: "Открыть заметку проекта" },
+    });
+    openBtn.onclick = () => this.openNote(root.path);
+
+    const stats = progressOf(collectDescendants(root.path, this.scan), this.scan);
+    const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
+    const progWrap = this.barEl.createDiv("my-sc-progress-wrap");
+    const progText = progWrap.createDiv("my-sc-progress-text");
+    progText.createSpan({
+      text: stats.total > 0 ? `Выполнено ${stats.done} из ${stats.total} · ${pct}%` : "Подпроектов пока нет",
+    });
+    this.renderDeadline(progText, root);
+    const bar = progWrap.createDiv("my-sc-progress");
+    bar.createDiv("my-sc-progress-fill").style.width = `${pct}%`;
+
+    const tools = this.barEl.createDiv("my-sc-tools");
+    const addBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.form.open ? " is-active" : ""),
+      text: this.form.open ? "✕ Закрыть форму" : "＋ Подпроект",
+      attr: { type: "button" },
+    });
+    addBtn.onclick = () => {
+      if (this.form.open) {
+        this.form.open = false;
+        this.formEl.empty();
+        this.renderBar();
+      } else {
+        this.openForm(root.path);
+      }
+    };
+
+    const expandBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⤢ Развернуть всё",
+      attr: { type: "button" },
+    });
+    expandBtn.onclick = () => {
+      for (const p of collectDescendants(root.path, this.scan)) {
+        if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
+      }
+      this.saveExpanded();
+      this.renderTree();
+    };
+
+    const collapseBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⤡ Свернуть всё",
+      attr: { type: "button" },
+    });
+    collapseBtn.onclick = () => {
+      for (const p of collectDescendants(root.path, this.scan)) this.expanded.delete(p);
+      this.saveExpanded();
+      this.renderTree();
+    };
+  }
+
+  private openForm(parentPath: string) {
+    const root = this.getRoot();
+    if (!root) return;
+    this.form.open = true;
+    this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
+    this.renderBar();
+    this.renderForm();
+  }
+
+  private renderForm() {
+    this.formEl.empty();
+    if (!this.form.open) return;
+    const root = this.getRoot();
+    if (!root) return;
+
+    const box = this.formEl.createDiv("my-sc-add-box");
+
+    const typeSel = box.createEl("select", { cls: "dropdown" });
+    for (const t of NEW_NOTE_TYPES) {
+      const o = typeSel.createEl("option", { text: t, value: t });
+      if (t === this.form.type) o.selected = true;
+    }
+    typeSel.onchange = () => {
+      this.form.type = typeSel.value;
+    };
+
+    const titleInp = box.createEl("input", {
+      cls: "my-sc-input",
+      attr: { type: "text", placeholder: "Название…" },
+    });
+    titleInp.value = this.form.title;
+    titleInp.oninput = () => {
+      this.form.title = titleInp.value;
+    };
+
+    const parentSel = box.createEl("select", { cls: "dropdown my-sc-parent-select" });
+    parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
+    for (const n of buildTree(root, this.scan, null)) {
+      parentSel.createEl("option", {
+        text: `${"\u00A0\u00A0".repeat(n.depth + 1)}↳ ${n.item.name}`,
+        value: n.item.path,
+      });
+    }
+    parentSel.value = this.form.parentPath;
+    if (parentSel.value !== this.form.parentPath) {
+      this.form.parentPath = root.path;
+      parentSel.value = root.path;
+    }
+    parentSel.onchange = () => {
+      this.form.parentPath = parentSel.value;
+    };
+
+    const dateInp = box.createEl("input", {
+      cls: "my-sc-date",
+      attr: { type: "date", title: "Дедлайн (необязательно)" },
+    });
+    dateInp.value = this.form.deadline;
+    dateInp.onchange = () => {
+      this.form.deadline = dateInp.value;
+    };
+
+    const createBtn = box.createEl("button", {
+      cls: "mod-cta my-sc-action-btn",
+      text: "Создать",
+      attr: { type: "button" },
+    });
+
+    const submit = async () => {
+      createBtn.disabled = true;
+      const ok = await this.createNote(root);
+      if (ok) {
+        this.form.title = "";
+        this.form.deadline = "";
+        this.renderForm();
+      } else {
+        createBtn.disabled = false;
+      }
+    };
+    createBtn.onclick = () => void submit();
+    titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.isComposing) void submit();
+    });
+    titleInp.focus();
+  }
+
+  private async createNote(root: StudyNoteItem): Promise<boolean> {
+    const cleanTitle = this.form.title.trim().replace(/[\\/:*?"<>|]/g, "");
+    if (!cleanTitle) {
+      new Notice("Введи название.");
+      return false;
+    }
+    const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
+    const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
+    if (this.app.vault.getAbstractFileByPath(targetPath)) {
+      new Notice(`Заметка «${cleanTitle}» уже есть в папке ${folder}.`);
+      return false;
+    }
+    const parent = this.scan.byPath.get(this.form.parentPath) ?? root;
+
+    try {
+      await ensureFolder(this.app, folder);
+      const link = this.app.metadataCache.fileToLinktext(parent.file, targetPath);
+      const lines = [
+        "---",
+        `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
+        `${KEYS.type}: ${JSON.stringify(this.form.type)}`,
+        `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
+      ];
+      if (root.discipline) lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+        lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
+      }
+      lines.push("---", "", `# ${cleanTitle}`, "", "");
+      await this.app.vault.create(targetPath, lines.join("\n"));
+
+      this.expanded.add(parent.path);
+      this.saveExpanded();
+      new Notice(`Создано: «${cleanTitle}»`);
+      return true;
+    } catch (err: unknown) {
+      new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
+      return false;
+    }
+  }
+
+  private renderDeadline(parent: HTMLElement, item: StudyNoteItem) {
+    if (!item.deadline) return;
+    const overdue = !item.isDone && item.deadline < todayISO();
+    parent.createSpan({
+      cls: "my-sc-deadline" + (overdue ? " is-overdue" : ""),
+      text: `⏳ ${formatDeadline(item.deadline)}`,
+      attr: { title: overdue ? "Срок прошёл" : "Дедлайн" },
+    });
+  }
+
+  private openNote(path: string) {
+    this.safeClose();
+    void this.app.workspace.openLinkText(path, "", false);
+  }
+
+  private renderTree() {
+    const scrollTop = this.treeEl.scrollTop;
+    this.treeEl.empty();
+    const root = this.getRoot();
+    if (!root) return;
+
+    const nodes = buildTree(root, this.scan, this.expanded);
+    if (nodes.length === 0) {
+      this.treeEl.createDiv({
+        cls: "my-sc-empty",
+        text: "Подпроектов пока нет. Нажми «＋ Подпроект».",
+      });
+      return;
+    }
+
+    const list = this.treeEl.createDiv("my-sc-tree-list");
+    for (const node of nodes) {
+      const item = node.item;
+      const row = list.createDiv("my-sc-tree-row" + (item.isDone ? " is-done" : ""));
+      row.style.paddingLeft = `${8 + node.depth * 18}px`;
 
       const left = row.createDiv("my-sc-tree-left");
 
-      const chk = left.createEl("input", {
-        attr: {
-          type: "checkbox",
-          title: "Включить или исключить из сборки",
-        },
-      });
-      chk.checked = node.included;
-      chk.onchange = () => void this.toggleNodeIncluded(node);
-
-      if (node.sectionNumber !== "—") {
-        left.createSpan({
-          cls: "my-sc-sec-num",
-          text: node.sectionNumber,
+      if (node.hasChildren) {
+        const open = this.expanded.has(item.path);
+        const arrow = left.createEl("button", {
+          cls: "my-sc-arrow",
+          text: open ? "▾" : "▸",
+          attr: { type: "button", "aria-label": open ? "Свернуть" : "Развернуть" },
         });
+        arrow.onclick = () => {
+          if (open) this.expanded.delete(item.path);
+          else this.expanded.add(item.path);
+          this.saveExpanded();
+          this.renderTree();
+        };
+      } else {
+        left.createSpan("my-sc-arrow-spacer");
       }
 
-      const titleLink = left.createSpan({
+      const chk = left.createEl("input", {
+        attr: { type: "checkbox", title: "Отметить выполненным" },
+      });
+      chk.checked = item.isDone;
+      chk.onchange = () => void this.setDone(item, chk.checked);
+
+      const title = left.createSpan({
         cls: "my-sc-node-title",
-        text: node.item.name,
+        text: item.name,
         attr: { title: "Открыть заметку" },
       });
-      titleLink.onclick = () => {
-        this.safeClose();
-        void this.app.workspace.openLinkText(node.item.path, "", false);
-      };
+      title.onclick = () => this.openNote(item.path);
 
-      const tColor = TYPE_COLORS[node.item.noteType] ?? "#8a8f98";
+      const meta = getWorkMeta(item.noteType, item.icon);
       const badge = left.createSpan({
         cls: "my-sc-type-badge",
-        text: node.item.noteType,
+        text: `${meta.icon} ${item.noteType || "без типа"}`,
       });
-      badge.style.setProperty("--badge-color", tColor);
+      badge.style.setProperty("--badge-color", meta.color);
 
       const right = row.createDiv("my-sc-tree-right");
-      right.createSpan({
-        cls: "my-sc-word-count",
-        text: `${node.wordCount} сл.`,
-      });
+      this.renderDeadline(right, item);
+      if (node.total > 0) {
+        right.createSpan({
+          cls: "my-sc-branch-count",
+          text: `${node.done}/${node.total}`,
+          attr: { title: "Выполнено в ветке" },
+        });
+      }
 
-      const siblings = this.nodes.filter(
-        (n) => n.parentPath === node.parentPath && n.depth === node.depth
-      );
-      const sibIdx = siblings.findIndex(
-        (s) => s.item.path === node.item.path
-      );
-
-      const upBtn = right.createEl("button", {
+      const addBtn = right.createEl("button", {
         cls: "my-sc-move-btn",
-        text: "▲",
-        attr: { type: "button", title: "Переместить выше" },
+        text: "＋",
+        attr: { type: "button", title: "Добавить подпроект сюда" },
       });
-      upBtn.disabled = sibIdx <= 0;
-      upBtn.onclick = () => void this.moveNodeInSiblingGroup(node, -1);
+      addBtn.onclick = () => this.openForm(item.path);
 
-      const downBtn = right.createEl("button", {
+      const moveBtn = right.createEl("button", {
         cls: "my-sc-move-btn",
-        text: "▼",
-        attr: { type: "button", title: "Переместить ниже" },
+        text: "⇄",
+        attr: { type: "button", title: "Сменить родителя" },
       });
-      downBtn.disabled = sibIdx === -1 || sibIdx >= siblings.length - 1;
-      downBtn.onclick = () => void this.moveNodeInSiblingGroup(node, 1);
+      moveBtn.onclick = () => this.openMovePicker(item);
+    }
+    this.treeEl.scrollTop = scrollTop;
+  }
+
+  private async setDone(item: StudyNoteItem, done: boolean) {
+    try {
+      await this.app.fileManager.processFrontMatter(
+        item.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.status] = done ? STATUS_DONE : STATUS_ACTIVE;
+        }
+      );
+    } catch (err: unknown) {
+      new Notice("Не удалось изменить статус: " + (err instanceof Error ? err.message : String(err)));
     }
   }
 
-  private renderAuditTab(parent: HTMLElement, _activeWork: StudyNoteItem) {
-    const audit = this.compiled?.audit;
-    if (!audit) return;
-
-    const grid = parent.createDiv("my-sc-audit-grid");
-
-    // 1. Сводка объёма и элементов
-    const statsBox = grid.createDiv("my-sc-audit-box");
-    statsBox.createDiv({
-      cls: "my-sc-audit-title",
-      text: "📊 Метрики рукописи",
-    });
-    const rows: Array<[string, string]> = [
-      ["Печатных знаков (с пробелами)", audit.totalCharsWithSpaces.toLocaleString("ru-RU")],
-      ["Авторских листов (40 000 зн.)", `${audit.authorSheets} а.л.`],
-      ["Расчётных страниц (~1800 зн.)", `${audit.approxPages} стр.`],
-      ["Слов в чистовом тексте", audit.totalWords.toLocaleString("ru-RU")],
-      ["Математических формул", String(audit.totalFormulas)],
-      ["Таблиц / Иллюстраций", `${audit.totalTables} табл. · ${audit.totalFigures} рис.`],
-    ];
-    for (const [k, v] of rows) {
-      const r = statsBox.createDiv("my-sc-audit-row");
-      r.createSpan({ cls: "my-sc-audit-k", text: k });
-      r.createSpan({ cls: "my-sc-audit-v", text: v });
-    }
-
-    // 2. Контроль цитирования источников
-    const srcBox = grid.createDiv("my-sc-audit-box");
-    srcBox.createDiv({
-      cls: "my-sc-audit-title",
-      text: `📚 Цитирование источников (${audit.sourcesCited.length} из ${audit.sourcesTotal.length})`,
-    });
-
-    if (audit.sourcesTotal.length === 0) {
-      srcBox.createDiv({
-        cls: "my-sc-audit-hint",
-        text: "В проекте пока нет заметок с типом «Источник».",
-      });
-    } else if (audit.sourcesUncited.length === 0) {
-      srcBox.createDiv({
-        cls: "my-sc-audit-ok",
-        text: "✓ Все привязанные источники упомянуты в тексте разделов [[...]].",
-      });
-    } else {
-      srcBox.createDiv({
-        cls: "my-sc-audit-warn",
-        text: `⚠️ Не упомянуты в тексте (${audit.sourcesUncited.length}):`,
-      });
-      for (const s of audit.sourcesUncited) {
-        const item = srcBox.createDiv("my-sc-audit-link");
-        item.setText(`• [[${s.name}]]`);
-        item.onclick = () => {
-          this.safeClose();
-          void this.app.workspace.openLinkText(s.path, "", false);
-        };
-      }
-    }
-
-    // 3. Неиспользованные рисунки / таблицы и пустые разделы
-    if (
-      audit.visualsUnreferenced.length > 0 ||
-      audit.emptySectionNotes.length > 0
-    ) {
-      const warnBox = parent.createDiv("my-sc-audit-box");
-      warnBox.createDiv({
-        cls: "my-sc-audit-title",
-        text: "⚠️ Замечания по структуре",
-      });
-
-      if (audit.visualsUnreferenced.length > 0) {
-        warnBox.createDiv({
-          cls: "my-sc-audit-warn",
-          text: `Не вставлены ссылки на рисунки/таблицы (${audit.visualsUnreferenced.length}):`,
-        });
-        for (const v of audit.visualsUnreferenced) {
-          const item = warnBox.createDiv("my-sc-audit-link");
-          item.setText(`• ${v.noteType}: [[${v.name}]]`);
-          item.onclick = () => {
-            this.safeClose();
-            void this.app.workspace.openLinkText(v.path, "", false);
-          };
-        }
-      }
-
-      if (audit.emptySectionNotes.length > 0) {
-        warnBox.createDiv({
-          cls: "my-sc-audit-warn",
-          text: `Почти пустые разделы (< 5 слов):`,
-        });
-        for (const e of audit.emptySectionNotes) {
-          const item = warnBox.createDiv("my-sc-audit-link");
-          item.setText(`• ${e.name} (${e.noteType})`);
-          item.onclick = () => {
-            this.safeClose();
-            void this.app.workspace.openLinkText(e.path, "", false);
-          };
-        }
-      }
-    }
+  private openMovePicker(item: StudyNoteItem) {
+    const forbidden = collectDescendants(item.path, this.scan);
+    forbidden.add(item.path);
+    const candidates = [...this.scan.byPath.values()]
+      .filter((c) => !forbidden.has(c.path) && !MATERIAL_TYPES.includes(c.noteType))
+      .sort(byName);
+    new ParentPickerModal(this.app, candidates, (target) => {
+      void this.setParent(item, target);
+    }).open();
   }
 
-  private renderPreviewTab(
-    parent: HTMLElement,
-    activeWork: StudyNoteItem,
-    cfg: ProjectCompileConfig
-  ) {
-    const optsGrid = parent.createDiv("my-sc-opts-grid");
-
-    const toggles: Array<{
-      key: keyof Pick<
-        ProjectCompileConfig,
-        | "numberSections"
-        | "stripLeadingH1"
-        | "groupTermsIntoGlossary"
-        | "buildBibliography"
-        | "replaceSourceLinksWithNumbers"
-        | "autoNumberFiguresAndTables"
-      >;
-      label: string;
-    }> = [
-      {
-        key: "numberSections",
-        label: "Нумеровать заголовки разделов (1., 1.1., 1.2.)",
-      },
-      {
-        key: "stripLeadingH1",
-        label: "Убирать дублирующий верхний # Заголовок внутри заметок",
-      },
-      {
-        key: "groupTermsIntoGlossary",
-        label: "Собирать заметки «Термин» в раздел «Термины и определения»",
-      },
-      {
-        key: "buildBibliography",
-        label: "Формировать «Список использованных источников» в конце",
-      },
-      {
-        key: "replaceSourceLinksWithNumbers",
-        label: "Заменять [[Ссылки на источники]] в тексте на сноски [1], [2]",
-      },
-      {
-        key: "autoNumberFiguresAndTables",
-        label: "Автонумерация заголовков «Рисунок N» и «Таблица N»",
-      },
-    ];
-
-    for (const tg of toggles) {
-      const lbl = optsGrid.createEl("label", { cls: "my-sc-check-label" });
-      const inp = lbl.createEl("input", { attr: { type: "checkbox" } });
-      inp.checked = cfg[tg.key];
-      lbl.createSpan({ text: tg.label });
-      inp.onchange = () => {
-        cfg[tg.key] = inp.checked;
-        this.saveConfigForWork(activeWork.path, cfg);
-        void this.reloadVaultAndRebuild();
-      };
+  private async setParent(item: StudyNoteItem, target: StudyNoteItem) {
+    try {
+      const link = this.app.metadataCache.fileToLinktext(target.file, item.path);
+      await this.app.fileManager.processFrontMatter(
+        item.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.parent] = `[[${link}]]`;
+        }
+      );
+      this.expanded.add(target.path);
+      this.saveExpanded();
+      new Notice(`«${item.name}» → «${target.name}»`);
+    } catch (err: unknown) {
+      new Notice("Не удалось сменить родителя: " + (err instanceof Error ? err.message : String(err)));
     }
-
-    const previewArea = parent.createEl("textarea", {
-      cls: "my-sc-preview-textarea",
-      attr: { readonly: "true", rows: "14" },
-    });
-    previewArea.value = this.compiled?.markdown ?? "";
   }
 }

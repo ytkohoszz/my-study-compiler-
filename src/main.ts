@@ -1,22 +1,28 @@
 import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
-import {
-  DEFAULT_SETTINGS,
-  StudyCompilerSettings,
-} from "./types";
-import { StudyCompilerModal } from "./modal";
+import { DEFAULT_SETTINGS, StudyCompilerSettings } from "./types";
+import { OpenOptions, StudyCompilerModal } from "./modal";
 
 function migrateSettings(raw: unknown): StudyCompilerSettings {
-  const source =
-    raw && typeof raw === "object"
-      ? (raw as Partial<StudyCompilerSettings>)
-      : {};
+  const s = raw && typeof raw === "object" ? (raw as Partial<StudyCompilerSettings>) : {};
+  const strList = (v: unknown, fallback: string[]): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [...fallback];
+
   return {
-    ...DEFAULT_SETTINGS,
-    ...source,
-    projectConfigs:
-      source.projectConfigs && typeof source.projectConfigs === "object"
-        ? source.projectConfigs
-        : {},
+    studyAreaName:
+      typeof s.studyAreaName === "string" && s.studyAreaName.trim()
+        ? s.studyAreaName
+        : DEFAULT_SETTINGS.studyAreaName,
+    newNoteFolder:
+      typeof s.newNoteFolder === "string" && s.newNoteFolder.trim()
+        ? s.newNoteFolder
+        : DEFAULT_SETTINGS.newNoteFolder,
+    showCompletedWorks:
+      typeof s.showCompletedWorks === "boolean"
+        ? s.showCompletedWorks
+        : DEFAULT_SETTINGS.showCompletedWorks,
+    excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
+    expandedPaths: strList(s.expandedPaths, []),
+    lastWorkPath: typeof s.lastWorkPath === "string" ? s.lastWorkPath : "",
   };
 }
 
@@ -31,34 +37,39 @@ class StudyCompilerSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    containerEl.createEl("h3", {
-      text: "Конструктор и сборщик научных работ",
-    });
+    containerEl.createEl("h3", { text: "Конструктор учебных проектов" });
 
     new Setting(containerEl)
-      .setName("Папка для сохранения сборок")
-      .setDesc("По умолчанию: Знания/Сборки")
+      .setName("Направление в YAML")
+      .setDesc("Значение свойства «направление». По умолчанию: Учёба")
       .addText((text) =>
-        text
-          .setValue(this.plugin.settings.outputFolder)
-          .onChange((val) => {
-            this.plugin.settings.outputFolder =
-              val.trim() || "Знания/Сборки";
-            this.plugin.requestSaveSettings();
-          })
+        text.setValue(this.plugin.settings.studyAreaName).onChange((val) => {
+          this.plugin.settings.studyAreaName = val.trim() || DEFAULT_SETTINGS.studyAreaName;
+          this.plugin.requestSaveSettings();
+        })
       );
 
     new Setting(containerEl)
-      .setName("Название направления учёбы в YAML")
-      .setDesc("По умолчанию: Учёба")
+      .setName("Папка для новых заметок")
+      .setDesc("По умолчанию: Знания")
       .addText((text) =>
-        text
-          .setValue(this.plugin.settings.studyAreaName)
-          .onChange((val) => {
-            this.plugin.settings.studyAreaName = val.trim() || "Учёба";
-            this.plugin.requestSaveSettings();
-          })
+        text.setValue(this.plugin.settings.newNoteFolder).onChange((val) => {
+          this.plugin.settings.newNoteFolder = val.trim() || DEFAULT_SETTINGS.newNoteFolder;
+          this.plugin.requestSaveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Игнорируемые папки")
+      .setDesc("Через запятую. Заметки внутри не попадают в дерево")
+      .addText((text) =>
+        text.setValue(this.plugin.settings.excludedFolders.join(", ")).onChange((val) => {
+          this.plugin.settings.excludedFolders = val
+            .split(",")
+            .map((x) => x.trim())
+            .filter((x) => x.length > 0);
+          this.plugin.requestSaveSettings();
+        })
       );
   }
 }
@@ -71,29 +82,37 @@ export default class MyStudyCompilerPlugin extends Plugin {
     this.settings = migrateSettings(await this.loadData());
     this.addSettingTab(new StudyCompilerSettingTab(this.app, this));
 
-    this.addRibbonIcon(
-      "book-open-check",
-      "Открыть конструктор научных работ",
-      () => {
-        this.openCompiler();
-      }
-    );
+    this.addRibbonIcon("folder-tree", "Открыть проекты и подпроекты", () => {
+      this.openCompiler();
+    });
 
     this.registerObsidianProtocolHandler("my-compiler", (params) => {
-      this.openCompiler(params.project || undefined);
+      this.openCompiler({
+        rootPath: params.project || undefined,
+        addUnder: params.parent || undefined,
+      });
     });
 
     this.addCommand({
       id: "open-study-compiler",
-      name: "Открыть конструктор и сборщик учебных работ",
-      callback: () => {
-        this.openCompiler();
+      name: "Открыть проекты и подпроекты",
+      callback: () => this.openCompiler(),
+    });
+
+    this.addCommand({
+      id: "new-subproject-here",
+      name: "Новый подпроект в текущей заметке",
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) return false;
+        if (!checking) this.openCompiler({ addUnder: file.path });
+        return true;
       },
     });
   }
 
-  openCompiler(projectPath?: string) {
-    new StudyCompilerModal(this.app, this, projectPath).open();
+  openCompiler(options: OpenOptions = {}) {
+    new StudyCompilerModal(this.app, this, options).open();
   }
 
   requestSaveSettings() {

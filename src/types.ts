@@ -1,94 +1,64 @@
 import type { TFile } from "obsidian";
 
-export const STUDY_AREA = "Учёба";
+export const KEYS = {
+  area: "направление",
+  type: "тип",
+  parent: "родитель",
+  status: "статус",
+  deadline: "дедлайн",
+  discipline: "дисциплина",
+  icon: "иконка",
+} as const;
 
-export const MATERIAL_TYPES = [
-  "Термин",
-  "Алгоритм",
-  "Заметка",
+export const STATUS_DONE = "выполнено";
+export const STATUS_ACTIVE = "в работе";
+
+export const DONE_STATUSES: readonly string[] = [
+  "выполнено",
+  "выполнен",
+  "завершён",
+  "завершено",
+  "готово",
+  "сдано",
+  "done",
+];
+
+/** Пассивные материалы: не бывают корнем проекта и не считаются в прогрессе. */
+export const MATERIAL_TYPES: readonly string[] = [
   "Источник",
-  "Расчёт",
+  "Термин",
   "Рисунок",
   "Схема",
   "Таблица",
+];
+
+export const NEW_NOTE_TYPES: readonly string[] = [
+  "Подпроект",
+  "Задача",
   "Конспект",
+  "Источник",
+  "Термин",
+  "Рисунок",
+  "Схема",
+  "Таблица",
 ];
-
-export const PRESET_WORK_TYPES = [
-  "Проект",
-  "Лабораторная работа",
-  "Конференция",
-  "Диссертация",
-  "Курсовая работа",
-  "Статья",
-  "Экзамен",
-  "Зачёт",
-  "Практика",
-];
-
-export const DONE_STATUSES = [
-  "завершён",
-  "завершена",
-  "сдана",
-  "сдан",
-  "готово",
-  "архив",
-  "отменён",
-  "отменена",
-];
-
-export const TYPE_COLORS: Record<string, string> = {
-  Термин: "#4fb3d9",
-  Алгоритм: "#9c83e8",
-  Заметка: "#4aab80",
-  Источник: "#d4c05a",
-  Расчёт: "#e06c75",
-  Рисунок: "#69b5aa",
-  Схема: "#d69852",
-  Таблица: "#5c8df6",
-  Конспект: "#8bac5e",
-};
-
-export interface ProjectCompileConfig {
-  includeRootBody: boolean;
-  numberSections: boolean;
-  stripLeadingH1: boolean;
-  groupTermsIntoGlossary: boolean;
-  buildBibliography: boolean;
-  replaceSourceLinksWithNumbers: boolean;
-  autoNumberFiguresAndTables: boolean;
-  orderedPaths: string[];
-  excludedPaths: string[];
-}
-
-export const DEFAULT_COMPILE_CONFIG: ProjectCompileConfig = {
-  includeRootBody: true,
-  numberSections: true,
-  stripLeadingH1: true,
-  groupTermsIntoGlossary: true,
-  buildBibliography: true,
-  replaceSourceLinksWithNumbers: true,
-  autoNumberFiguresAndTables: true,
-  orderedPaths: [],
-  excludedPaths: [],
-};
 
 export interface StudyCompilerSettings {
   studyAreaName: string;
-  outputFolder: string;
-  decksFolder: string;
-  templatePrefix: string;
+  newNoteFolder: string;
   showCompletedWorks: boolean;
-  projectConfigs: Record<string, ProjectCompileConfig>;
+  excludedFolders: string[];
+  expandedPaths: string[];
+  lastWorkPath: string;
 }
 
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
-  outputFolder: "Знания/Сборки",
-  decksFolder: "Знания/Карточки",
-  templatePrefix: "Учёба — ",
+  newNoteFolder: "Знания",
   showCompletedWorks: false,
-  projectConfigs: {},
+  excludedFolders: ["Templates", "Шаблоны"],
+  expandedPaths: [],
+  lastWorkPath: "",
 };
 
 export interface WorkMetaBadge {
@@ -104,47 +74,16 @@ export interface StudyNoteItem {
   noteType: string;
   status: string;
   discipline: string;
-  deadlineISO: string | null;
-  sourceProp: string;
-  customIcon: string;
+  deadline: string | null;
+  icon: string;
   parentPaths: string[];
-  isWork: boolean;
-  isActiveWork: boolean;
+  isDone: boolean;
 }
 
-export interface HierarchyNode {
+export interface TreeNode {
   item: StudyNoteItem;
   depth: number;
-  parentPath: string;
-  sectionNumber: string;
-  included: boolean;
-  wordCount: number;
-  charCount: number;
-  formulaCount: number;
-  bodyText: string;
-}
-
-export interface ProjectAuditReport {
-  totalNodes: number;
-  includedNodes: number;
-  totalWords: number;
-  totalCharsWithSpaces: number;
-  authorSheets: string;
-  approxPages: number;
-  totalFormulas: number;
-  totalTables: number;
-  totalFigures: number;
-  sourcesTotal: StudyNoteItem[];
-  sourcesCited: StudyNoteItem[];
-  sourcesUncited: StudyNoteItem[];
-  visualsTotal: StudyNoteItem[];
-  visualsReferenced: StudyNoteItem[];
-  visualsUnreferenced: StudyNoteItem[];
-  emptySectionNotes: StudyNoteItem[];
-}
-
-export interface CompilationResult {
-  markdown: string;
-  outputFilePath: string;
-  audit: ProjectAuditReport;
+  hasChildren: boolean;
+  done: number;
+  total: number;
 }
