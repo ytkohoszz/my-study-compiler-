@@ -1,10 +1,8 @@
 import { App, TFile, getAllTags, normalizePath } from "obsidian";
 import {
-  DONE_STATUSES,
   DeadlineTone,
   KEYS,
   MATERIAL_TYPES,
-  QuickFilterMode,
   StudyCompilerSettings,
   StudyNoteItem,
   TreeFilterOptions,
@@ -82,38 +80,115 @@ export function resolveParentPaths(
   return resolved;
 }
 
+/** Текущая календарная дата в местном часовом поясе (ГГГГ-ММ-ДД). */
 export function todayISO(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function daysUntilISO(iso: string, baseIso = todayISO()): number {
-  const [y1, m1, d1] = iso.split("-").map(Number);
-  const [y0, m0, d0] = baseIso.split("-").map(Number);
-  if (!y1 || !m1 || !d1 || !y0 || !m0 || !d0) return 999;
-  const t1 = Date.UTC(y1, m1 - 1, d1);
-  const t0 = Date.UTC(y0, m0 - 1, d0);
-  return Math.round((t1 - t0) / 86_400_000);
+/**
+ * Разница в календарных днях по местному времени без смещений из-за времени суток или часовых поясов.
+ */
+export function daysUntilISO(iso: string): number {
+  const parts = iso.split("-").map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return 999;
+
+  const now = new Date();
+  const todayLocalMidnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+  const targetLocalMidnight = new Date(y, m - 1, d);
+  return Math.round(
+    (targetLocalMidnight.getTime() - todayLocalMidnight.getTime()) / 86_400_000
+  );
 }
 
-export function getDeadlineTone(item: StudyNoteItem, nowIso = todayISO()): DeadlineTone {
-  if (!item.deadline || item.isDone) return "none";
-  const diff = daysUntilISO(item.deadline, nowIso);
+/** Русское склонение числительных: 1 день, 2 дня, 5 дней. */
+export function pluralizeDays(n: number): string {
+  const abs = Math.abs(Math.trunc(n));
+  const mod100 = abs % 100;
+  const mod10 = abs % 10;
+  if (mod100 >= 11 && mod100 <= 19) return `${abs} дней`;
+  if (mod10 === 1) return `${abs} день`;
+  if (mod10 >= 2 && mod10 <= 4) return `${abs} дня`;
+  return `${abs} дней`;
+}
+
+export function getDeadlineTone(item: StudyNoteItem): DeadlineTone {
+  if (!item.deadline) return "none";
+  const diff = daysUntilISO(item.deadline);
   if (diff < 0) return "overdue";
-  if (diff <= 3) return "soon";
+  if (diff <= 7) return "soon";
   return "far";
 }
 
-export function formatDeadlineBadge(item: StudyNoteItem, nowIso = todayISO()): string {
+export function formatDeadlineBadge(item: StudyNoteItem): string {
   if (!item.deadline) return "";
-  const shortDate = `${item.deadline.slice(8, 10)}.${item.deadline.slice(5, 7)}`;
-  if (item.isDone) return shortDate;
-  const diff = daysUntilISO(item.deadline, nowIso);
-  if (diff < 0) return `${shortDate} (${diff} дн.)`;
-  if (diff === 0) return `${shortDate} (сегодня)`;
-  if (diff <= 3) return `${shortDate} (${diff} дн.)`;
-  return shortDate;
+  const diff = daysUntilISO(item.deadline);
+  if (diff === 0) return "сегодня";
+  if (diff === 1) return "завтра";
+  if (diff > 1) return `осталось ${pluralizeDays(diff)}`;
+  if (diff === -1) return "просрочено на 1 день";
+  return `просрочено на ${pluralizeDays(Math.abs(diff))}`;
+}
+
+export function formatFullDateTooltip(iso: string): string {
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  return `Дедлайн: ${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+
+function isTemplateOrExcludedFile(
+  file: TFile,
+  fm: Record<string, unknown>,
+  tagsLower: string[],
+  settings: StudyCompilerSettings
+): boolean {
+  const excludedFolders = settings.excludedFolders
+    .map((f) => f.trim().replace(/^\/+|\/+$/g, "").toLowerCase())
+    .filter((f) => f.length > 0);
+
+  const pathLower = file.path.toLowerCase();
+  const folderSegments = pathLower.split("/").slice(0, -1);
+  for (const exFolder of excludedFolders) {
+    if (
+      pathLower.startsWith(`${exFolder}/`) ||
+      folderSegments.includes(exFolder)
+    ) {
+      return true;
+    }
+  }
+
+  const prefixes = settings.excludedTitlePrefixes
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0);
+  const baseLower = file.basename.toLowerCase();
+  if (prefixes.some((pref) => baseLower.startsWith(pref))) {
+    return true;
+  }
+
+  const excludedTags = settings.excludedTags
+    .map((t) => t.trim().replace(/^#/, "").toLowerCase())
+    .filter((t) => t.length > 0);
+  if (tagsLower.some((t) => excludedTags.includes(t))) {
+    return true;
+  }
+
+  const noteTypeLower = readString(fm[KEYS.type]).toLowerCase();
+  if (noteTypeLower === "шаблон" || noteTypeLower === "template") {
+    return true;
+  }
+  if (fm[KEYS.templateFlag] === true || String(fm[KEYS.templateFlag]).toLowerCase() === "true") {
+    return true;
+  }
+
+  return false;
 }
 
 export function scanStudyVault(
@@ -121,38 +196,42 @@ export function scanStudyVault(
   settings: StudyCompilerSettings
 ): ScanResult {
   const byPath = new Map<string, StudyNoteItem>();
-  const excluded = settings.excludedFolders
-    .map((f) => f.trim().replace(/^\/+|\/+$/g, ""))
-    .filter((f) => f.length > 0);
 
   for (const file of app.vault.getMarkdownFiles()) {
-    if (excluded.some((f) => file.path.startsWith(`${f}/`))) continue;
     const cache = app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
     if (!fm) continue;
+
     if (!flattenFrontmatterValue(fm[KEYS.area]).includes(settings.studyAreaName)) {
       continue;
     }
 
-    const status = readString(fm[KEYS.status]);
+    const isCardDeck =
+      Boolean(fm["колода_карточек"]) ||
+      readString(fm["подтип"]).toLowerCase() === "карточки";
+    if (isCardDeck) continue;
+
+    const rawTags = cache ? getAllTags(cache) ?? [] : [];
+    const tags = rawTags.map((t) => t.replace(/^#/, "").toLowerCase());
+
+    if (isTemplateOrExcludedFile(file, fm, tags, settings)) {
+      continue;
+    }
+
     const rawDeadline = (
       readString(fm[KEYS.deadline]) || readString(fm[KEYS.deadlineAlt])
     ).slice(0, 10);
-    const rawTags = cache ? getAllTags(cache) ?? [] : [];
-    const tags = rawTags.map((t) => t.replace(/^#/, "").toLowerCase());
 
     byPath.set(file.path, {
       file,
       path: file.path,
       name: file.basename,
       noteType: readString(fm[KEYS.type]),
-      status,
       discipline: readString(fm[KEYS.discipline]),
       deadline: /^\d{4}-\d{2}-\d{2}$/.test(rawDeadline) ? rawDeadline : null,
       icon: readString(fm[KEYS.icon]),
       tags,
       parentPaths: resolveParentPaths(app, file, fm[KEYS.parent]),
-      isDone: DONE_STATUSES.includes(status.toLowerCase()),
     });
   }
 
@@ -231,37 +310,8 @@ export function collectDescendants(path: string, scan: ScanResult): Set<string> 
   return result;
 }
 
-export function progressOf(
-  paths: Iterable<string>,
-  scan: ScanResult
-): { done: number; total: number } {
-  let done = 0;
-  let total = 0;
-  for (const p of paths) {
-    const it = scan.byPath.get(p);
-    if (!it || MATERIAL_TYPES.includes(it.noteType)) continue;
-    total++;
-    if (it.isDone) done++;
-  }
-  return { done, total };
-}
-
-function matchesFilter(
-  item: StudyNoteItem,
-  filter: TreeFilterOptions,
-  nowIso: string
-): boolean {
+function matchesFilter(item: StudyNoteItem, filter: TreeFilterOptions): boolean {
   if (filter.typeFilter && item.noteType !== filter.typeFilter) return false;
-
-  const tone = getDeadlineTone(item, nowIso);
-  const mode: QuickFilterMode = filter.mode;
-  if (mode === "active" && (item.isDone || MATERIAL_TYPES.includes(item.noteType))) {
-    return false;
-  }
-  if (mode === "done" && !item.isDone) return false;
-  if (mode === "burning" && tone !== "soon" && tone !== "overdue") return false;
-  if (mode === "overdue" && tone !== "overdue") return false;
-  if (mode === "materials" && !MATERIAL_TYPES.includes(item.noteType)) return false;
 
   const q = filter.query.trim().toLowerCase();
   if (!q) return true;
@@ -270,7 +320,6 @@ function matchesFilter(
   const haystack = [
     item.name,
     item.noteType,
-    item.status,
     item.discipline,
     ...item.tags.map((t) => `#${t}`),
   ]
@@ -281,34 +330,32 @@ function matchesFilter(
 }
 
 /**
- * Строит дерево от выбранного корня (или подветки).
- * Если задан поиск или фильтр, автоматически раскрывает ветки, ведущие к совпадениям.
+ * Строит иерархическое дерево TreeNode[] с вложенными массивами children,
+ * чтобы в интерфейсе отрисовывать наглядные контейнеры веток с направляющими линиями.
  */
-export function buildFilteredTree(
+export function buildNestedFilteredTree(
   branchRoot: StudyNoteItem,
   scan: ScanResult,
   expanded: Set<string> | null,
   filter: TreeFilterOptions
 ): TreeNode[] {
-  const nowIso = todayISO();
-
   if (filter.mode === "orphans") {
     return scan.orphans
-      .filter((it) => matchesFilter(it, { ...filter, mode: "all" }, nowIso))
+      .filter((it) => matchesFilter(it, { ...filter, mode: "all" }))
       .map((item) => ({
         item,
         depth: 0,
         hasChildren: false,
-        done: 0,
-        total: 0,
+        isExpanded: false,
+        directChildrenCount: 0,
+        descendantCount: 0,
         isDirectMatch: true,
+        children: [],
       }));
   }
 
   const isFiltering =
-    filter.query.trim().length > 0 ||
-    filter.mode !== "all" ||
-    filter.typeFilter.length > 0;
+    filter.query.trim().length > 0 || filter.typeFilter.length > 0;
 
   const directMatches = new Set<string>();
   const visibleBranchPaths = new Set<string>();
@@ -323,7 +370,7 @@ export function buildFilteredTree(
         trail.add(kidPath);
         const childHas = checkSubtree(kidPath, trail);
         trail.delete(kidPath);
-        const selfMatch = matchesFilter(kid, filter, nowIso);
+        const selfMatch = matchesFilter(kid, filter);
         if (selfMatch) directMatches.add(kidPath);
         if (selfMatch || childHas) {
           visibleBranchPaths.add(kidPath);
@@ -335,44 +382,69 @@ export function buildFilteredTree(
     checkSubtree(branchRoot.path, new Set([branchRoot.path]));
   }
 
-  const out: TreeNode[] = [];
-  const walk = (path: string, depth: number, trail: Set<string>) => {
-    const kids = (scan.childrenOf.get(path) ?? [])
+  const buildLevel = (
+    parentPath: string,
+    depth: number,
+    trail: Set<string>
+  ): TreeNode[] => {
+    const kids = (scan.childrenOf.get(parentPath) ?? [])
       .map((p) => scan.byPath.get(p))
       .filter((x): x is StudyNoteItem => x !== undefined)
       .sort(byName);
+
+    const levelNodes: TreeNode[] = [];
 
     for (const kid of kids) {
       if (trail.has(kid.path)) continue;
       if (isFiltering && !visibleBranchPaths.has(kid.path)) continue;
 
-      const allKids = scan.childrenOf.get(kid.path) ?? [];
+      const allKidChildren = scan.childrenOf.get(kid.path) ?? [];
       const hasChildren = isFiltering
-        ? allKids.some((k) => visibleBranchPaths.has(k))
-        : allKids.length > 0;
-      const stats = progressOf(collectDescendants(kid.path, scan), scan);
+        ? allKidChildren.some((k) => visibleBranchPaths.has(k))
+        : allKidChildren.length > 0;
 
-      out.push({
+      const descendants = collectDescendants(kid.path, scan);
+      const isExpanded =
+        hasChildren &&
+        (isFiltering || expanded === null || expanded.has(kid.path));
+
+      let childrenNodes: TreeNode[] = [];
+      if (isExpanded) {
+        trail.add(kid.path);
+        childrenNodes = buildLevel(kid.path, depth + 1, trail);
+        trail.delete(kid.path);
+      }
+
+      levelNodes.push({
         item: kid,
         depth,
         hasChildren,
-        done: stats.done,
-        total: stats.total,
+        isExpanded,
+        directChildrenCount: allKidChildren.length,
+        descendantCount: descendants.size,
         isDirectMatch: isFiltering ? directMatches.has(kid.path) : false,
+        children: childrenNodes,
       });
+    }
 
-      const shouldExpand =
-        isFiltering || expanded === null || expanded.has(kid.path);
-      if (hasChildren && shouldExpand) {
-        trail.add(kid.path);
-        walk(kid.path, depth + 1, trail);
-        trail.delete(kid.path);
+    return levelNodes;
+  };
+
+  return buildLevel(branchRoot.path, 0, new Set([branchRoot.path]));
+}
+
+export function flattenVisibleTree(nodes: TreeNode[]): TreeNode[] {
+  const flat: TreeNode[] = [];
+  const walk = (list: TreeNode[]) => {
+    for (const n of list) {
+      flat.push(n);
+      if (n.isExpanded && n.children.length > 0) {
+        walk(n.children);
       }
     }
   };
-
-  walk(branchRoot.path, 0, new Set([branchRoot.path]));
-  return out;
+  walk(nodes);
+  return flat;
 }
 
 export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge {
@@ -412,6 +484,15 @@ export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge
   } else if (low.includes("конспект")) {
     icon = "📝";
     color = "#8bac5e";
+  } else if (low.includes("рисунок") || low.includes("схема")) {
+    icon = "🖼";
+    color = "#69b5aa";
+  } else if (low.includes("таблица")) {
+    icon = "📊";
+    color = "#5c8df6";
+  } else if (low.includes("расчёт") || low.includes("расчет")) {
+    icon = "🧮";
+    color = "#e06c75";
   }
 
   if (customIcon && String(customIcon).trim()) icon = String(customIcon).trim();

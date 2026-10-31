@@ -4,62 +4,49 @@ export const KEYS = {
   area: "направление",
   type: "тип",
   parent: "родитель",
-  status: "статус",
   deadline: "дедлайн",
   deadlineAlt: "срок",
   discipline: "дисциплина",
   icon: "иконка",
+  templateFlag: "шаблон",
 } as const;
 
-export const STATUS_DONE = "выполнено";
-export const STATUS_ACTIVE = "в работе";
-
-export const DONE_STATUSES: readonly string[] = [
-  "выполнено",
-  "выполнен",
-  "завершён",
-  "завершено",
-  "готово",
-  "сдано",
-  "done",
-];
-
-/** Пассивные материалы: не бывают корнем проекта и не считаются в прогрессе задач. */
+/** Пассивные материалы: не бывают корнем проекта. */
 export const MATERIAL_TYPES: readonly string[] = [
   "Источник",
   "Термин",
   "Рисунок",
   "Схема",
   "Таблица",
+  "Конспект",
+  "Заметка",
+  "Расчёт",
+  "Алгоритм",
 ];
 
 export const NEW_NOTE_TYPES: readonly string[] = [
   "Подпроект",
-  "Задача",
   "Конспект",
-  "Источник",
   "Термин",
+  "Источник",
+  "Заметка",
+  "Расчёт",
+  "Алгоритм",
   "Рисунок",
   "Схема",
   "Таблица",
 ];
 
-export type QuickFilterMode =
-  | "all"
-  | "active"
-  | "done"
-  | "burning"
-  | "overdue"
-  | "materials"
-  | "orphans";
+export type QuickFilterMode = "all" | "orphans";
 
 export type DeadlineTone = "none" | "far" | "soon" | "overdue";
 
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
-  showCompletedWorks: boolean;
   excludedFolders: string[];
+  excludedTitlePrefixes: string[];
+  excludedTags: string[];
   expandedPaths: string[];
   lastWorkPath: string;
   focusedBranchByWork: Record<string, string>;
@@ -68,8 +55,9 @@ export interface StudyCompilerSettings {
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
   newNoteFolder: "Знания",
-  showCompletedWorks: false,
-  excludedFolders: ["Templates", "Шаблоны"],
+  excludedFolders: ["Templates", "Шаблоны", "Знания/Карточки", "Знания/Сборки"],
+  excludedTitlePrefixes: ["Учёба — ", "Шаблон", "Template"],
+  excludedTags: ["шаблон", "template"],
   expandedPaths: [],
   lastWorkPath: "",
   focusedBranchByWork: {},
@@ -86,22 +74,22 @@ export interface StudyNoteItem {
   path: string;
   name: string;
   noteType: string;
-  status: string;
   discipline: string;
   deadline: string | null;
   icon: string;
   tags: string[];
   parentPaths: string[];
-  isDone: boolean;
 }
 
 export interface TreeNode {
   item: StudyNoteItem;
   depth: number;
   hasChildren: boolean;
-  done: number;
-  total: number;
+  isExpanded: boolean;
+  directChildrenCount: number;
+  descendantCount: number;
   isDirectMatch: boolean;
+  children: TreeNode[];
 }
 
 export interface TreeFilterOptions {

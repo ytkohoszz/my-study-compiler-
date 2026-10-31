@@ -5,7 +5,9 @@ import { OpenOptions, StudyCompilerModal } from "./modal";
 function migrateSettings(raw: unknown): StudyCompilerSettings {
   const s = raw && typeof raw === "object" ? (raw as Partial<StudyCompilerSettings>) : {};
   const strList = (v: unknown, fallback: string[]): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [...fallback];
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [...fallback];
 
   const focusedBranchByWork: Record<string, string> = {};
   if (s.focusedBranchByWork && typeof s.focusedBranchByWork === "object") {
@@ -17,17 +19,18 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
   return {
     studyAreaName:
       typeof s.studyAreaName === "string" && s.studyAreaName.trim()
-        ? s.studyAreaName
+        ? s.studyAreaName.trim()
         : DEFAULT_SETTINGS.studyAreaName,
     newNoteFolder:
       typeof s.newNoteFolder === "string" && s.newNoteFolder.trim()
-        ? s.newNoteFolder
+        ? s.newNoteFolder.trim()
         : DEFAULT_SETTINGS.newNoteFolder,
-    showCompletedWorks:
-      typeof s.showCompletedWorks === "boolean"
-        ? s.showCompletedWorks
-        : DEFAULT_SETTINGS.showCompletedWorks,
     excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
+    excludedTitlePrefixes: strList(
+      s.excludedTitlePrefixes,
+      DEFAULT_SETTINGS.excludedTitlePrefixes
+    ),
+    excludedTags: strList(s.excludedTags, DEFAULT_SETTINGS.excludedTags),
     expandedPaths: strList(s.expandedPaths, []),
     lastWorkPath: typeof s.lastWorkPath === "string" ? s.lastWorkPath : "",
     focusedBranchByWork,
@@ -52,7 +55,8 @@ class StudyCompilerSettingTab extends PluginSettingTab {
       .setDesc("Значение свойства «направление». По умолчанию: Учёба")
       .addText((text) =>
         text.setValue(this.plugin.settings.studyAreaName).onChange((val) => {
-          this.plugin.settings.studyAreaName = val.trim() || DEFAULT_SETTINGS.studyAreaName;
+          this.plugin.settings.studyAreaName =
+            val.trim() || DEFAULT_SETTINGS.studyAreaName;
           this.plugin.requestSaveSettings();
         })
       );
@@ -62,22 +66,57 @@ class StudyCompilerSettingTab extends PluginSettingTab {
       .setDesc("По умолчанию: Знания")
       .addText((text) =>
         text.setValue(this.plugin.settings.newNoteFolder).onChange((val) => {
-          this.plugin.settings.newNoteFolder = val.trim() || DEFAULT_SETTINGS.newNoteFolder;
+          this.plugin.settings.newNoteFolder =
+            val.trim() || DEFAULT_SETTINGS.newNoteFolder;
           this.plugin.requestSaveSettings();
         })
       );
 
     new Setting(containerEl)
       .setName("Игнорируемые папки")
-      .setDesc("Через запятую. Заметки внутри не попадают в дерево")
+      .setDesc("Через запятую. Заметки и шаблоны внутри этих папок не попадают в список")
       .addText((text) =>
-        text.setValue(this.plugin.settings.excludedFolders.join(", ")).onChange((val) => {
-          this.plugin.settings.excludedFolders = val
-            .split(",")
-            .map((x) => x.trim())
-            .filter((x) => x.length > 0);
-          this.plugin.requestSaveSettings();
-        })
+        text
+          .setValue(this.plugin.settings.excludedFolders.join(", "))
+          .onChange((val) => {
+            this.plugin.settings.excludedFolders = val
+              .split(",")
+              .map((x) => x.trim())
+              .filter((x) => x.length > 0);
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Игнорируемые префиксы имён файлов (шаблоны)")
+      .setDesc(
+        "Через запятую. Например: «Учёба — , Шаблон, Template» — скрывает заметки-шаблоны из выпадающего списка проектов"
+      )
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.excludedTitlePrefixes.join(", "))
+          .onChange((val) => {
+            this.plugin.settings.excludedTitlePrefixes = val
+              .split(",")
+              .map((x) => x.trim())
+              .filter((x) => x.length > 0);
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Игнорируемые теги")
+      .setDesc("Через запятую без решётки (по умолчанию: шаблон, template)")
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.excludedTags.join(", "))
+          .onChange((val) => {
+            this.plugin.settings.excludedTags = val
+              .split(",")
+              .map((x) => x.trim().replace(/^#/, ""))
+              .filter((x) => x.length > 0);
+            this.plugin.requestSaveSettings();
+          })
       );
   }
 }

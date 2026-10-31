@@ -63,7 +63,7 @@
 }
 
 .my-sc-work-select {
-  flex: 1 1 240px;
+  flex: 1 1 260px;
   min-width: 0;
   min-height: 38px;
   font-weight: 600;
@@ -83,6 +83,24 @@
   border: 1px solid var(--interactive-accent) !important;
   color: var(--interactive-accent) !important;
   background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.my-sc-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.my-sc-summary-text {
+  font-weight: 500;
 }
 
 .my-sc-search-panel {
@@ -108,7 +126,7 @@
 }
 
 .my-sc-type-filter {
-  flex: 0 0 140px;
+  flex: 0 0 150px;
   min-height: 34px;
 }
 
@@ -186,35 +204,6 @@
   cursor: pointer;
 }
 
-.my-sc-progress-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.my-sc-progress-text {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.my-sc-progress {
-  height: 8px;
-  border-radius: 99px;
-  background: var(--background-modifier-border);
-  overflow: hidden;
-}
-
-.my-sc-progress-fill {
-  height: 100%;
-  border-radius: 99px;
-  background: var(--color-green, #4aab80);
-  transition: width 0.25s ease;
-}
-
 .my-sc-add-box {
   display: flex;
   flex-wrap: wrap;
@@ -242,16 +231,46 @@
 
 .my-sc-body {
   flex: 1 1 auto;
-  min-height: 220px;
-  max-height: 52vh;
+  min-height: 240px;
+  max-height: 55vh;
   overflow-y: auto;
   padding-right: 4px;
 }
 
+/* Иерархическое дерево с цветовыми акцентами по глубине и направляющими линиями */
 .my-sc-tree-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+.my-sc-node-group {
+  --branch-accent: var(--color-blue, #599ed6);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+}
+
+.my-sc-node-group.is-depth-0 {
+  --branch-accent: var(--color-blue, #599ed6);
+}
+.my-sc-node-group.is-depth-1 {
+  --branch-accent: var(--color-purple, #9c83e8);
+}
+.my-sc-node-group.is-depth-2 {
+  --branch-accent: var(--color-green, #4aab80);
+}
+.my-sc-node-group.is-depth-3 {
+  --branch-accent: var(--color-orange, #e5a158);
+}
+.my-sc-node-group.is-depth-4 {
+  --branch-accent: var(--color-cyan, #4fb3d9);
+}
+
+.my-sc-node-group.is-branch.is-expanded {
+  background: color-mix(in srgb, var(--branch-accent) 5%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 28%, var(--background-modifier-border));
+  padding-bottom: 6px;
 }
 
 .my-sc-tree-row {
@@ -259,30 +278,55 @@
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 4px 8px;
+  min-height: 42px;
+  padding: 5px 10px 5px 8px;
   border-radius: 8px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  border-left: 3px solid var(--branch-accent);
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.my-sc-tree-row.is-open-parent {
+  background: color-mix(in srgb, var(--branch-accent) 12%, var(--background-secondary));
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.my-sc-tree-row.is-open-parent .my-sc-node-title {
+  font-weight: 750;
 }
 
 .my-sc-tree-row.is-kb-active {
   border-color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
+  box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .my-sc-tree-row.is-match {
-  border-left: 3px solid var(--interactive-accent);
+  background: color-mix(in srgb, var(--color-yellow, #e5a158) 12%, var(--background-secondary));
 }
 
-.my-sc-tree-row.is-done .my-sc-node-title {
-  text-decoration: line-through;
-  color: var(--text-muted);
+.my-sc-children-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  margin-left: 18px;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--branch-accent) 55%, var(--background-modifier-border));
+  animation: my-sc-branch-open 0.16s ease-out;
 }
 
-.my-sc-tree-row.is-done {
-  opacity: 0.65;
+@keyframes my-sc-branch-open {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .my-sc-tree-left {
@@ -293,26 +337,51 @@
   flex: 1;
 }
 
-.my-sc-arrow,
-.my-sc-arrow-spacer {
-  width: 24px;
-  min-width: 24px;
-  height: 28px;
+/* Крупная кнопка стрелки 32x32 px для удобного нажатия пальцем */
+.my-sc-toggle-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
   padding: 0;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--branch-accent) 14%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 35%, var(--background-modifier-border));
+  color: var(--branch-accent);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.14s ease;
+}
+
+.my-sc-toggle-btn:hover {
+  background: color-mix(in srgb, var(--branch-accent) 24%, var(--background-primary));
+}
+
+.my-sc-toggle-btn.is-open {
+  transform: rotate(90deg);
+}
+
+.my-sc-leaf-marker {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.my-sc-arrow {
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  cursor: pointer;
+.my-sc-leaf-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--branch-accent) 65%, var(--text-muted));
 }
 
 .my-sc-node-title {
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-normal);
   cursor: pointer;
@@ -358,16 +427,33 @@
   flex-shrink: 0;
 }
 
-.my-sc-branch-count {
-  font-size: 0.74rem;
-  color: var(--text-muted);
+.my-sc-subcount-pill {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 99px;
+  font-size: 0.73rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.my-sc-subcount-pill.is-collapsed {
+  color: var(--branch-accent);
+  background: color-mix(in srgb, var(--branch-accent) 16%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 42%, var(--background-modifier-border));
+}
+
+.my-sc-subcount-pill.is-expanded {
+  color: var(--text-muted);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
 }
 
 .my-sc-deadline {
-  font-size: 0.72rem;
-  padding: 2px 6px;
-  border-radius: 5px;
+  font-size: 0.73rem;
+  padding: 2px 8px;
+  border-radius: 6px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -390,21 +476,11 @@
 }
 
 .my-sc-move-btn {
-  width: 30px;
-  min-height: 30px;
+  width: 32px;
+  min-height: 32px;
   padding: 0;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.my-sc-more-btn {
-  width: 100%;
-  min-height: 36px;
-  margin-top: 6px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  border-radius: 7px;
+  font-size: 0.82rem;
   cursor: pointer;
 }
 
@@ -416,9 +492,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .my-sc-progress-fill,
-  .my-sc-tree-row {
+  .my-sc-tree-row,
+  .my-sc-toggle-btn,
+  .my-sc-children-container {
     transition: none !important;
+    animation: none !important;
   }
 }
 
@@ -446,6 +524,11 @@
 
   .my-sc-type-filter {
     flex: 1 1 100%;
+  }
+
+  .my-sc-children-container {
+    margin-left: 10px;
+    padding-left: 10px;
   }
 
   .my-sc-tree-row {
