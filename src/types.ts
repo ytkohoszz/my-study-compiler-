@@ -4,15 +4,45 @@ export const KEYS = {
   area: "направление",
   type: "тип",
   parent: "родитель",
+  status: "статус",
   deadline: "дедлайн",
   deadlineAlt: "срок",
   discipline: "дисциплина",
   icon: "иконка",
   templateFlag: "шаблон",
+  finishedAt: "дата_завершения",
 } as const;
 
-/** Пассивные материалы: не бывают корнем проекта. */
-export const MATERIAL_TYPES: readonly string[] = [
+export const RESERVED_YAML_KEYS: readonly string[] = [
+  KEYS.area,
+  KEYS.type,
+  KEYS.parent,
+];
+
+export const ROOT_STATUS_ACTIVE = "В работе";
+export const ROOT_STATUS_DONE = "Завершён";
+
+/** Полный список завершающих статусов корневого проекта (объединён из v0.1.0 и v0.2.0). */
+export const ROOT_DONE_STATUSES: readonly string[] = [
+  "выполнено",
+  "выполнен",
+  "завершён",
+  "завершена",
+  "завершено",
+  "сдана",
+  "сдан",
+  "готово",
+  "архив",
+  "отменён",
+  "отменена",
+  "done",
+];
+
+/**
+ * Типы атомарных материалов: если у такой заметки нет ни родителя, ни детей, ни статуса/дедлайна,
+ * она попадает в «🧭 Без родителя», а не засоряет список проектов.
+ */
+export const LEGACY_MATERIAL_TYPES: readonly string[] = [
   "Источник",
   "Термин",
   "Рисунок",
@@ -24,42 +54,37 @@ export const MATERIAL_TYPES: readonly string[] = [
   "Алгоритм",
 ];
 
-export const NEW_NOTE_TYPES: readonly string[] = [
-  "Подпроект",
-  "Конспект",
-  "Термин",
-  "Источник",
-  "Заметка",
-  "Расчёт",
-  "Алгоритм",
-  "Рисунок",
-  "Схема",
-  "Таблица",
-];
+export type ProjectGroupTab = "active" | "completed";
 
 export type QuickFilterMode = "all" | "orphans";
 
 export type DeadlineTone = "none" | "far" | "soon" | "overdue";
 
-export type LinkCandidateKind = "missing" | "existing-free" | "has-other-parent";
+export type CustomPropValueKind = "auto" | "list";
 
-export interface OutgoingLinkCandidate {
+export interface CustomPropertyDraft {
   id: string;
-  sourceFile: TFile;
-  sourcePath: string;
-  sourceName: string;
-  targetName: string;
-  targetFile: TFile | null;
-  targetPath: string;
-  kind: LinkCandidateKind;
-  existingParents: string[];
+  key: string;
+  value: string;
+  kind: CustomPropValueKind;
+}
+
+export interface TypeSuggestion {
+  name: string;
+  count: number;
+}
+
+export interface VaultPropertySchema {
+  typeCounts: TypeSuggestion[];
+  propertyKeys: string[];
+  valuesByKey: Map<string, string[]>;
 }
 
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
-  defaultLinkNoteType: string;
-  autoLinkNewNotesFromProject: boolean;
+  projectGroupTab: ProjectGroupTab;
+  lastUsedMaterialType: string;
   excludedFolders: string[];
   excludedTitlePrefixes: string[];
   excludedTags: string[];
@@ -71,8 +96,8 @@ export interface StudyCompilerSettings {
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
   newNoteFolder: "Знания",
-  defaultLinkNoteType: "Термин",
-  autoLinkNewNotesFromProject: false,
+  projectGroupTab: "active",
+  lastUsedMaterialType: "Термин",
   excludedFolders: ["Templates", "Шаблоны", "Знания/Карточки", "Знания/Сборки"],
   excludedTitlePrefixes: ["Учёба — ", "Шаблон", "Template"],
   excludedTags: ["шаблон", "template"],
@@ -92,6 +117,9 @@ export interface StudyNoteItem {
   path: string;
   name: string;
   noteType: string;
+  status: string;
+  isCompletedRoot: boolean;
+  finishedAt: string | null;
   discipline: string;
   deadline: string | null;
   icon: string;

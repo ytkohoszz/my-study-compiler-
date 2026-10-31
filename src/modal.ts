@@ -1,10 +1,12 @@
 import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
 import type MyStudyCompilerPlugin from "./main";
 import {
+  CustomPropertyDraft,
   KEYS,
-  NEW_NOTE_TYPES,
-  OutgoingLinkCandidate,
+  ProjectGroupTab,
   QuickFilterMode,
+  ROOT_STATUS_ACTIVE,
+  ROOT_STATUS_DONE,
   StudyNoteItem,
   TreeNode,
 } from "./types";
@@ -16,18 +18,20 @@ import {
   collectDescendants,
   emptyScan,
   ensureFolder,
+  findCaseInsensitiveTypeMatch,
   findRootPath,
   flattenVisibleTree,
   formatDeadlineBadge,
   formatFullDateTooltip,
   getDeadlineTone,
   getWorkMeta,
+  isReservedYamlKey,
+  normalizeSpaces,
+  parseCustomPropertyValue,
   scanStudyVault,
+  serializeYamlScalarOrList,
+  todayISO,
 } from "./scanner";
-import {
-  applyOutgoingLinkCandidate,
-  scanUnlinkedOutgoingLinks,
-} from "./links";
 
 export interface OpenOptions {
   rootPath?: string;
@@ -62,6 +66,7 @@ export class StudyCompilerModal extends Modal {
   private plugin: MyStudyCompilerPlugin;
   private options: OpenOptions;
   private scan: ScanResult = emptyScan();
+  private groupTab: ProjectGroupTab;
   private selectedPath: string;
   private focusBranchPath = "";
   private expanded: Set<string>;
@@ -75,35 +80,42 @@ export class StudyCompilerModal extends Modal {
   private currentVisibleFlat: TreeNode[] = [];
   private rowElementByPath = new Map<string, HTMLElement>();
 
-  private linkCandidates: OutgoingLinkCandidate[] = [];
-  private linksBySourcePath = new Map<string, OutgoingLinkCandidate[]>();
-  private linksPanelOpen = false;
-  private linksFilterSourcePath = "";
-  private candidateTypeOverrides = new Map<string, string>();
-  private candidateChecked = new Map<string, boolean>();
+  // Быстрое редактирование типа или свойств конкретного узла дерева
+  private editingNodePath: string | null = null;
+  private editingNodeMode: "type" | "props" | null = null;
 
   private barEl!: HTMLElement;
   private searchWrapEl!: HTMLElement;
   private crumbsEl!: HTMLElement;
-  private linksEl!: HTMLElement;
   private formEl!: HTMLElement;
   private treeEl!: HTMLElement;
+  private datalistsEl!: HTMLElement;
   private searchInputEl: HTMLInputElement | null = null;
 
-  private form = {
-    open: false,
-    title: "",
-    type: "Термин",
-    parentPath: "",
-    deadline: "",
+  private form: {
+    open: boolean;
+    title: string;
+    type: string;
+    parentPath: string;
+    deadline: string;
+    customProps: CustomPropertyDraft[];
   };
 
   constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
     super(app);
     this.plugin = plugin;
     this.options = options;
+    this.groupTab = plugin.settings.projectGroupTab || "active";
     this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
     this.expanded = new Set(plugin.settings.expandedPaths);
+    this.form = {
+      open: false,
+      title: "",
+      type: plugin.settings.lastUsedMaterialType || "Термин",
+      parentPath: "",
+      deadline: "",
+      customProps: [],
+    };
     this.noRestore();
   }
 
@@ -111,33 +123,19 @@ export class StudyCompilerModal extends Modal {
     (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
   }
 
-  safeClose() {
-    try {
-      this.noRestore();
-      this.close();
-    } catch {
-      // игнорируем
-    }
-  }
-
   onOpen(): void {
     this.noRestore();
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
 
+    // Только заголовок с отступом справа под родной крестик Obsidian (.modal-close-button)
     const head = this.contentEl.createDiv("my-sc-head-bar");
     head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и рабочее дерево" });
-    const closeBtn = head.createEl("button", {
-      cls: "my-sc-close-btn",
-      text: "✕",
-      attr: { type: "button", title: "Закрыть (Esc)", "aria-label": "Закрыть" },
-    });
-    closeBtn.onclick = () => this.safeClose();
 
+    this.datalistsEl = this.contentEl.createDiv("my-sc-datalists-host");
     this.barEl = this.contentEl.createDiv("my-sc-project-bar");
     this.searchWrapEl = this.contentEl.createDiv("my-sc-search-panel");
     this.crumbsEl = this.contentEl.createDiv("my-sc-crumbs-bar");
-    this.linksEl = this.contentEl.createDiv("my-sc-links-wrap");
     this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
     this.treeEl = this.contentEl.createDiv("my-sc-body");
 
@@ -155,22 +153,28 @@ export class StudyCompilerModal extends Modal {
       () => this.app.vault.offref(r3)
     );
 
-    this.rescanVaultAndLinks();
+    this.scan = scanStudyVault(this.app, this.plugin.settings);
     const addUnder = this.options.addUnder;
     if (addUnder && this.scan.byPath.has(addUnder)) {
       this.selectedPath = findRootPath(this.scan, addUnder);
-      this.rescanVaultAndLinks();
     }
-    const root = this.getRoot();
+
+    // Если выбранный/запомненный проект находится в другой вкладке (Активные/Завершённые), переключаемся туда автоматически
+    this.syncGroupTabWithSelectedProject();
+
+    const root = this.getRootInCurrentGroup();
     if (root) {
       const savedFocus = this.plugin.settings.focusedBranchByWork[root.path];
       if (savedFocus && this.scan.byPath.has(savedFocus)) {
         this.focusBranchPath = savedFocus;
-        this.rescanVaultAndLinks();
       }
     }
 
-    this.renderAll();
+    this.renderDatalists();
+    this.renderBar();
+    this.renderSearchPanel();
+    this.renderBreadcrumbs();
+    this.renderTree();
 
     if (addUnder && this.scan.byPath.has(addUnder)) {
       this.openForm(addUnder);
@@ -189,59 +193,67 @@ export class StudyCompilerModal extends Modal {
     this.contentEl.empty();
   }
 
-  private rescanVaultAndLinks() {
-    this.scan = scanStudyVault(this.app, this.plugin.settings);
-    const root = this.getRoot();
-    if (!root) {
-      this.linkCandidates = [];
-      this.linksBySourcePath.clear();
-      return;
-    }
-    const branchRoot = this.getActiveBranchRoot(root);
-    const found = scanUnlinkedOutgoingLinks(
-      this.app,
-      branchRoot,
-      root,
-      this.scan,
-      this.plugin.settings
-    );
-    this.linkCandidates = found.allCandidates;
-    this.linksBySourcePath = found.bySourcePath;
-
-    if (
-      this.linksFilterSourcePath &&
-      !this.linksBySourcePath.has(this.linksFilterSourcePath)
-    ) {
-      this.linksFilterSourcePath = "";
-    }
-    if (this.linkCandidates.length === 0) {
-      this.linksPanelOpen = false;
+  private syncGroupTabWithSelectedProject() {
+    if (!this.selectedPath) return;
+    const found = this.scan.roots.find((r) => r.path === this.selectedPath);
+    if (!found) return;
+    const targetGroup: ProjectGroupTab = found.isCompletedRoot ? "completed" : "active";
+    if (this.groupTab !== targetGroup) {
+      this.groupTab = targetGroup;
+      this.plugin.settings.projectGroupTab = targetGroup;
+      this.plugin.requestSaveSettings();
     }
   }
 
-  private renderAll() {
-    this.renderBar();
-    this.renderSearchPanel();
-    this.renderBreadcrumbs();
-    this.renderLinksTray();
-    this.renderTree();
+  private getRootsForTab(tab: ProjectGroupTab): StudyNoteItem[] {
+    return tab === "completed" ? this.scan.completedRoots : this.scan.activeRoots;
+  }
+
+  private getRootInCurrentGroup(): StudyNoteItem | null {
+    const groupList = this.getRootsForTab(this.groupTab);
+    const direct = groupList.find((r) => r.path === this.selectedPath);
+    if (direct) return direct;
+    const first = groupList[0] ?? null;
+    if (first) {
+      this.selectedPath = first.path;
+      this.plugin.settings.lastWorkPath = first.path;
+      this.plugin.requestSaveSettings();
+    }
+    return first;
   }
 
   private scheduleRefresh() {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null;
-      this.rescanVaultAndLinks();
-      this.renderAll();
+      this.scan = scanStudyVault(this.app, this.plugin.settings);
+      this.renderDatalists();
+      this.renderBar();
+      this.renderSearchPanel();
+      this.renderBreadcrumbs();
+      if (this.form.open) this.renderForm();
+      this.renderTree();
     }, 220);
   }
 
-  private getRoot(): StudyNoteItem | null {
-    const direct = this.scan.roots.find((r) => r.path === this.selectedPath);
-    if (direct) return direct;
-    const first = this.scan.roots[0] ?? null;
-    if (first) this.selectedPath = first.path;
-    return first;
+  private renderDatalists() {
+    this.datalistsEl.empty();
+
+    const typeDl = this.datalistsEl.createEl("datalist", {
+      attr: { id: "my-sc-types-datalist" },
+    });
+    for (const t of this.scan.schema.typeCounts) {
+      typeDl.createEl("option", {
+        attr: { value: t.name, label: `${t.name} (${t.count})` },
+      });
+    }
+
+    const keysDl = this.datalistsEl.createEl("datalist", {
+      attr: { id: "my-sc-prop-keys-datalist" },
+    });
+    for (const k of this.scan.schema.propertyKeys) {
+      keysDl.createEl("option", { attr: { value: k } });
+    }
   }
 
   private getActiveBranchRoot(projectRoot: StudyNoteItem): StudyNoteItem {
@@ -264,9 +276,9 @@ export class StudyCompilerModal extends Modal {
     }
     this.plugin.requestSaveSettings();
     this.activeRowIndex = -1;
-    this.linksFilterSourcePath = "";
-    this.rescanVaultAndLinks();
-    this.renderAll();
+    this.renderBar();
+    this.renderBreadcrumbs();
+    this.renderTree();
   }
 
   private saveExpanded() {
@@ -283,9 +295,11 @@ export class StudyCompilerModal extends Modal {
     }
 
     const activeEl = document.activeElement;
-    const inFormInput =
-      activeEl instanceof HTMLInputElement && activeEl !== this.searchInputEl;
-    if (inFormInput || activeEl instanceof HTMLSelectElement) return;
+    const inOtherInput =
+      (activeEl instanceof HTMLInputElement && activeEl !== this.searchInputEl) ||
+      activeEl instanceof HTMLSelectElement ||
+      activeEl instanceof HTMLTextAreaElement;
+    if (inOtherInput) return;
 
     const len = this.currentVisibleFlat.length;
     if (len === 0) return;
@@ -334,24 +348,89 @@ export class StudyCompilerModal extends Modal {
 
   private renderBar() {
     this.barEl.empty();
-    const root = this.getRoot();
+
+    // 1. Сегмент-переключатель «Активные · N / Завершённые · M»
+    const segRow = this.barEl.createDiv("my-sc-segment-bar");
+    const activeCount = this.scan.activeRoots.length;
+    const completedCount = this.scan.completedRoots.length;
+
+    const segments: Array<{ id: ProjectGroupTab; label: string }> = [
+      { id: "active", label: `🔥 Активные · ${activeCount}` },
+      { id: "completed", label: `✓ Завершённые · ${completedCount}` },
+    ];
+
+    for (const seg of segments) {
+      const btn = segRow.createEl("button", {
+        cls: "my-sc-segment-btn" + (this.groupTab === seg.id ? " is-active" : ""),
+        text: seg.label,
+        attr: { type: "button" },
+      });
+      btn.onclick = () => {
+        if (this.groupTab === seg.id) return;
+        this.groupTab = seg.id;
+        this.plugin.settings.projectGroupTab = seg.id;
+        const firstInGroup = this.getRootsForTab(seg.id)[0];
+        this.selectedPath = firstInGroup ? firstInGroup.path : "";
+        if (firstInGroup) {
+          this.plugin.settings.lastWorkPath = firstInGroup.path;
+          this.focusBranchPath =
+            this.plugin.settings.focusedBranchByWork[firstInGroup.path] || "";
+        } else {
+          this.focusBranchPath = "";
+        }
+        this.plugin.requestSaveSettings();
+        this.form.open = false;
+        this.formEl.empty();
+        this.activeRowIndex = -1;
+        this.renderBar();
+        this.renderBreadcrumbs();
+        this.renderTree();
+      };
+    }
+
+    const root = this.getRootInCurrentGroup();
     if (!root) {
       this.formEl.empty();
-      this.linksEl.empty();
-      this.barEl.createDiv({
-        cls: "my-sc-empty",
-        text: `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`,
-      });
+      const emptyBox = this.barEl.createDiv("my-sc-empty-group-box");
+      if (this.groupTab === "active" && completedCount > 0) {
+        emptyBox.createSpan({
+          text: `Активных проектов сейчас нет (в завершённых: ${completedCount}). `,
+        });
+        const switchBtn = emptyBox.createEl("button", {
+          cls: "my-sc-chip-btn",
+          text: "Показать завершённые",
+          attr: { type: "button" },
+        });
+        switchBtn.onclick = () => {
+          this.groupTab = "completed";
+          this.plugin.settings.projectGroupTab = "completed";
+          this.plugin.requestSaveSettings();
+          this.renderBar();
+          this.renderBreadcrumbs();
+          this.renderTree();
+        };
+      } else if (this.groupTab === "completed" && activeCount > 0) {
+        emptyBox.createSpan({
+          text: `Завершённых проектов пока нет (активных: ${activeCount}).`,
+        });
+      } else {
+        emptyBox.setText(
+          `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`
+        );
+      }
       return;
     }
 
     const branchRoot = this.getActiveBranchRoot(root);
+    const groupRoots = this.getRootsForTab(this.groupTab);
+
     const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
     const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
-    for (const r of this.scan.roots) {
+    for (const r of groupRoots) {
       const meta = getWorkMeta(r.noteType, r.icon);
+      const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
       const o = sel.createEl("option", {
-        text: `${meta.icon} ${r.name}`,
+        text: `${meta.icon} ${r.name} (${r.noteType || "Проект"})${dlText}`,
         value: r.path,
       });
       if (r.path === root.path) o.selected = true;
@@ -364,12 +443,23 @@ export class StudyCompilerModal extends Modal {
       this.plugin.requestSaveSettings();
       this.form.open = false;
       this.formEl.empty();
-      this.linksPanelOpen = false;
-      this.linksFilterSourcePath = "";
       this.activeRowIndex = -1;
-      this.rescanVaultAndLinks();
-      this.renderAll();
+      this.renderBar();
+      this.renderBreadcrumbs();
+      this.renderTree();
     };
+
+    const toggleRootStatusBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: root.isCompletedRoot ? "↩ В работу" : "✓ Завершить проект",
+      attr: {
+        type: "button",
+        title: root.isCompletedRoot
+          ? "Вернуть корневой проект в список активных"
+          : "Перевести корневой проект в завершённые",
+      },
+    });
+    toggleRootStatusBtn.onclick = () => void this.toggleRootProjectStatus(root);
 
     const openBtn = row1.createEl("button", {
       cls: "my-sc-chip-btn",
@@ -408,30 +498,6 @@ export class StudyCompilerModal extends Modal {
       }
     };
 
-    if (this.linkCandidates.length > 0) {
-      const linksBtn = tools.createEl("button", {
-        cls:
-          "my-sc-chip-btn my-sc-links-trigger" +
-          (this.linksPanelOpen ? " is-active" : ""),
-        text: `🔗 Ссылки вне проекта (${this.linkCandidates.length})`,
-        attr: {
-          type: "button",
-          title:
-            "Найдены [[ссылки]] в тексте заметок, которые ещё не привязаны к этому проекту",
-        },
-      });
-      linksBtn.onclick = () => {
-        if (this.linksPanelOpen && !this.linksFilterSourcePath) {
-          this.linksPanelOpen = false;
-        } else {
-          this.linksPanelOpen = true;
-          this.linksFilterSourcePath = "";
-        }
-        this.renderBar();
-        this.renderLinksTray();
-      };
-    }
-
     const expandBtn = tools.createEl("button", {
       cls: "my-sc-chip-btn",
       text: "⤢ Развернуть всё",
@@ -459,202 +525,32 @@ export class StudyCompilerModal extends Modal {
     };
   }
 
-  private renderLinksTray() {
-    this.linksEl.empty();
-    if (!this.linksPanelOpen || this.linkCandidates.length === 0) return;
-
-    const root = this.getRoot();
-    if (!root) return;
-
-    const visibleList = this.linksFilterSourcePath
-      ? this.linksBySourcePath.get(this.linksFilterSourcePath) ?? []
-      : this.linkCandidates;
-
-    if (visibleList.length === 0) {
-      this.linksPanelOpen = false;
-      return;
-    }
-
-    const defaultType = this.plugin.settings.defaultLinkNoteType || "Термин";
-    for (const c of visibleList) {
-      if (!this.candidateTypeOverrides.has(c.id)) {
-        this.candidateTypeOverrides.set(c.id, defaultType);
-      }
-      if (!this.candidateChecked.has(c.id)) {
-        // Заметки с другим родителем по умолчанию не отмечаем галочкой для пакетного добавления, чтобы пользователь решил сам
-        this.candidateChecked.set(c.id, c.kind !== "has-other-parent");
-      }
-    }
-
-    const tray = this.linksEl.createDiv("my-sc-links-tray");
-    const head = tray.createDiv("my-sc-links-head");
-
-    const titleSpan = head.createDiv("my-sc-links-title");
-    if (this.linksFilterSourcePath) {
-      const srcItem = this.scan.byPath.get(this.linksFilterSourcePath);
-      titleSpan.setText(
-        `🔗 Непривязанные [[ссылки]] в заметке «${srcItem?.name ?? ""}» (${visibleList.length})`
+  private async toggleRootProjectStatus(root: StudyNoteItem) {
+    const nextDone = !root.isCompletedRoot;
+    try {
+      await this.app.fileManager.processFrontMatter(
+        root.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.status] = nextDone ? ROOT_STATUS_DONE : ROOT_STATUS_ACTIVE;
+          if (nextDone && !fm[KEYS.finishedAt]) {
+            fm[KEYS.finishedAt] = todayISO();
+          }
+        }
       );
-    } else {
-      titleSpan.setText(
-        `🔗 Обнаружены [[ссылки]] в тексте без привязки к проекту (${visibleList.length})`
+      this.groupTab = nextDone ? "completed" : "active";
+      this.plugin.settings.projectGroupTab = this.groupTab;
+      this.plugin.requestSaveSettings();
+      new Notice(
+        nextDone
+          ? `Проект «${root.name}» перенесён в завершённые`
+          : `Проект «${root.name}» возвращён в активные`
+      );
+    } catch (err: unknown) {
+      new Notice(
+        "Не удалось изменить статус проекта: " +
+          (err instanceof Error ? err.message : String(err))
       );
     }
-
-    const headActions = head.createDiv("my-sc-links-head-actions");
-    if (this.linksFilterSourcePath) {
-      const showAllBtn = headActions.createEl("button", {
-        cls: "my-sc-chip-btn",
-        text: `Показать все (${this.linkCandidates.length})`,
-        attr: { type: "button" },
-      });
-      showAllBtn.onclick = () => {
-        this.linksFilterSourcePath = "";
-        this.renderLinksTray();
-      };
-    }
-
-    const batchBtn = headActions.createEl("button", {
-      cls: "mod-cta my-sc-action-btn",
-      text: "✓ Привязать выбранные",
-      attr: { type: "button" },
-    });
-
-    const closeTrayBtn = headActions.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "✕",
-      attr: { type: "button", title: "Скрыть панель ссылок" },
-    });
-    closeTrayBtn.onclick = () => {
-      this.linksPanelOpen = false;
-      this.linksFilterSourcePath = "";
-      this.renderBar();
-      this.renderLinksTray();
-    };
-
-    const listEl = tray.createDiv("my-sc-links-list");
-
-    for (const cand of visibleList) {
-      const row = listEl.createDiv("my-sc-link-row");
-      const left = row.createDiv("my-sc-link-left");
-
-      const chk = left.createEl("input", {
-        attr: { type: "checkbox", title: "Выбрать для пакетного добавления" },
-      });
-      chk.checked = Boolean(this.candidateChecked.get(cand.id));
-      chk.onchange = () => {
-        this.candidateChecked.set(cand.id, chk.checked);
-      };
-
-      const infoCol = left.createDiv("my-sc-link-info");
-      const mainLine = infoCol.createDiv("my-sc-link-main");
-      mainLine.createSpan({
-        cls: "my-sc-link-target",
-        text: `[[${cand.targetName}]]`,
-      });
-      mainLine.createSpan({
-        cls: "my-sc-link-arrow",
-        text: `← из «${cand.sourceName}»`,
-      });
-
-      const statusBadge = infoCol.createSpan({
-        cls: `my-sc-link-status is-${cand.kind}`,
-      });
-      if (cand.kind === "missing") {
-        statusBadge.setText("✨ Файла ещё нет — будет создан в папке «Знания»");
-      } else if (cand.kind === "existing-free") {
-        statusBadge.setText("📄 Заметка существует (без родителя) — пропишем родителя");
-      } else {
-        const parentNames = cand.existingParents
-          .map((p) => p.split("/").pop()?.replace(/\.md$/i, "") || p)
-          .join(", ");
-        statusBadge.setText(
-          `⚠️ Уже есть родитель (${parentNames}) — добавим вторым родителем без перезаписи`
-        );
-      }
-
-      const right = row.createDiv("my-sc-link-right");
-      const typeSel = right.createEl("select", {
-        cls: "dropdown my-sc-link-type-sel",
-        attr: { title: "Тип для этой заметки" },
-      });
-      const currentType =
-        this.candidateTypeOverrides.get(cand.id) || defaultType;
-      for (const t of NEW_NOTE_TYPES) {
-        const o = typeSel.createEl("option", { text: t, value: t });
-        if (t === currentType) o.selected = true;
-      }
-      typeSel.onchange = () => {
-        this.candidateTypeOverrides.set(cand.id, typeSel.value);
-      };
-
-      const singleBtn = right.createEl("button", {
-        cls: "my-sc-chip-btn",
-        text:
-          cand.kind === "missing"
-            ? "＋ Создать"
-            : cand.kind === "has-other-parent"
-              ? "＋ Привязать вторым"
-              : "＋ В проект",
-        attr: { type: "button" },
-      });
-      singleBtn.onclick = async () => {
-        singleBtn.disabled = true;
-        try {
-          const chosenType =
-            this.candidateTypeOverrides.get(cand.id) || defaultType;
-          await applyOutgoingLinkCandidate(
-            this.app,
-            cand,
-            chosenType,
-            root,
-            this.plugin.settings
-          );
-          this.expanded.add(cand.sourcePath);
-          this.saveExpanded();
-          new Notice(`Привязано: «${cand.targetName}» → «${cand.sourceName}»`);
-          this.rescanVaultAndLinks();
-          this.renderAll();
-        } catch (err: unknown) {
-          new Notice(
-            "Ошибка привязки: " +
-              (err instanceof Error ? err.message : String(err))
-          );
-          singleBtn.disabled = false;
-        }
-      };
-    }
-
-    batchBtn.onclick = async () => {
-      const toApply = visibleList.filter((c) => this.candidateChecked.get(c.id));
-      if (toApply.length === 0) {
-        new Notice("Отметь галочками хотя бы одну ссылку.");
-        return;
-      }
-      batchBtn.disabled = true;
-      let count = 0;
-      for (const cand of toApply) {
-        try {
-          const chosenType =
-            this.candidateTypeOverrides.get(cand.id) || defaultType;
-          await applyOutgoingLinkCandidate(
-            this.app,
-            cand,
-            chosenType,
-            root,
-            this.plugin.settings
-          );
-          this.expanded.add(cand.sourcePath);
-          count++;
-        } catch {
-          // пропускаем проблемный файл и продолжаем пакет
-        }
-      }
-      this.saveExpanded();
-      new Notice(`Добавлено в проект материалов: ${count}`);
-      this.rescanVaultAndLinks();
-      this.renderAll();
-    };
   }
 
   private renderSearchPanel() {
@@ -678,12 +574,17 @@ export class StudyCompilerModal extends Modal {
 
     const typeSel = row.createEl("select", {
       cls: "dropdown my-sc-type-filter",
-      attr: { title: "Фильтр по типу материала" },
+      attr: { title: "Фильтр по типу из хранилища" },
     });
     typeSel.createEl("option", { text: "Все типы", value: "" });
-    for (const t of NEW_NOTE_TYPES) {
-      const o = typeSel.createEl("option", { text: t, value: t });
-      if (t === this.typeFilter) o.selected = true;
+    for (const t of this.scan.schema.typeCounts) {
+      const o = typeSel.createEl("option", {
+        text: `${t.name} (${t.count})`,
+        value: t.name,
+      });
+      if (t.name.toLowerCase() === this.typeFilter.toLowerCase()) {
+        o.selected = true;
+      }
     }
     typeSel.onchange = () => {
       this.typeFilter = typeSel.value;
@@ -720,8 +621,11 @@ export class StudyCompilerModal extends Modal {
 
   private renderBreadcrumbs() {
     this.crumbsEl.empty();
-    const root = this.getRoot();
-    if (!root) return;
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      this.crumbsEl.addClass("is-hidden");
+      return;
+    }
     const branchRoot = this.getActiveBranchRoot(root);
     if (branchRoot.path === root.path) {
       this.crumbsEl.addClass("is-hidden");
@@ -754,9 +658,13 @@ export class StudyCompilerModal extends Modal {
   }
 
   private openForm(parentPath: string) {
-    const root = this.getRoot();
+    const root = this.getRootInCurrentGroup();
     if (!root) return;
     this.form.open = true;
+    this.form.type =
+      this.plugin.settings.lastUsedMaterialType ||
+      this.scan.schema.typeCounts[0]?.name ||
+      "Термин";
     this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
     this.renderBar();
     this.renderForm();
@@ -765,21 +673,60 @@ export class StudyCompilerModal extends Modal {
   private renderForm() {
     this.formEl.empty();
     if (!this.form.open) return;
-    const root = this.getRoot();
+    const root = this.getRootInCurrentGroup();
     if (!root) return;
 
     const box = this.formEl.createDiv("my-sc-add-box");
+    const topRow = box.createDiv("my-sc-form-row");
 
-    const typeSel = box.createEl("select", { cls: "dropdown" });
-    for (const t of NEW_NOTE_TYPES) {
-      const o = typeSel.createEl("option", { text: t, value: t });
-      if (t === this.form.type) o.selected = true;
-    }
-    typeSel.onchange = () => {
-      this.form.type = typeSel.value;
+    // 3.1. Свободное поле «Тип» с подсказками из реальных типов хранилища
+    const typeWrap = topRow.createDiv("my-sc-type-input-wrap");
+    const typeInp = typeWrap.createEl("input", {
+      cls: "my-sc-type-input",
+      attr: {
+        type: "text",
+        list: "my-sc-types-datalist",
+        placeholder: "Тип (Термин, Расчёт, Схема…)",
+        title: "Впиши любой тип или выбери из подсказок",
+      },
+    });
+    typeInp.value = this.form.type;
+
+    const caseHintEl = box.createDiv("my-sc-case-hint is-hidden");
+
+    const updateCaseHint = () => {
+      const existingCase = findCaseInsensitiveTypeMatch(
+        typeInp.value,
+        this.scan.schema.typeCounts
+      );
+      caseHintEl.empty();
+      if (!existingCase) {
+        caseHintEl.addClass("is-hidden");
+        return;
+      }
+      caseHintEl.removeClass("is-hidden");
+      caseHintEl.createSpan({
+        text: `В базе уже есть тип «${existingCase}». `,
+      });
+      const useExistingBtn = caseHintEl.createEl("button", {
+        cls: "my-sc-inline-link-btn",
+        text: `Использовать «${existingCase}»`,
+        attr: { type: "button" },
+      });
+      useExistingBtn.onclick = () => {
+        this.form.type = existingCase;
+        typeInp.value = existingCase;
+        caseHintEl.addClass("is-hidden");
+      };
     };
 
-    const titleInp = box.createEl("input", {
+    typeInp.oninput = () => {
+      this.form.type = typeInp.value;
+      updateCaseHint();
+    };
+    updateCaseHint();
+
+    const titleInp = topRow.createEl("input", {
       cls: "my-sc-input",
       attr: { type: "text", placeholder: "Название темы или материала…" },
     });
@@ -788,7 +735,9 @@ export class StudyCompilerModal extends Modal {
       this.form.title = titleInp.value;
     };
 
-    const parentSel = box.createEl("select", { cls: "dropdown my-sc-parent-select" });
+    const parentSel = topRow.createEl("select", {
+      cls: "dropdown my-sc-parent-select",
+    });
     parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
     const allTree = buildNestedFilteredTree(root, this.scan, null, {
       query: "",
@@ -810,7 +759,7 @@ export class StudyCompilerModal extends Modal {
       this.form.parentPath = parentSel.value;
     };
 
-    const dateInp = box.createEl("input", {
+    const dateInp = topRow.createEl("input", {
       cls: "my-sc-date",
       attr: { type: "date", title: "Дедлайн (необязательно)" },
     });
@@ -819,9 +768,125 @@ export class StudyCompilerModal extends Modal {
       this.form.deadline = dateInp.value;
     };
 
-    const createBtn = box.createEl("button", {
+    // Быстрые чипы самых частых типов
+    if (this.scan.schema.typeCounts.length > 0) {
+      const quickTypesRow = box.createDiv("my-sc-quick-types-row");
+      quickTypesRow.createSpan({
+        cls: "my-sc-quick-types-label",
+        text: "Частые типы:",
+      });
+      for (const tc of this.scan.schema.typeCounts.slice(0, 7)) {
+        const chip = quickTypesRow.createEl("button", {
+          cls:
+            "my-sc-filter-chip" +
+            (normalizeSpaces(this.form.type).toLowerCase() ===
+            tc.name.toLowerCase()
+              ? " is-active"
+              : ""),
+          text: `${tc.name} (${tc.count})`,
+          attr: { type: "button" },
+        });
+        chip.onclick = () => {
+          this.form.type = tc.name;
+          this.renderForm();
+        };
+      }
+    }
+
+    // 3.2. Произвольные свойства при создании
+    const propsSection = box.createDiv("my-sc-props-section");
+    for (let i = 0; i < this.form.customProps.length; i++) {
+      const draft = this.form.customProps[i];
+      if (!draft) continue;
+      const pRow = propsSection.createDiv("my-sc-prop-row");
+      const valDatalistId = `my-sc-val-dl-${draft.id}`;
+
+      const keyInp = pRow.createEl("input", {
+        cls: "my-sc-prop-key",
+        attr: {
+          type: "text",
+          list: "my-sc-prop-keys-datalist",
+          placeholder: "Ключ (напр. источник, автор)…",
+        },
+      });
+      keyInp.value = draft.key;
+
+      const valDl = pRow.createEl("datalist", { attr: { id: valDatalistId } });
+      const populateValSuggestions = (kName: string) => {
+        valDl.empty();
+        const vals = this.scan.schema.valuesByKey.get(normalizeSpaces(kName)) ?? [];
+        for (const v of vals.slice(0, 25)) {
+          valDl.createEl("option", { attr: { value: v } });
+        }
+      };
+      populateValSuggestions(draft.key);
+
+      keyInp.oninput = () => {
+        draft.key = keyInp.value;
+        populateValSuggestions(draft.key);
+      };
+
+      const valInp = pRow.createEl("input", {
+        cls: "my-sc-prop-val",
+        attr: {
+          type: "text",
+          list: valDatalistId,
+          placeholder:
+            draft.kind === "list"
+              ? "Значения через запятую…"
+              : "Значение (дата ГГГГ-ММ-ДД, число или текст)…",
+        },
+      });
+      valInp.value = draft.value;
+      valInp.oninput = () => {
+        draft.value = valInp.value;
+      };
+
+      const kindSel = pRow.createEl("select", {
+        cls: "dropdown my-sc-prop-kind",
+        attr: { title: "Формат записи в YAML" },
+      });
+      kindSel.createEl("option", { text: "Значение", value: "auto" });
+      kindSel.createEl("option", { text: "Список (,)", value: "list" });
+      kindSel.value = draft.kind;
+      kindSel.onchange = () => {
+        draft.kind = kindSel.value === "list" ? "list" : "auto";
+        valInp.placeholder =
+          draft.kind === "list"
+            ? "Значения через запятую…"
+            : "Значение (дата ГГГГ-ММ-ДД, число или текст)…";
+      };
+
+      const delBtn = pRow.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "✕",
+        attr: { type: "button", title: "Удалить свойство" },
+      });
+      delBtn.onclick = () => {
+        this.form.customProps.splice(i, 1);
+        this.renderForm();
+      };
+    }
+
+    const actionsRow = box.createDiv("my-sc-form-actions");
+    const addPropBtn = actionsRow.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "＋ Свойство",
+      attr: { type: "button" },
+    });
+    addPropBtn.onclick = () => {
+      this.form.customProps.push({
+        id: String(Date.now() + Math.random()),
+        key: "",
+        value: "",
+        kind: "auto",
+      });
+      this.renderForm();
+    };
+
+    const createBtn = actionsRow.createEl("button", {
       cls: "mod-cta my-sc-action-btn",
-      text: "Создать",
+      text: "Создать материал",
       attr: { type: "button" },
     });
 
@@ -831,6 +896,7 @@ export class StudyCompilerModal extends Modal {
       if (ok) {
         this.form.title = "";
         this.form.deadline = "";
+        this.form.customProps = [];
         this.renderForm();
       } else {
         createBtn.disabled = false;
@@ -844,11 +910,55 @@ export class StudyCompilerModal extends Modal {
   }
 
   private async createNote(root: StudyNoteItem): Promise<boolean> {
-    const cleanTitle = this.form.title.trim().replace(/[\\/:*?"<>|]/g, "");
+    const cleanTitle = normalizeSpaces(this.form.title).replace(/[\\/:*?"<>|]/g, "");
     if (!cleanTitle) {
-      new Notice("Введи название.");
+      new Notice("Введи название материала.");
       return false;
     }
+
+    const normalizedType = normalizeSpaces(this.form.type) || "Материал";
+
+    // Валидация произвольных свойств перед созданием файла
+    const seenKeysLower = new Set<string>([
+      KEYS.area.toLowerCase(),
+      KEYS.type.toLowerCase(),
+      KEYS.parent.toLowerCase(),
+    ]);
+    if (root.discipline) seenKeysLower.add(KEYS.discipline.toLowerCase());
+    if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+      seenKeysLower.add(KEYS.deadline.toLowerCase());
+    }
+
+    const preparedProps: Array<{ key: string; serialized: string }> = [];
+
+    for (const draft of this.form.customProps) {
+      const k = normalizeSpaces(draft.key);
+      const parsedVal = parseCustomPropertyValue(draft.value, draft.kind);
+      if (!k && parsedVal === undefined) continue;
+      if (!k) {
+        new Notice("Укажи имя ключа для добавленного свойства или удали пустую строку.");
+        return false;
+      }
+      if (isReservedYamlKey(k)) {
+        new Notice(
+          `Ключ «${k}» задаётся основными полями формы. Удали его из дополнительных свойств.`
+        );
+        return false;
+      }
+      const kLow = k.toLowerCase();
+      if (seenKeysLower.has(kLow)) {
+        new Notice(`Дублирующийся ключ свойства «${k}». Оставь только одно поле.`);
+        return false;
+      }
+      if (parsedVal === undefined) continue; // Пустые значения не записываем совсем
+
+      seenKeysLower.add(kLow);
+      preparedProps.push({
+        key: k,
+        serialized: serializeYamlScalarOrList(parsedVal),
+      });
+    }
+
     const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
     const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
     if (this.app.vault.getAbstractFileByPath(targetPath)) {
@@ -863,19 +973,25 @@ export class StudyCompilerModal extends Modal {
       const lines = [
         "---",
         `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
-        `${KEYS.type}: ${JSON.stringify(this.form.type)}`,
+        `${KEYS.type}: ${JSON.stringify(normalizedType)}`,
         `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
       ];
-      if (root.discipline) lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
+      if (root.discipline) {
+        lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
+      }
       if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
         lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
+      }
+      for (const prop of preparedProps) {
+        lines.push(`${prop.key}: ${prop.serialized}`);
       }
       lines.push("---", "", `# ${cleanTitle}`, "", "");
       await this.app.vault.create(targetPath, lines.join("\n"));
 
+      this.plugin.settings.lastUsedMaterialType = normalizedType;
       this.expanded.add(parent.path);
       this.saveExpanded();
-      new Notice(`Создано: «${cleanTitle}»`);
+      new Notice(`Создано: «${cleanTitle}» (${normalizedType})`);
       return true;
     } catch (err: unknown) {
       new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
@@ -928,7 +1044,8 @@ export class StudyCompilerModal extends Modal {
   }
 
   private openNote(path: string) {
-    this.safeClose();
+    this.noRestore();
+    this.close();
     void this.app.workspace.openLinkText(path, "", false);
   }
 
@@ -936,7 +1053,7 @@ export class StudyCompilerModal extends Modal {
     const scrollTop = this.treeEl.scrollTop;
     this.treeEl.empty();
     this.rowElementByPath.clear();
-    const root = this.getRoot();
+    const root = this.getRootInCurrentGroup();
     if (!root) return;
 
     const branchRoot = this.getActiveBranchRoot(root);
@@ -1034,12 +1151,28 @@ export class StudyCompilerModal extends Modal {
     this.renderHighlightedTitle(title, item.name, this.searchQuery);
     title.onclick = () => this.openNote(item.path);
 
+    // Кликабельный бейдж типа: позволяет быстро сменить тип существующей заметки прямо из дерева
     const meta = getWorkMeta(item.noteType, item.icon);
-    const badge = left.createSpan({
+    const badge = left.createEl("button", {
       cls: "my-sc-type-badge",
       text: `${meta.icon} ${item.noteType || "без типа"}`,
+      attr: {
+        type: "button",
+        title: "Нажми, чтобы изменить тип заметки",
+      },
     });
     badge.style.setProperty("--badge-color", meta.color);
+    badge.onclick = (e) => {
+      e.stopPropagation();
+      if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+      } else {
+        this.editingNodePath = item.path;
+        this.editingNodeMode = "type";
+      }
+      this.renderTree();
+    };
 
     if (item.parentPaths.length > 1) {
       left.createSpan({
@@ -1051,25 +1184,6 @@ export class StudyCompilerModal extends Modal {
 
     const right = row.createDiv("my-sc-tree-right");
     this.renderDeadline(right, item);
-
-    const nodeUnlinked = this.linksBySourcePath.get(item.path);
-    if (nodeUnlinked && nodeUnlinked.length > 0) {
-      const linkPill = right.createEl("button", {
-        cls: "my-sc-unlinked-pill",
-        text: `🔗 +${nodeUnlinked.length}`,
-        attr: {
-          type: "button",
-          title: `В тексте «${item.name}» найдено непривязанных ссылок: ${nodeUnlinked.length}. Нажми, чтобы добавить их в проект`,
-        },
-      });
-      linkPill.onclick = (e) => {
-        e.stopPropagation();
-        this.linksPanelOpen = true;
-        this.linksFilterSourcePath = item.path;
-        this.renderBar();
-        this.renderLinksTray();
-      };
-    }
 
     if (node.hasChildren) {
       const countPill = right.createEl("button", {
@@ -1102,6 +1216,30 @@ export class StudyCompilerModal extends Modal {
       focusBtn.onclick = () => this.setFocusBranch(projectRoot, item.path);
     }
 
+    const propEditBtn = right.createEl("button", {
+      cls:
+        "my-sc-move-btn" +
+        (this.editingNodePath === item.path && this.editingNodeMode === "props"
+          ? " is-active"
+          : ""),
+      text: "⚙",
+      attr: {
+        type: "button",
+        title: "Изменить тип или добавить/обновить YAML-свойство заметки",
+      },
+    });
+    propEditBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (this.editingNodePath === item.path && this.editingNodeMode === "props") {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+      } else {
+        this.editingNodePath = item.path;
+        this.editingNodeMode = "props";
+      }
+      this.renderTree();
+    };
+
     const addBtn = right.createEl("button", {
       cls: "my-sc-move-btn",
       text: "＋",
@@ -1116,12 +1254,178 @@ export class StudyCompilerModal extends Modal {
     });
     moveBtn.onclick = () => this.openMovePicker(item);
 
+    // Компактная панель быстрого изменения типа или свойства у существующей заметки
+    if (this.editingNodePath === item.path && this.editingNodeMode) {
+      this.renderInlineNodeEditor(groupEl, item);
+    }
+
     if (node.isExpanded && node.children.length > 0) {
       const childrenWrap = groupEl.createDiv("my-sc-children-container");
       for (const child of node.children) {
         this.renderNodeGroup(childrenWrap, child, projectRoot);
       }
     }
+  }
+
+  private renderInlineNodeEditor(parentGroup: HTMLElement, item: StudyNoteItem) {
+    const editorBox = parentGroup.createDiv("my-sc-inline-editor");
+
+    if (this.editingNodeMode === "type") {
+      editorBox.createSpan({ cls: "my-sc-inline-label", text: "Тип:" });
+      const inp = editorBox.createEl("input", {
+        cls: "my-sc-type-input",
+        attr: {
+          type: "text",
+          list: "my-sc-types-datalist",
+          value: item.noteType,
+          placeholder: "Новый тип…",
+        },
+      });
+      const saveBtn = editorBox.createEl("button", {
+        cls: "mod-cta my-sc-chip-btn",
+        text: "Сохранить",
+        attr: { type: "button" },
+      });
+      const cancelBtn = editorBox.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text: "Отмена",
+        attr: { type: "button" },
+      });
+
+      const applyType = async () => {
+        const nextType = normalizeSpaces(inp.value);
+        if (!nextType) {
+          new Notice("Введи название типа.");
+          return;
+        }
+        try {
+          await this.app.fileManager.processFrontMatter(
+            item.file,
+            (fm: Record<string, unknown>) => {
+              fm[KEYS.type] = nextType;
+            }
+          );
+          this.plugin.settings.lastUsedMaterialType = nextType;
+          this.plugin.requestSaveSettings();
+          this.editingNodePath = null;
+          this.editingNodeMode = null;
+          new Notice(`Тип «${item.name}» → ${nextType}`);
+        } catch (err: unknown) {
+          new Notice(
+            "Ошибка записи YAML: " +
+              (err instanceof Error ? err.message : String(err))
+          );
+        }
+      };
+
+      saveBtn.onclick = () => void applyType();
+      cancelBtn.onclick = () => {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        this.renderTree();
+      };
+      inp.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter") void applyType();
+      });
+      window.setTimeout(() => inp.focus(), 20);
+      return;
+    }
+
+    // Режим добавления/обновления произвольного свойства у существующей заметки
+    editorBox.createSpan({ cls: "my-sc-inline-label", text: "Свойство YAML:" });
+    const dlId = `my-sc-inline-val-${Date.now()}`;
+    const keyInp = editorBox.createEl("input", {
+      cls: "my-sc-prop-key",
+      attr: {
+        type: "text",
+        list: "my-sc-prop-keys-datalist",
+        placeholder: "Ключ (напр. источник)…",
+      },
+    });
+    const valDl = editorBox.createEl("datalist", { attr: { id: dlId } });
+    keyInp.oninput = () => {
+      valDl.empty();
+      const vals =
+        this.scan.schema.valuesByKey.get(normalizeSpaces(keyInp.value)) ?? [];
+      for (const v of vals.slice(0, 25)) {
+        valDl.createEl("option", { attr: { value: v } });
+      }
+    };
+
+    const valInp = editorBox.createEl("input", {
+      cls: "my-sc-prop-val",
+      attr: {
+        type: "text",
+        list: dlId,
+        placeholder: "Значение (пусто = удалить ключ)…",
+      },
+    });
+
+    const kindSel = editorBox.createEl("select", {
+      cls: "dropdown my-sc-prop-kind",
+    });
+    kindSel.createEl("option", { text: "Значение", value: "auto" });
+    kindSel.createEl("option", { text: "Список (,)", value: "list" });
+
+    const saveBtn = editorBox.createEl("button", {
+      cls: "mod-cta my-sc-chip-btn",
+      text: "Записать",
+      attr: { type: "button" },
+    });
+    const cancelBtn = editorBox.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Отмена",
+      attr: { type: "button" },
+    });
+
+    const applyProp = async () => {
+      const k = normalizeSpaces(keyInp.value);
+      if (!k) {
+        new Notice("Укажи ключ свойства.");
+        return;
+      }
+      if (isReservedYamlKey(k)) {
+        new Notice(
+          `Служебный ключ «${k}» меняется через кнопку типа или смены родителя.`
+        );
+        return;
+      }
+      const kind = kindSel.value === "list" ? "list" : "auto";
+      const parsedVal = parseCustomPropertyValue(valInp.value, kind);
+
+      try {
+        await this.app.fileManager.processFrontMatter(
+          item.file,
+          (fm: Record<string, unknown>) => {
+            if (parsedVal === undefined) {
+              delete fm[k];
+            } else {
+              fm[k] = parsedVal;
+            }
+          }
+        );
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        new Notice(
+          parsedVal === undefined
+            ? `Свойство «${k}» удалено из «${item.name}»`
+            : `Записано «${k}» в «${item.name}»`
+        );
+      } catch (err: unknown) {
+        new Notice(
+          "Ошибка записи YAML: " +
+            (err instanceof Error ? err.message : String(err))
+        );
+      }
+    };
+
+    saveBtn.onclick = () => void applyProp();
+    cancelBtn.onclick = () => {
+      this.editingNodePath = null;
+      this.editingNodeMode = null;
+      this.renderTree();
+    };
+    window.setTimeout(() => keyInp.focus(), 20);
   }
 
   private openMovePicker(item: StudyNoteItem) {
