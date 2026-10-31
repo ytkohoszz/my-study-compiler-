@@ -3,7 +3,7 @@
   width: min(860px, 96vw) !important;
   max-width: 860px !important;
   max-height: 92vh !important;
-  padding: 18px 22px !important;
+  padding: 16px 20px !important;
   border-radius: 14px;
   display: flex;
   flex-direction: column;
@@ -11,8 +11,8 @@
 
 /* Родной крестик Obsidian (.modal-close-button) всегда виден и аккуратно выровнен */
 .modal.my-sc-modal-container > .modal-close-button {
-  top: 14px;
-  right: 16px;
+  top: 12px;
+  right: 14px;
   z-index: 10;
 }
 
@@ -21,7 +21,7 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  gap: 10px;
+  gap: 8px;
 }
 
 .my-sc-modal * {
@@ -35,42 +35,51 @@
 .my-sc-head-bar {
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 28px;
   padding-right: 40px;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .my-sc-head-title {
-  font-size: 1.05rem;
-  font-weight: 750;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--text-normal);
 }
 
+/* ---------- Верхняя панель: два тонких ряда ---------- */
 .my-sc-project-bar {
   display: flex;
   flex-direction: column;
+  gap: 4px;
+}
+
+.my-sc-top-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-/* Сегмент-переключатель «Активные / Завершённые» */
 .my-sc-segment-bar {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 10px;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
 }
 
 .my-sc-segment-btn {
-  min-height: 34px;
-  border-radius: 7px;
-  font-size: 0.82rem;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
   background: transparent;
   border: 1px solid transparent;
+  box-shadow: none;
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -79,7 +88,71 @@
   background: var(--background-primary);
   color: var(--text-normal);
   border-color: var(--interactive-accent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.my-sc-work-select {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 32px;
+  font-weight: 600;
+}
+
+.my-sc-icon-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+button.my-sc-icon-btn {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.my-sc-icon-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.my-sc-icon-btn.is-active {
+  color: var(--interactive-accent);
+  border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.my-sc-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.my-sc-meta-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.my-sc-summary-text {
+  font-weight: 500;
 }
 
 .my-sc-empty-group-box {
@@ -88,7 +161,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 8px;
   background: var(--background-secondary);
   border: 1px dashed var(--background-modifier-border);
@@ -96,23 +169,8 @@
   color: var(--text-muted);
 }
 
-.my-sc-project-select-wrap,
-.my-sc-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.my-sc-work-select {
-  flex: 1 1 260px;
-  min-width: 0;
-  min-height: 38px;
-  font-weight: 600;
-}
-
 .my-sc-chip-btn {
-  min-height: 34px;
+  min-height: 30px;
   padding: 0 12px;
   border-radius: 8px;
   font-size: 0.8rem;
@@ -127,32 +185,11 @@
   background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
 }
 
-.my-sc-summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.my-sc-summary-text {
-  font-weight: 500;
-}
-
+/* ---------- Поиск ---------- */
 .my-sc-search-panel {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
 }
 
 .my-sc-search-panel.is-hidden {
@@ -166,14 +203,14 @@
 }
 
 .my-sc-search-input {
-  flex: 1 1 220px;
-  min-height: 34px;
+  flex: 1 1 200px;
+  min-height: 32px;
   font-size: 0.86rem;
 }
 
 .my-sc-type-filter {
-  flex: 0 0 160px;
-  min-height: 34px;
+  flex: 0 0 150px;
+  min-height: 32px;
 }
 
 .my-sc-filter-chips {
@@ -183,13 +220,14 @@
 }
 
 .my-sc-filter-chip {
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 9px;
   border-radius: 99px;
   font-size: 0.74rem;
   font-weight: 600;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -200,15 +238,16 @@
   background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
 }
 
+/* ---------- Хлебные крошки фокуса ---------- */
 .my-sc-crumbs-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-secondary));
-  border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 28%, var(--background-modifier-border));
 }
 
 .my-sc-crumbs-bar.is-hidden {
@@ -216,9 +255,9 @@
 }
 
 .my-sc-crumbs-label {
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   color: var(--text-muted);
-  margin-right: 4px;
+  margin-right: 2px;
 }
 
 .my-sc-crumb-sep {
@@ -227,11 +266,13 @@
 }
 
 .my-sc-crumb-btn {
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 8px;
   border-radius: 6px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
 }
 
@@ -242,15 +283,17 @@
 
 .my-sc-crumb-reset {
   margin-left: auto;
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 8px;
   border-radius: 6px;
   font-size: 0.74rem;
+  background: transparent;
+  box-shadow: none;
   color: var(--text-muted);
   cursor: pointer;
 }
 
-/* Форма создания материала со свободным типом и произвольными свойствами */
+/* ---------- Форма создания материала ---------- */
 .my-sc-add-box {
   display: flex;
   flex-direction: column;
@@ -275,25 +318,25 @@
 
 .my-sc-type-input {
   width: 100%;
-  min-height: 34px;
+  min-height: 32px;
   font-size: 0.84rem;
   font-weight: 600;
 }
 
 .my-sc-input {
   flex: 1 1 200px;
-  min-height: 34px;
+  min-height: 32px;
   font-size: 0.86rem;
 }
 
 .my-sc-parent-select {
   flex: 1 1 170px;
   min-width: 0;
-  min-height: 34px;
+  min-height: 32px;
 }
 
 .my-sc-date {
-  min-height: 34px;
+  min-height: 32px;
 }
 
 .my-sc-case-hint {
@@ -346,20 +389,20 @@
 .my-sc-prop-key {
   flex: 0 1 160px;
   min-width: 120px;
-  min-height: 32px;
+  min-height: 30px;
   font-size: 0.82rem;
 }
 
 .my-sc-prop-val {
   flex: 1 1 180px;
   min-width: 140px;
-  min-height: 32px;
+  min-height: 30px;
   font-size: 0.82rem;
 }
 
 .my-sc-prop-kind {
   flex: 0 0 115px;
-  min-height: 32px;
+  min-height: 30px;
   font-size: 0.78rem;
 }
 
@@ -371,10 +414,11 @@
   padding-top: 4px;
 }
 
+/* ---------- Дерево материалов ---------- */
 .my-sc-body {
   flex: 1 1 auto;
   min-height: 240px;
-  max-height: 55vh;
+  max-height: 62vh;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -386,14 +430,14 @@
 .my-sc-tree-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .my-sc-node-group {
   --branch-accent: var(--color-blue, #599ed6);
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .my-sc-node-group.is-depth-0 {
@@ -412,47 +456,30 @@
   --branch-accent: var(--color-cyan, #4fb3d9);
 }
 
-.my-sc-node-group.is-branch.is-expanded {
-  background: color-mix(in srgb, var(--branch-accent) 5%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--branch-accent) 28%, var(--background-modifier-border));
-  padding-bottom: 6px;
-}
-
 .my-sc-tree-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
-  padding: 5px 10px 5px 8px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-left: 3px solid var(--branch-accent);
-  transition: border-color 0.14s ease, background-color 0.14s ease;
+  min-height: 34px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
 }
 
 .my-sc-tree-row:hover {
-  border-color: color-mix(in srgb, var(--branch-accent) 45%, var(--background-modifier-border));
-}
-
-.my-sc-tree-row.is-open-parent {
-  background: color-mix(in srgb, var(--branch-accent) 12%, var(--background-secondary));
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-
-.my-sc-tree-row.is-open-parent .my-sc-node-title {
-  font-weight: 750;
+  background: var(--background-modifier-hover);
 }
 
 .my-sc-tree-row.is-kb-active {
+  background: var(--background-modifier-hover);
   border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .my-sc-tree-row.is-match {
-  background: color-mix(in srgb, var(--color-yellow, #e5a158) 12%, var(--background-secondary));
+  background: color-mix(in srgb, var(--color-yellow, #e5a158) 14%, transparent);
 }
 
 /* Подсветка только что появившегося узла */
@@ -462,8 +489,8 @@
 
 @keyframes my-sc-row-fresh {
   from {
-    background: color-mix(in srgb, var(--interactive-accent) 26%, var(--background-secondary));
-    box-shadow: 0 0 0 1px var(--interactive-accent);
+    background: color-mix(in srgb, var(--interactive-accent) 26%, transparent);
+    border-color: var(--interactive-accent);
   }
 }
 
@@ -472,10 +499,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 4px 8px 0 8px;
+  margin: 2px 6px 4px 28px;
   padding: 6px 10px;
   border-radius: 7px;
-  background: var(--background-primary);
+  background: var(--background-secondary);
   border: 1px solid var(--interactive-accent);
 }
 
@@ -490,71 +517,76 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-top: 6px;
-  margin-left: 18px;
-  padding-left: 14px;
-  border-left: 2px solid color-mix(in srgb, var(--branch-accent) 55%, var(--background-modifier-border));
+  gap: 2px;
+  margin-left: 15px;
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, var(--branch-accent) 40%, var(--background-modifier-border));
 }
 
 .my-sc-tree-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
 
-.my-sc-toggle-btn {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+button.my-sc-toggle-btn {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
   padding: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--branch-accent) 14%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--branch-accent) 35%, var(--background-modifier-border));
+  background: transparent;
+  border: none;
+  box-shadow: none;
   color: var(--branch-accent);
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: transform 0.16s ease, background-color 0.14s ease;
 }
 
-.my-sc-toggle-btn:hover {
-  background: color-mix(in srgb, var(--branch-accent) 24%, var(--background-primary));
+button.my-sc-toggle-btn:hover {
+  background: color-mix(in srgb, var(--branch-accent) 18%, transparent);
 }
 
-.my-sc-toggle-btn.is-open {
+button.my-sc-toggle-btn.is-open {
   transform: rotate(90deg);
 }
 
 .my-sc-leaf-marker {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .my-sc-leaf-dot {
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--branch-accent) 65%, var(--text-muted));
+  background: color-mix(in srgb, var(--branch-accent) 70%, var(--text-faint));
 }
 
 .my-sc-node-title {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-normal);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.my-sc-tree-row.is-parent-row .my-sc-node-title {
+  font-weight: 600;
 }
 
 .my-sc-node-title:hover {
@@ -568,67 +600,87 @@
   border-radius: 3px;
 }
 
+/* Тип материала: тихий ярлык, цвет только в названии */
 button.my-sc-type-badge {
-  min-height: 22px;
-  height: auto;
-  font-size: 0.68rem;
-  font-weight: 650;
-  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0 5px;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color, #599ed6) 35%, transparent);
-  color: var(--badge-color, #599ed6);
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-muted);
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: none;
 }
 
 button.my-sc-type-badge:hover {
-  border-color: var(--badge-color, #599ed6);
+  background: var(--background-modifier-hover);
+}
+
+.my-sc-type-icon {
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.my-sc-type-name {
+  color: color-mix(in srgb, var(--badge-color, #599ed6) 70%, var(--text-muted));
 }
 
 .my-sc-multi-parent {
+  flex-shrink: 0;
   font-size: 0.66rem;
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 0 5px;
   border-radius: 4px;
-  color: var(--text-muted);
+  color: var(--text-faint);
   border: 1px dashed var(--background-modifier-border);
 }
 
 .my-sc-tree-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
-.my-sc-subcount-pill {
-  min-height: 26px;
-  padding: 0 9px;
+button.my-sc-subcount-pill {
+  min-height: 20px;
+  height: 20px;
+  padding: 0 7px;
   border-radius: 99px;
-  font-size: 0.73rem;
+  font-size: 0.7rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+  background: transparent;
+  border: none;
+  box-shadow: none;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.my-sc-subcount-pill.is-collapsed {
+button.my-sc-subcount-pill.is-collapsed {
   color: var(--branch-accent);
-  background: color-mix(in srgb, var(--branch-accent) 16%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--branch-accent) 42%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--branch-accent) 14%, transparent);
 }
 
-.my-sc-subcount-pill.is-expanded {
-  color: var(--text-muted);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+button.my-sc-subcount-pill.is-expanded {
+  color: var(--text-faint);
+}
+
+button.my-sc-subcount-pill:hover {
+  background: color-mix(in srgb, var(--branch-accent) 22%, transparent);
 }
 
 .my-sc-deadline {
-  font-size: 0.73rem;
-  padding: 2px 8px;
+  font-size: 0.7rem;
+  padding: 1px 7px;
   border-radius: 6px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -651,18 +703,43 @@ button.my-sc-type-badge:hover {
   font-weight: 700;
 }
 
-.my-sc-move-btn {
-  width: 32px;
-  min-height: 32px;
+/* Кнопка действий: видна при наведении, на сенсорных экранах всегда приглушена */
+button.my-sc-row-more {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
-  border-radius: 7px;
-  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 1.05rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  opacity: 0;
   cursor: pointer;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
 }
 
-.my-sc-move-btn.is-active {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
+.my-sc-tree-row:hover button.my-sc-row-more,
+.my-sc-tree-row.is-kb-active button.my-sc-row-more,
+button.my-sc-row-more:focus-visible {
+  opacity: 1;
+}
+
+button.my-sc-row-more:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+@media (hover: none) {
+  button.my-sc-row-more {
+    opacity: 0.6;
+  }
 }
 
 .my-sc-empty {
@@ -672,14 +749,12 @@ button.my-sc-type-badge:hover {
   font-size: 0.86rem;
 }
 
-/* Стадия 3: микро-анимации */
+/* ---------- Микро-анимации ---------- */
 .my-sc-chip-btn,
 .my-sc-segment-btn,
 .my-sc-filter-chip,
 .my-sc-crumb-btn,
-.my-sc-move-btn,
-button.my-sc-type-badge,
-.my-sc-subcount-pill {
+button.my-sc-icon-btn {
   transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease,
     transform 0.1s ease;
 }
@@ -687,17 +762,16 @@ button.my-sc-type-badge,
 .my-sc-chip-btn:active,
 .my-sc-segment-btn:active,
 .my-sc-filter-chip:active,
-.my-sc-move-btn:active,
-.my-sc-subcount-pill:active {
-  transform: scale(0.96);
-}
-
-.my-sc-toggle-btn:active {
+button.my-sc-icon-btn:active {
   transform: scale(0.94);
 }
 
-.my-sc-toggle-btn.is-open:active {
-  transform: rotate(90deg) scale(0.94);
+button.my-sc-toggle-btn:active {
+  transform: scale(0.9);
+}
+
+button.my-sc-toggle-btn.is-open:active {
+  transform: rotate(90deg) scale(0.9);
 }
 
 .my-sc-add-box.is-entering {
@@ -711,12 +785,12 @@ button.my-sc-type-badge,
   }
 }
 
-/* Стадия 4: граф проекта */
+/* ---------- Граф проекта ---------- */
 .my-sc-graph-wrap {
   position: relative;
   flex: 1 1 auto;
   min-height: 300px;
-  height: min(58vh, 640px);
+  height: min(60vh, 660px);
   overflow: hidden;
   border-radius: 10px;
   border: 1px solid var(--background-modifier-border);
@@ -972,13 +1046,13 @@ button.my-sc-type-badge,
 
 @media (prefers-reduced-motion: reduce) {
   .my-sc-tree-row,
-  .my-sc-toggle-btn,
+  button.my-sc-toggle-btn,
+  button.my-sc-row-more,
   .my-sc-chip-btn,
   .my-sc-segment-btn,
   .my-sc-filter-chip,
   .my-sc-crumb-btn,
-  .my-sc-move-btn,
-  .my-sc-subcount-pill,
+  button.my-sc-icon-btn,
   .my-sc-add-box,
   .my-sc-graph-viewport,
   .my-sc-graph-ctrl,
@@ -1011,6 +1085,19 @@ button.my-sc-type-badge,
     right: max(12px, env(safe-area-inset-right, 12px));
   }
 
+  .my-sc-top-row {
+    flex-wrap: wrap;
+  }
+
+  .my-sc-top-row .my-sc-icon-group {
+    margin-left: auto;
+  }
+
+  .my-sc-top-row .my-sc-work-select {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
   .my-sc-body {
     max-height: none;
   }
@@ -1024,12 +1111,12 @@ button.my-sc-type-badge,
   }
 
   .my-sc-children-container {
-    margin-left: 10px;
-    padding-left: 10px;
+    margin-left: 11px;
+    padding-left: 8px;
   }
 
-  .my-sc-tree-row {
-    flex-wrap: wrap;
+  .my-sc-inline-editor {
+    margin-left: 6px;
   }
 
   .my-sc-graph-wrap {

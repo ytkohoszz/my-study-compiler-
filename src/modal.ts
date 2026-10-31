@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
+import { App, FuzzySuggestModal, Menu, Modal, Notice, normalizePath } from "obsidian";
 import type MyStudyCompilerPlugin from "./main";
 import {
   CustomPropertyDraft,
@@ -502,24 +502,42 @@ export class StudyCompilerModal extends Modal {
     }
   }
 
+  private iconBtn(
+    parent: HTMLElement,
+    icon: string,
+    title: string,
+    onClick: () => void,
+    active = false
+  ): HTMLButtonElement {
+    const btn = parent.createEl("button", {
+      cls: "my-sc-icon-btn" + (active ? " is-active" : ""),
+      text: icon,
+      attr: { type: "button", title, "aria-label": title },
+    });
+    btn.onclick = onClick;
+    return btn;
+  }
+
   private renderBar() {
     this.barEl.empty();
 
-    // 1. Сегмент-переключатель «Активные · N / Завершённые · M»
-    const segRow = this.barEl.createDiv("my-sc-segment-bar");
     const activeCount = this.scan.activeRoots.length;
     const completedCount = this.scan.completedRoots.length;
 
-    const segments: Array<{ id: ProjectGroupTab; label: string }> = [
-      { id: "active", label: `🔥 Активные · ${activeCount}` },
-      { id: "completed", label: `✓ Завершённые · ${completedCount}` },
+    // Ряд 1: вкладки · проект · действия над проектом
+    const topRow = this.barEl.createDiv("my-sc-top-row");
+
+    const segRow = topRow.createDiv("my-sc-segment-bar");
+    const segments: Array<{ id: ProjectGroupTab; label: string; title: string }> = [
+      { id: "active", label: `🔥 ${activeCount}`, title: "Активные проекты" },
+      { id: "completed", label: `✓ ${completedCount}`, title: "Завершённые проекты" },
     ];
 
     for (const seg of segments) {
       const btn = segRow.createEl("button", {
         cls: "my-sc-segment-btn" + (this.groupTab === seg.id ? " is-active" : ""),
         text: seg.label,
-        attr: { type: "button" },
+        attr: { type: "button", title: seg.title, "aria-label": seg.title },
       });
       btn.onclick = () => {
         if (this.groupTab === seg.id) return;
@@ -580,13 +598,12 @@ export class StudyCompilerModal extends Modal {
     const branchRoot = this.getActiveBranchRoot(root);
     const groupRoots = this.getRootsForTab(this.groupTab);
 
-    const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
-    const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
+    const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
     for (const r of groupRoots) {
       const meta = getWorkMeta(r.noteType, r.icon);
       const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
       const o = sel.createEl("option", {
-        text: `${meta.icon} ${r.name} (${r.noteType || "Проект"})${dlText}`,
+        text: `${meta.icon} ${r.name}${dlText}`,
         value: r.path,
       });
       if (r.path === root.path) o.selected = true;
@@ -605,95 +622,72 @@ export class StudyCompilerModal extends Modal {
       this.renderMain();
     };
 
-    const toggleRootStatusBtn = row1.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: root.isCompletedRoot ? "↩ В работу" : "✓ Завершить проект",
-      attr: {
-        type: "button",
-        title: root.isCompletedRoot
-          ? "Вернуть корневой проект в список активных"
-          : "Перевести корневой проект в завершённые",
-      },
-    });
-    toggleRootStatusBtn.onclick = () => void this.toggleRootProjectStatus(root);
+    const projectActions = topRow.createDiv("my-sc-icon-group");
+    this.iconBtn(
+      projectActions,
+      root.isCompletedRoot ? "↩" : "✓",
+      root.isCompletedRoot ? "Вернуть проект в работу" : "Завершить проект",
+      () => void this.toggleRootProjectStatus(root)
+    );
+    this.iconBtn(projectActions, "📄", "Открыть заметку текущей ветки или проекта", () =>
+      this.openNote(branchRoot.path)
+    );
 
-    const openBtn = row1.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📄 Открыть",
-      attr: { type: "button", title: "Открыть заметку текущей ветки или проекта" },
-    });
-    openBtn.onclick = () => this.openNote(branchRoot.path);
-
+    // Ряд 2: сводка · инструменты
     const descendants = collectDescendants(branchRoot.path, this.scan);
     const directKidsCount = (this.scan.childrenOf.get(branchRoot.path) ?? []).length;
-    const summaryRow = this.barEl.createDiv("my-sc-summary-row");
+    const metaRow = this.barEl.createDiv("my-sc-meta-row");
+    const metaInfo = metaRow.createDiv("my-sc-meta-info");
     const scopePrefix =
-      branchRoot.path !== root.path ? `Ветка «${branchRoot.name}»: ` : "";
-    summaryRow.createSpan({
+      branchRoot.path !== root.path ? `Ветка «${branchRoot.name}» · ` : "";
+    metaInfo.createSpan({
       cls: "my-sc-summary-text",
       text:
         descendants.size > 0
-          ? `${scopePrefix}материалов в дереве — ${descendants.size} (разделов 1-го уровня: ${directKidsCount})`
-          : `${scopePrefix}материалов пока нет`,
+          ? `${scopePrefix}Материалов: ${descendants.size} · разделов: ${directKidsCount}`
+          : `${scopePrefix}Материалов пока нет`,
     });
-    this.renderDeadline(summaryRow, branchRoot);
+    this.renderDeadline(metaInfo, branchRoot);
 
-    const tools = this.barEl.createDiv("my-sc-tools");
-    const addBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.form.open ? " is-active" : ""),
-      text: this.form.open ? "✕ Закрыть форму" : "＋ Добавить материал",
-      attr: { type: "button" },
-    });
-    addBtn.onclick = () => {
-      if (this.form.open) {
-        this.form.open = false;
-        this.formEl.empty();
-        this.renderBar();
-      } else {
-        this.openForm(branchRoot.path);
-      }
-    };
-
-    const viewBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.viewMode === "graph" ? " is-active" : ""),
-      text: this.viewMode === "graph" ? "🌳 Дерево" : "🕸 Граф",
-      attr: {
-        type: "button",
-        title:
-          this.viewMode === "graph"
-            ? "Вернуться к списку-дереву"
-            : "Показать связи материалов в виде графа",
+    const tools = metaRow.createDiv("my-sc-icon-group");
+    this.iconBtn(
+      tools,
+      this.form.open ? "✕" : "＋",
+      this.form.open ? "Закрыть форму" : "Добавить материал",
+      () => {
+        if (this.form.open) {
+          this.form.open = false;
+          this.formEl.empty();
+          this.renderBar();
+        } else {
+          this.openForm(branchRoot.path);
+        }
       },
-    });
-    viewBtn.onclick = () =>
-      this.setViewMode(this.viewMode === "graph" ? "tree" : "graph");
+      this.form.open
+    );
+    this.iconBtn(
+      tools,
+      "🕸",
+      this.viewMode === "graph" ? "Вернуться к дереву" : "Показать граф связей",
+      () => this.setViewMode(this.viewMode === "graph" ? "tree" : "graph"),
+      this.viewMode === "graph"
+    );
 
     if (this.viewMode === "tree") {
-      const expandBtn = tools.createEl("button", {
-        cls: "my-sc-chip-btn",
-        text: "⤢ Развернуть всё",
-        attr: { type: "button" },
-      });
-      expandBtn.onclick = () => {
+      this.iconBtn(tools, "⤢", "Развернуть все ветки", () => {
         for (const p of collectDescendants(branchRoot.path, this.scan)) {
           if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
         }
         this.saveExpanded();
         this.renderTree();
-      };
-
-      const collapseBtn = tools.createEl("button", {
-        cls: "my-sc-chip-btn",
-        text: "⤡ Свернуть всё",
-        attr: { type: "button" },
       });
-      collapseBtn.onclick = () => {
+      this.iconBtn(tools, "⤡", "Свернуть все ветки", () => {
         for (const p of collectDescendants(branchRoot.path, this.scan)) {
           this.expanded.delete(p);
         }
         this.saveExpanded();
         this.renderTree();
-      };
+      });
     }
   }
 
@@ -733,7 +727,7 @@ export class StudyCompilerModal extends Modal {
       cls: "my-sc-search-input",
       attr: {
         type: "search",
-        placeholder: "🔍 Поиск по дереву (название, тип, #тег)… ↑/↓ и Enter",
+        placeholder: "🔍 Название, тип или #тег",
       },
     });
     inp.value = this.searchQuery;
@@ -806,7 +800,7 @@ export class StudyCompilerModal extends Modal {
     this.crumbsEl.removeClass("is-hidden");
 
     const chain = buildBreadcrumbChain(this.scan, root.path, branchRoot.path);
-    this.crumbsEl.createSpan({ cls: "my-sc-crumbs-label", text: "Фокус ветки:" });
+    this.crumbsEl.createSpan({ cls: "my-sc-crumbs-label", text: "Фокус:" });
 
     chain.forEach((node, idx) => {
       if (idx > 0) {
@@ -1031,9 +1025,9 @@ export class StudyCompilerModal extends Modal {
       };
 
       const delBtn = pRow.createEl("button", {
-        cls: "my-sc-move-btn",
+        cls: "my-sc-icon-btn",
         text: "✕",
-        attr: { type: "button", title: "Удалить свойство" },
+        attr: { type: "button", title: "Удалить свойство", "aria-label": "Удалить свойство" },
       });
       delBtn.onclick = () => {
         this.form.customProps.splice(i, 1);
@@ -1222,6 +1216,54 @@ export class StudyCompilerModal extends Modal {
     void this.app.workspace.openLinkText(path, "", false);
   }
 
+  private startNodeEditing(path: string, mode: "type" | "props") {
+    this.editingNodePath = path;
+    this.editingNodeMode = mode;
+    this.renderTree();
+  }
+
+  private openRowMenu(e: MouseEvent, item: StudyNoteItem, projectRoot: StudyNoteItem) {
+    const menu = new Menu();
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Открыть заметку")
+        .setIcon("file-text")
+        .onClick(() => this.openNote(item.path))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Фокус на этой ветке")
+        .setIcon("crosshair")
+        .onClick(() => this.setFocusBranch(projectRoot, item.path))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Добавить материал внутрь")
+        .setIcon("plus")
+        .onClick(() => this.openForm(item.path))
+    );
+    menu.addSeparator();
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Изменить тип")
+        .setIcon("tag")
+        .onClick(() => this.startNodeEditing(item.path, "type"))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Свойство YAML…")
+        .setIcon("settings")
+        .onClick(() => this.startNodeEditing(item.path, "props"))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Сменить родителя…")
+        .setIcon("arrow-left-right")
+        .onClick(() => this.openMovePicker(item))
+    );
+    menu.showAtMouseEvent(e);
+  }
+
   private renderTree() {
     const scrollTop = this.treeEl.scrollTop;
     this.treeEl.empty();
@@ -1251,7 +1293,7 @@ export class StudyCompilerModal extends Modal {
         cls: "my-sc-empty",
         text: hasFilters
           ? "По текущему запросу или фильтру ничего не найдено."
-          : "В этой ветке пока нет материалов. Нажми «＋ Добавить материал».",
+          : "В этой ветке пока нет материалов. Нажми «＋» над списком.",
       });
       this.pendingOpenPath = null;
       return;
@@ -1311,6 +1353,10 @@ export class StudyCompilerModal extends Modal {
         (this.freshPaths.has(item.path) ? " is-new" : ""),
     });
     this.rowElementByPath.set(item.path, row);
+    row.oncontextmenu = (e) => {
+      e.preventDefault();
+      this.openRowMenu(e, item, projectRoot);
+    };
 
     const left = row.createDiv("my-sc-tree-left");
 
@@ -1345,23 +1391,23 @@ export class StudyCompilerModal extends Modal {
     const meta = getWorkMeta(item.noteType, item.icon);
     const badge = left.createEl("button", {
       cls: "my-sc-type-badge",
-      text: `${meta.icon} ${item.noteType || "без типа"}`,
       attr: {
         type: "button",
         title: "Нажми, чтобы изменить тип заметки",
       },
     });
+    badge.createSpan({ cls: "my-sc-type-icon", text: meta.icon });
+    badge.createSpan({ cls: "my-sc-type-name", text: item.noteType || "без типа" });
     badge.style.setProperty("--badge-color", meta.color);
     badge.onclick = (e) => {
       e.stopPropagation();
       if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
         this.editingNodePath = null;
         this.editingNodeMode = null;
+        this.renderTree();
       } else {
-        this.editingNodePath = item.path;
-        this.editingNodeMode = "type";
+        this.startNodeEditing(item.path, "type");
       }
-      this.renderTree();
     };
 
     if (item.parentPaths.length > 1) {
@@ -1380,9 +1426,7 @@ export class StudyCompilerModal extends Modal {
         cls:
           "my-sc-subcount-pill" +
           (node.isExpanded ? " is-expanded" : " is-collapsed"),
-        text: node.isExpanded
-          ? `▾ ${node.descendantCount}`
-          : `+${node.descendantCount} внутри`,
+        text: node.isExpanded ? `${node.descendantCount}` : `+${node.descendantCount}`,
         attr: {
           type: "button",
           title: node.isExpanded
@@ -1396,50 +1440,15 @@ export class StudyCompilerModal extends Modal {
       };
     }
 
-    const focusBtn = right.createEl("button", {
-      cls: "my-sc-move-btn",
-      text: "🎯",
-      attr: { type: "button", title: "Сфокусироваться только на этой ветке" },
+    const moreBtn = right.createEl("button", {
+      cls: "my-sc-row-more",
+      text: "⋯",
+      attr: { type: "button", title: "Действия", "aria-label": "Действия с материалом" },
     });
-    focusBtn.onclick = () => this.setFocusBranch(projectRoot, item.path);
-
-    const propEditBtn = right.createEl("button", {
-      cls:
-        "my-sc-move-btn" +
-        (this.editingNodePath === item.path && this.editingNodeMode === "props"
-          ? " is-active"
-          : ""),
-      text: "⚙",
-      attr: {
-        type: "button",
-        title: "Изменить тип или добавить/обновить YAML-свойство заметки",
-      },
-    });
-    propEditBtn.onclick = (e) => {
+    moreBtn.onclick = (e) => {
       e.stopPropagation();
-      if (this.editingNodePath === item.path && this.editingNodeMode === "props") {
-        this.editingNodePath = null;
-        this.editingNodeMode = null;
-      } else {
-        this.editingNodePath = item.path;
-        this.editingNodeMode = "props";
-      }
-      this.renderTree();
+      this.openRowMenu(e, item, projectRoot);
     };
-
-    const addBtn = right.createEl("button", {
-      cls: "my-sc-move-btn",
-      text: "＋",
-      attr: { type: "button", title: "Добавить вложенный материал сюда" },
-    });
-    addBtn.onclick = () => this.openForm(item.path);
-
-    const moveBtn = right.createEl("button", {
-      cls: "my-sc-move-btn",
-      text: "⇄",
-      attr: { type: "button", title: "Сменить родителя" },
-    });
-    moveBtn.onclick = () => this.openMovePicker(item);
 
     // Компактная панель быстрого изменения типа или свойства у существующей заметки
     if (this.editingNodePath === item.path && this.editingNodeMode) {
