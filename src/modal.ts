@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Menu, Modal, Notice, normalizePath } from "obsidian";
+import { App, FuzzySuggestModal, Menu, Modal, Notice, normalizePath, setIcon } from "obsidian";
 import type MyStudyCompilerPlugin from "./main";
 import {
   CustomPropertyDraft,
@@ -96,6 +96,7 @@ export class StudyCompilerModal extends Modal {
   private viewMode: ViewMode = "tree";
   private graphView: ProjectGraphView | null = null;
   private lastGraphRootPath = "";
+  private expandToggleBtn: HTMLButtonElement | null = null;
 
   // Быстрое редактирование типа или свойств конкретного узла дерева
   private editingNodePath: string | null = null;
@@ -148,10 +149,6 @@ export class StudyCompilerModal extends Modal {
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
 
-    // Только заголовок с отступом справа под родной крестик Obsidian (.modal-close-button)
-    const head = this.contentEl.createDiv("my-sc-head-bar");
-    head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и рабочее дерево" });
-
     this.datalistsEl = this.contentEl.createDiv("my-sc-datalists-host");
     this.barEl = this.contentEl.createDiv("my-sc-project-bar");
     this.searchWrapEl = this.contentEl.createDiv("my-sc-search-panel");
@@ -181,7 +178,7 @@ export class StudyCompilerModal extends Modal {
       this.selectedPath = findRootPath(this.scan, addUnder);
     }
 
-    // Если выбранный/запомненный проект находится в другой вкладке (Активные/Завершённые), переключаемся туда автоматически
+    // Если выбранный/запомненный проект находится в другой группе (активные/завершённые), переключаемся туда автоматически
     this.syncGroupTabWithSelectedProject();
 
     const root = this.getRootInCurrentGroup();
@@ -224,6 +221,7 @@ export class StudyCompilerModal extends Modal {
       this.graphView = null;
     }
     this.lastGraphRootPath = "";
+    this.expandToggleBtn = null;
     this.contentEl.empty();
   }
 
@@ -254,6 +252,18 @@ export class StudyCompilerModal extends Modal {
       this.plugin.requestSaveSettings();
     }
     return first;
+  }
+
+  // Если в текущей группе проектов нет, переключаемся на непустую
+  private resolveRootWithFallback(): StudyNoteItem | null {
+    const root = this.getRootInCurrentGroup();
+    if (root) return root;
+    const other: ProjectGroupTab = this.groupTab === "active" ? "completed" : "active";
+    if (this.getRootsForTab(other).length === 0) return null;
+    this.groupTab = other;
+    this.plugin.settings.projectGroupTab = other;
+    this.plugin.requestSaveSettings();
+    return this.getRootInCurrentGroup();
   }
 
   // ---------- Режимы «Дерево / Граф» ----------
@@ -507,112 +517,110 @@ export class StudyCompilerModal extends Modal {
     icon: string,
     title: string,
     onClick: () => void,
-    active = false
+    opts: { active?: boolean; primary?: boolean } = {}
   ): HTMLButtonElement {
     const btn = parent.createEl("button", {
-      cls: "my-sc-icon-btn" + (active ? " is-active" : ""),
-      text: icon,
+      cls:
+        "my-sc-icon-btn" +
+        (opts.active ? " is-active" : "") +
+        (opts.primary ? " is-primary" : ""),
       attr: { type: "button", title, "aria-label": title },
     });
+    setIcon(btn, icon);
     btn.onclick = onClick;
     return btn;
   }
 
+  private hasOpenBranches(branchPath: string): boolean {
+    for (const p of collectDescendants(branchPath, this.scan)) {
+      if (this.expanded.has(p) && (this.scan.childrenOf.get(p)?.length ?? 0) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private syncExpandToggle() {
+    const btn = this.expandToggleBtn;
+    if (!btn || !btn.isConnected) return;
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+    const branch = this.getActiveBranchRoot(root);
+    const open = this.hasOpenBranches(branch.path);
+    const title = open ? "Свернуть все ветки" : "Развернуть все ветки";
+    btn.empty();
+    setIcon(btn, open ? "chevrons-down-up" : "chevrons-up-down");
+    btn.setAttribute("title", title);
+    btn.setAttribute("aria-label", title);
+  }
+
+  private openProjectMenu(e: MouseEvent, root: StudyNoteItem, branchRoot: StudyNoteItem) {
+    const menu = new Menu();
+    menu.addItem((mi) =>
+      mi
+        .setTitle(
+          branchRoot.path === root.path ? "Открыть заметку проекта" : "Открыть заметку ветки"
+        )
+        .setIcon("file-text")
+        .onClick(() => this.openNote(branchRoot.path))
+    );
+    menu.addSeparator();
+    menu.addItem((mi) =>
+      mi
+        .setTitle(root.isCompletedRoot ? "Вернуть проект в работу" : "Завершить проект")
+        .setIcon(root.isCompletedRoot ? "rotate-ccw" : "check")
+        .onClick(() => void this.toggleRootProjectStatus(root))
+    );
+    menu.showAtMouseEvent(e);
+  }
+
   private renderBar() {
     this.barEl.empty();
+    this.expandToggleBtn = null;
 
-    const activeCount = this.scan.activeRoots.length;
-    const completedCount = this.scan.completedRoots.length;
-
-    // Ряд 1: вкладки · проект · действия над проектом
-    const topRow = this.barEl.createDiv("my-sc-top-row");
-
-    const segRow = topRow.createDiv("my-sc-segment-bar");
-    const segments: Array<{ id: ProjectGroupTab; label: string; title: string }> = [
-      { id: "active", label: `🔥 ${activeCount}`, title: "Активные проекты" },
-      { id: "completed", label: `✓ ${completedCount}`, title: "Завершённые проекты" },
-    ];
-
-    for (const seg of segments) {
-      const btn = segRow.createEl("button", {
-        cls: "my-sc-segment-btn" + (this.groupTab === seg.id ? " is-active" : ""),
-        text: seg.label,
-        attr: { type: "button", title: seg.title, "aria-label": seg.title },
-      });
-      btn.onclick = () => {
-        if (this.groupTab === seg.id) return;
-        this.groupTab = seg.id;
-        this.plugin.settings.projectGroupTab = seg.id;
-        const firstInGroup = this.getRootsForTab(seg.id)[0];
-        this.selectedPath = firstInGroup ? firstInGroup.path : "";
-        if (firstInGroup) {
-          this.plugin.settings.lastWorkPath = firstInGroup.path;
-          this.focusBranchPath =
-            this.plugin.settings.focusedBranchByWork[firstInGroup.path] || "";
-        } else {
-          this.focusBranchPath = "";
-        }
-        this.plugin.requestSaveSettings();
-        this.form.open = false;
-        this.formEl.empty();
-        this.activeRowIndex = -1;
-        this.renderBar();
-        this.renderBreadcrumbs();
-        this.renderMain();
-      };
-    }
-
-    const root = this.getRootInCurrentGroup();
+    const root = this.resolveRootWithFallback();
     if (!root) {
       this.formEl.empty();
-      const emptyBox = this.barEl.createDiv("my-sc-empty-group-box");
-      if (this.groupTab === "active" && completedCount > 0) {
-        emptyBox.createSpan({
-          text: `Активных проектов сейчас нет (в завершённых: ${completedCount}). `,
-        });
-        const switchBtn = emptyBox.createEl("button", {
-          cls: "my-sc-chip-btn",
-          text: "Показать завершённые",
-          attr: { type: "button" },
-        });
-        switchBtn.onclick = () => {
-          this.groupTab = "completed";
-          this.plugin.settings.projectGroupTab = "completed";
-          this.plugin.requestSaveSettings();
-          this.renderBar();
-          this.renderBreadcrumbs();
-          this.renderMain();
-        };
-      } else if (this.groupTab === "completed" && activeCount > 0) {
-        emptyBox.createSpan({
-          text: `Завершённых проектов пока нет (активных: ${activeCount}).`,
-        });
-      } else {
-        emptyBox.setText(
-          `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`
-        );
-      }
+      this.barEl.createDiv({
+        cls: "my-sc-empty-group-box",
+        text: `Проектов пока нет. Создай заметку с направлением «${this.plugin.settings.studyAreaName}» без родителя.`,
+      });
       return;
     }
 
     const branchRoot = this.getActiveBranchRoot(root);
-    const groupRoots = this.getRootsForTab(this.groupTab);
 
+    // Ряд 1: проект · меню проекта
+    const topRow = this.barEl.createDiv("my-sc-top-row");
     const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
-    for (const r of groupRoots) {
-      const meta = getWorkMeta(r.noteType, r.icon);
-      const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
-      const o = sel.createEl("option", {
-        text: `${meta.icon} ${r.name}${dlText}`,
-        value: r.path,
+
+    const addGroup = (label: string, list: StudyNoteItem[]) => {
+      if (list.length === 0) return;
+      const group = sel.createEl("optgroup", {
+        attr: { label: `${label} · ${list.length}` },
       });
-      if (r.path === root.path) o.selected = true;
-    }
+      for (const r of list) {
+        const meta = getWorkMeta(r.noteType, r.icon);
+        const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
+        const o = group.createEl("option", {
+          text: `${meta.icon} ${r.name}${dlText}`,
+          value: r.path,
+        });
+        if (r.path === root.path) o.selected = true;
+      }
+    };
+    addGroup("Активные", this.scan.activeRoots);
+    addGroup("Завершённые", this.scan.completedRoots);
+
     sel.onchange = () => {
-      this.selectedPath = sel.value;
-      this.plugin.settings.lastWorkPath = sel.value;
+      const picked = this.scan.roots.find((r) => r.path === sel.value);
+      if (!picked) return;
+      this.groupTab = picked.isCompletedRoot ? "completed" : "active";
+      this.plugin.settings.projectGroupTab = this.groupTab;
+      this.selectedPath = picked.path;
+      this.plugin.settings.lastWorkPath = picked.path;
       this.focusBranchPath =
-        this.plugin.settings.focusedBranchByWork[sel.value] || "";
+        this.plugin.settings.focusedBranchByWork[picked.path] || "";
       this.plugin.requestSaveSettings();
       this.form.open = false;
       this.formEl.empty();
@@ -622,37 +630,51 @@ export class StudyCompilerModal extends Modal {
       this.renderMain();
     };
 
-    const projectActions = topRow.createDiv("my-sc-icon-group");
-    this.iconBtn(
-      projectActions,
-      root.isCompletedRoot ? "↩" : "✓",
-      root.isCompletedRoot ? "Вернуть проект в работу" : "Завершить проект",
-      () => void this.toggleRootProjectStatus(root)
-    );
-    this.iconBtn(projectActions, "📄", "Открыть заметку текущей ветки или проекта", () =>
-      this.openNote(branchRoot.path)
-    );
+    const moreBtn = topRow.createEl("button", {
+      cls: "my-sc-icon-btn",
+      text: "⋯",
+      attr: { type: "button", title: "Действия с проектом", "aria-label": "Действия с проектом" },
+    });
+    moreBtn.onclick = (e) => this.openProjectMenu(e, root, branchRoot);
 
     // Ряд 2: сводка · инструменты
     const descendants = collectDescendants(branchRoot.path, this.scan);
-    const directKidsCount = (this.scan.childrenOf.get(branchRoot.path) ?? []).length;
     const metaRow = this.barEl.createDiv("my-sc-meta-row");
     const metaInfo = metaRow.createDiv("my-sc-meta-info");
-    const scopePrefix =
-      branchRoot.path !== root.path ? `Ветка «${branchRoot.name}» · ` : "";
     metaInfo.createSpan({
       cls: "my-sc-summary-text",
       text:
         descendants.size > 0
-          ? `${scopePrefix}Материалов: ${descendants.size} · разделов: ${directKidsCount}`
-          : `${scopePrefix}Материалов пока нет`,
+          ? `Материалов: ${descendants.size}`
+          : "Материалов пока нет",
     });
     this.renderDeadline(metaInfo, branchRoot);
 
     const tools = metaRow.createDiv("my-sc-icon-group");
+
+    if (this.viewMode === "tree") {
+      this.expandToggleBtn = this.iconBtn(tools, "chevrons-up-down", "Развернуть все ветки", () => {
+        const open = this.hasOpenBranches(branchRoot.path);
+        for (const p of collectDescendants(branchRoot.path, this.scan)) {
+          if (open) this.expanded.delete(p);
+          else if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
+        }
+        this.saveExpanded();
+        this.renderTree();
+      });
+      this.syncExpandToggle();
+    }
+
     this.iconBtn(
       tools,
-      this.form.open ? "✕" : "＋",
+      this.viewMode === "graph" ? "list" : "network",
+      this.viewMode === "graph" ? "Показать списком" : "Показать графом",
+      () => this.setViewMode(this.viewMode === "graph" ? "tree" : "graph")
+    );
+
+    this.iconBtn(
+      tools,
+      this.form.open ? "x" : "plus",
       this.form.open ? "Закрыть форму" : "Добавить материал",
       () => {
         if (this.form.open) {
@@ -663,32 +685,8 @@ export class StudyCompilerModal extends Modal {
           this.openForm(branchRoot.path);
         }
       },
-      this.form.open
+      { primary: true, active: this.form.open }
     );
-    this.iconBtn(
-      tools,
-      "🕸",
-      this.viewMode === "graph" ? "Вернуться к дереву" : "Показать граф связей",
-      () => this.setViewMode(this.viewMode === "graph" ? "tree" : "graph"),
-      this.viewMode === "graph"
-    );
-
-    if (this.viewMode === "tree") {
-      this.iconBtn(tools, "⤢", "Развернуть все ветки", () => {
-        for (const p of collectDescendants(branchRoot.path, this.scan)) {
-          if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
-        }
-        this.saveExpanded();
-        this.renderTree();
-      });
-      this.iconBtn(tools, "⤡", "Свернуть все ветки", () => {
-        for (const p of collectDescendants(branchRoot.path, this.scan)) {
-          this.expanded.delete(p);
-        }
-        this.saveExpanded();
-        this.renderTree();
-      });
-    }
   }
 
   private async toggleRootProjectStatus(root: StudyNoteItem) {
@@ -721,13 +719,12 @@ export class StudyCompilerModal extends Modal {
 
   private renderSearchPanel() {
     this.searchWrapEl.empty();
-    const row = this.searchWrapEl.createDiv("my-sc-search-row");
 
-    const inp = row.createEl("input", {
+    const inp = this.searchWrapEl.createEl("input", {
       cls: "my-sc-search-input",
       attr: {
         type: "search",
-        placeholder: "🔍 Название, тип или #тег",
+        placeholder: "Название, тип или #тег",
       },
     });
     inp.value = this.searchQuery;
@@ -738,50 +735,19 @@ export class StudyCompilerModal extends Modal {
       this.renderTree();
     };
 
-    const typeSel = row.createEl("select", {
-      cls: "dropdown my-sc-type-filter",
-      attr: { title: "Фильтр по типу из хранилища" },
-    });
-    typeSel.createEl("option", { text: "Все типы", value: "" });
-    for (const t of this.scan.schema.typeCounts) {
-      const o = typeSel.createEl("option", {
-        text: `${t.name} (${t.count})`,
-        value: t.name,
+    const orphanCount = this.scan.orphans.length;
+    if (orphanCount > 0 || this.filterMode === "orphans") {
+      const chip = this.searchWrapEl.createEl("button", {
+        cls: "my-sc-filter-chip" + (this.filterMode === "orphans" ? " is-active" : ""),
+        text: `Без родителя · ${orphanCount}`,
+        attr: { type: "button", title: "Показать материалы, не привязанные к дереву" },
       });
-      if (t.name.toLowerCase() === this.typeFilter.toLowerCase()) {
-        o.selected = true;
-      }
-    }
-    typeSel.onchange = () => {
-      this.typeFilter = typeSel.value;
-      this.activeRowIndex = -1;
-      this.renderTree();
-    };
-
-    if (this.scan.orphans.length > 0 || this.filterMode === "orphans") {
-      const chipsRow = this.searchWrapEl.createDiv("my-sc-filter-chips");
-      const modes: Array<{ id: QuickFilterMode; label: string }> = [
-        { id: "all", label: "🌳 Дерево проекта" },
-        {
-          id: "orphans",
-          label: `🧭 Без родителя (${this.scan.orphans.length})`,
-        },
-      ];
-
-      for (const m of modes) {
-        const chip = chipsRow.createEl("button", {
-          cls: "my-sc-filter-chip" + (this.filterMode === m.id ? " is-active" : ""),
-          text: m.label,
-          attr: { type: "button" },
-        });
-        chip.onclick = () => {
-          this.filterMode =
-            this.filterMode === m.id && m.id !== "all" ? "all" : m.id;
-          this.activeRowIndex = -1;
-          this.renderSearchPanel();
-          this.renderTree();
-        };
-      }
+      chip.onclick = () => {
+        this.filterMode = this.filterMode === "orphans" ? "all" : "orphans";
+        this.activeRowIndex = -1;
+        this.renderSearchPanel();
+        this.renderTree();
+      };
     }
   }
 
@@ -800,7 +766,6 @@ export class StudyCompilerModal extends Modal {
     this.crumbsEl.removeClass("is-hidden");
 
     const chain = buildBreadcrumbChain(this.scan, root.path, branchRoot.path);
-    this.crumbsEl.createSpan({ cls: "my-sc-crumbs-label", text: "Фокус:" });
 
     chain.forEach((node, idx) => {
       if (idx > 0) {
@@ -809,7 +774,7 @@ export class StudyCompilerModal extends Modal {
       const isLast = idx === chain.length - 1;
       const btn = this.crumbsEl.createEl("button", {
         cls: "my-sc-crumb-btn" + (isLast ? " is-current" : ""),
-        text: idx === 0 ? `🏠 ${node.name}` : node.name,
+        text: node.name,
         attr: { type: "button" },
       });
       btn.onclick = () => this.setFocusBranch(root, node.path);
@@ -817,7 +782,7 @@ export class StudyCompilerModal extends Modal {
 
     const resetBtn = this.crumbsEl.createEl("button", {
       cls: "my-sc-crumb-reset",
-      text: "✕ Весь проект",
+      text: "Весь проект",
       attr: { type: "button", title: "Вернуться ко всему дереву проекта" },
     });
     resetBtn.onclick = () => this.setFocusBranch(root, root.path);
@@ -846,7 +811,7 @@ export class StudyCompilerModal extends Modal {
     const box = this.formEl.createDiv("my-sc-add-box");
     const topRow = box.createDiv("my-sc-form-row");
 
-    // 3.1. Свободное поле «Тип» с подсказками из реальных типов хранилища
+    // Свободное поле «Тип» с подсказками из реальных типов хранилища
     const typeWrap = topRow.createDiv("my-sc-type-input-wrap");
     const typeInp = typeWrap.createEl("input", {
       cls: "my-sc-type-input",
@@ -960,7 +925,7 @@ export class StudyCompilerModal extends Modal {
       }
     }
 
-    // 3.2. Произвольные свойства при создании
+    // Произвольные свойства при создании
     const propsSection = box.createDiv("my-sc-props-section");
     for (let i = 0; i < this.form.customProps.length; i++) {
       const draft = this.form.customProps[i];
@@ -1024,21 +989,16 @@ export class StudyCompilerModal extends Modal {
             : "Значение (дата ГГГГ-ММ-ДД, число или текст)…";
       };
 
-      const delBtn = pRow.createEl("button", {
-        cls: "my-sc-icon-btn",
-        text: "✕",
-        attr: { type: "button", title: "Удалить свойство", "aria-label": "Удалить свойство" },
-      });
-      delBtn.onclick = () => {
+      this.iconBtn(pRow, "x", "Удалить свойство", () => {
         this.form.customProps.splice(i, 1);
         this.renderForm();
-      };
+      });
     }
 
     const actionsRow = box.createDiv("my-sc-form-actions");
     const addPropBtn = actionsRow.createEl("button", {
       cls: "my-sc-chip-btn",
-      text: "＋ Свойство",
+      text: "Добавить свойство",
       attr: { type: "button" },
     });
     addPropBtn.onclick = () => {
@@ -1177,7 +1137,7 @@ export class StudyCompilerModal extends Modal {
           : " is-far";
     parent.createSpan({
       cls: "my-sc-deadline" + cls,
-      text: `⏳ ${formatDeadlineBadge(item)}`,
+      text: formatDeadlineBadge(item),
       attr: {
         title: formatFullDateTooltip(item.deadline),
       },
@@ -1292,10 +1252,11 @@ export class StudyCompilerModal extends Modal {
       this.treeEl.createDiv({
         cls: "my-sc-empty",
         text: hasFilters
-          ? "По текущему запросу или фильтру ничего не найдено."
-          : "В этой ветке пока нет материалов. Нажми «＋» над списком.",
+          ? "Ничего не найдено."
+          : "Здесь пока пусто. Добавь материал кнопкой «+».",
       });
       this.pendingOpenPath = null;
+      this.syncExpandToggle();
       return;
     }
 
@@ -1326,6 +1287,8 @@ export class StudyCompilerModal extends Modal {
         }
       }
     }
+
+    this.syncExpandToggle();
   }
 
   private renderNodeGroup(
@@ -1363,7 +1326,6 @@ export class StudyCompilerModal extends Modal {
     if (node.hasChildren) {
       const toggleBtn = left.createEl("button", {
         cls: "my-sc-toggle-btn" + (node.isExpanded ? " is-open" : ""),
-        text: "▸",
         attr: {
           type: "button",
           title: node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
@@ -1371,6 +1333,7 @@ export class StudyCompilerModal extends Modal {
           "aria-expanded": String(node.isExpanded),
         },
       });
+      setIcon(toggleBtn, "chevron-right");
       toggleBtn.onclick = (e) => {
         e.stopPropagation();
         this.toggleBranch(item.path);
@@ -1387,29 +1350,6 @@ export class StudyCompilerModal extends Modal {
     this.renderHighlightedTitle(title, item.name, this.searchQuery);
     title.onclick = () => this.openNote(item.path);
 
-    // Кликабельный бейдж типа: позволяет быстро сменить тип существующей заметки прямо из дерева
-    const meta = getWorkMeta(item.noteType, item.icon);
-    const badge = left.createEl("button", {
-      cls: "my-sc-type-badge",
-      attr: {
-        type: "button",
-        title: "Нажми, чтобы изменить тип заметки",
-      },
-    });
-    badge.createSpan({ cls: "my-sc-type-icon", text: meta.icon });
-    badge.createSpan({ cls: "my-sc-type-name", text: item.noteType || "без типа" });
-    badge.style.setProperty("--badge-color", meta.color);
-    badge.onclick = (e) => {
-      e.stopPropagation();
-      if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
-        this.editingNodePath = null;
-        this.editingNodeMode = null;
-        this.renderTree();
-      } else {
-        this.startNodeEditing(item.path, "type");
-      }
-    };
-
     if (item.parentPaths.length > 1) {
       left.createSpan({
         cls: "my-sc-multi-parent",
@@ -1421,17 +1361,40 @@ export class StudyCompilerModal extends Modal {
     const right = row.createDiv("my-sc-tree-right");
     this.renderDeadline(right, item);
 
+    // Тип материала: тихая колонка справа; клик меняет тип
+    const meta = getWorkMeta(item.noteType, item.icon);
+    const kind = right.createEl("button", {
+      cls: "my-sc-type-badge",
+      attr: {
+        type: "button",
+        title: `${item.noteType || "Без типа"} · нажми, чтобы изменить`,
+      },
+    });
+    kind.createSpan({ cls: "my-sc-type-icon", text: meta.icon });
+    kind.createSpan({ cls: "my-sc-type-name", text: item.noteType || "без типа" });
+    kind.style.setProperty("--badge-color", meta.color);
+    kind.onclick = (e) => {
+      e.stopPropagation();
+      if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        this.renderTree();
+      } else {
+        this.startNodeEditing(item.path, "type");
+      }
+    };
+
     if (node.hasChildren) {
       const countPill = right.createEl("button", {
         cls:
           "my-sc-subcount-pill" +
           (node.isExpanded ? " is-expanded" : " is-collapsed"),
-        text: node.isExpanded ? `${node.descendantCount}` : `+${node.descendantCount}`,
+        text: `${node.descendantCount}`,
         attr: {
           type: "button",
           title: node.isExpanded
-            ? `Вложено элементов в ветке: ${node.descendantCount} (нажми, чтобы свернуть)`
-            : `Скрыто вложенных элементов: ${node.descendantCount} (нажми, чтобы раскрыть)`,
+            ? `Вложено: ${node.descendantCount} (нажми, чтобы свернуть)`
+            : `Скрыто вложенных: ${node.descendantCount} (нажми, чтобы раскрыть)`,
         },
       });
       countPill.onclick = (e) => {

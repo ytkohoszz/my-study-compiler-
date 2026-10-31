@@ -1,18 +1,37 @@
+/* ============================================================
+   Конструктор учебных проектов
+   Шкала отступов: 4 / 8 / 12 / 16 px
+   Размеры текста: 0.9rem (основной), 0.78rem (вторичный), 0.72rem (третичный)
+   Начертания: 400 / 500 / 600
+   Цвет: нейтральная основа, акцент Obsidian для главного и выбранного,
+   смысловой цвет только у типа материала и сроков
+   ============================================================ */
+
 .modal.my-sc-modal-container {
+  --my-sc-s1: 4px;
+  --my-sc-s2: 8px;
+  --my-sc-s3: 12px;
+  --my-sc-s4: 16px;
+  --my-sc-fs: 0.9rem;
+  --my-sc-fs-sm: 0.78rem;
+  --my-sc-fs-xs: 0.72rem;
+  --my-sc-hit: 32px;
+  --my-sc-row-h: 36px;
+  --my-sc-rail: var(--background-modifier-border);
+
   position: relative;
   width: min(860px, 96vw) !important;
   max-width: 860px !important;
   max-height: 92vh !important;
-  padding: 16px 20px !important;
+  padding: var(--my-sc-s4) !important;
   border-radius: 14px;
   display: flex;
   flex-direction: column;
 }
 
-/* Родной крестик Obsidian (.modal-close-button) всегда виден и аккуратно выровнен */
 .modal.my-sc-modal-container > .modal-close-button {
-  top: 12px;
-  right: 14px;
+  top: var(--my-sc-s4);
+  right: var(--my-sc-s3);
   z-index: 10;
 }
 
@@ -21,99 +40,86 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  gap: 8px;
+  gap: var(--my-sc-s2);
 }
 
 .my-sc-modal * {
   box-sizing: border-box;
 }
 
+.my-sc-modal button:focus-visible,
+.my-sc-modal select:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+.my-sc-modal .svg-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75px;
+}
+
 .my-sc-datalists-host {
   display: none;
 }
 
-.my-sc-head-bar {
-  display: flex;
-  align-items: center;
-  min-height: 28px;
-  padding-right: 40px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-head-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-normal);
-}
-
-/* ---------- Верхняя панель: два тонких ряда ---------- */
+/* ---------- Верхняя панель ---------- */
 .my-sc-project-bar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--my-sc-s1);
 }
 
 .my-sc-top-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.my-sc-segment-bar {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-segment-btn {
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  background: transparent;
-  border: 1px solid transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.my-sc-segment-btn.is-active {
-  background: var(--background-primary);
-  color: var(--text-normal);
-  border-color: var(--interactive-accent);
+  gap: var(--my-sc-s2);
+  padding-right: 36px;
 }
 
 .my-sc-work-select {
   flex: 1 1 160px;
   min-width: 0;
-  min-height: 32px;
-  font-weight: 600;
+  min-height: var(--my-sc-hit);
+  font-weight: 500;
+}
+
+.my-sc-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-sc-s2);
+  min-height: var(--my-sc-hit);
+}
+
+.my-sc-meta-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s1) var(--my-sc-s2);
+  min-width: 0;
+  font-size: var(--my-sc-fs-sm);
+  color: var(--text-muted);
 }
 
 .my-sc-icon-group {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 2px;
+  gap: var(--my-sc-s1);
 }
 
 button.my-sc-icon-btn {
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  width: var(--my-sc-hit);
+  height: var(--my-sc-hit);
+  min-height: var(--my-sc-hit);
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
-  font-size: 0.95rem;
+  flex-shrink: 0;
+  border-radius: 8px;
+  font-size: 1.1rem;
   line-height: 1;
   background: transparent;
   border: 1px solid transparent;
@@ -127,187 +133,140 @@ button.my-sc-icon-btn:hover {
   color: var(--text-normal);
 }
 
-button.my-sc-icon-btn.is-active {
+button.my-sc-icon-btn.is-primary {
   color: var(--interactive-accent);
-  border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
 
-.my-sc-meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 30px;
-}
-
-.my-sc-meta-info {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  min-width: 0;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
-.my-sc-summary-text {
-  font-weight: 500;
+button.my-sc-icon-btn.is-primary:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
 }
 
 .my-sc-empty-group-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 12px;
+  padding: var(--my-sc-s3);
   border-radius: 8px;
-  background: var(--background-secondary);
   border: 1px dashed var(--background-modifier-border);
-  font-size: 0.84rem;
+  font-size: var(--my-sc-fs-sm);
   color: var(--text-muted);
 }
 
 .my-sc-chip-btn {
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: var(--my-sc-hit);
+  padding: 0 var(--my-sc-s3);
   border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-}
-
-.my-sc-chip-btn.is-active {
-  border: 1px solid var(--interactive-accent) !important;
-  color: var(--interactive-accent) !important;
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
 }
 
 /* ---------- Поиск ---------- */
 .my-sc-search-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--my-sc-s2);
 }
 
 .my-sc-search-panel.is-hidden {
   display: none;
 }
 
-.my-sc-search-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .my-sc-search-input {
-  flex: 1 1 200px;
-  min-height: 32px;
-  font-size: 0.86rem;
-}
-
-.my-sc-type-filter {
-  flex: 0 0 150px;
-  min-height: 32px;
-}
-
-.my-sc-filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  width: 100%;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs);
 }
 
 .my-sc-filter-chip {
   min-height: 24px;
-  padding: 0 9px;
+  padding: 0 var(--my-sc-s2);
   border-radius: 99px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  background: var(--background-primary);
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 500;
+  background: transparent;
   border: 1px solid var(--background-modifier-border);
   box-shadow: none;
   color: var(--text-muted);
   cursor: pointer;
 }
 
+.my-sc-search-panel .my-sc-filter-chip {
+  align-self: flex-start;
+}
+
+.my-sc-filter-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
 .my-sc-filter-chip.is-active {
   border-color: var(--interactive-accent);
   color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
 
-/* ---------- Хлебные крошки фокуса ---------- */
+/* ---------- Фокус ветки (хлебные крошки) ---------- */
 .my-sc-crumbs-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--interactive-accent) 28%, var(--background-modifier-border));
+  gap: var(--my-sc-s1);
+  min-height: 28px;
+  font-size: var(--my-sc-fs-sm);
+  color: var(--text-muted);
 }
 
 .my-sc-crumbs-bar.is-hidden {
   display: none;
 }
 
-.my-sc-crumbs-label {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  margin-right: 2px;
-}
-
 .my-sc-crumb-sep {
   color: var(--text-faint);
-  font-size: 0.8rem;
 }
 
-.my-sc-crumb-btn {
+.my-sc-crumb-btn,
+.my-sc-crumb-reset {
   min-height: 24px;
-  padding: 0 8px;
+  padding: 0 var(--my-sc-s2);
   border-radius: 6px;
-  font-size: 0.76rem;
-  font-weight: 600;
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 400;
   background: transparent;
+  border: none;
   box-shadow: none;
+  color: var(--text-muted);
   cursor: pointer;
 }
 
+.my-sc-crumb-btn:hover,
+.my-sc-crumb-reset:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 .my-sc-crumb-btn.is-current {
-  color: var(--interactive-accent);
-  border: 1px solid var(--interactive-accent);
+  color: var(--text-normal);
+  font-weight: 500;
 }
 
 .my-sc-crumb-reset {
   margin-left: auto;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 0.74rem;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  cursor: pointer;
 }
 
 /* ---------- Форма создания материала ---------- */
 .my-sc-add-box {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--my-sc-s2);
+  padding: var(--my-sc-s3);
   border-radius: 10px;
   background: var(--background-secondary);
-  border: 1px solid var(--interactive-accent);
+  border: 1px solid var(--background-modifier-border);
 }
 
 .my-sc-form-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--my-sc-s2);
   align-items: center;
 }
 
@@ -318,33 +277,33 @@ button.my-sc-icon-btn.is-active {
 
 .my-sc-type-input {
   width: 100%;
-  min-height: 32px;
-  font-size: 0.84rem;
-  font-weight: 600;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 500;
 }
 
 .my-sc-input {
   flex: 1 1 200px;
-  min-height: 32px;
-  font-size: 0.86rem;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs);
 }
 
 .my-sc-parent-select {
   flex: 1 1 170px;
   min-width: 0;
-  min-height: 32px;
+  min-height: var(--my-sc-hit);
 }
 
 .my-sc-date {
-  min-height: 32px;
+  min-height: var(--my-sc-hit);
 }
 
 .my-sc-case-hint {
-  font-size: 0.76rem;
+  font-size: var(--my-sc-fs-sm);
   color: var(--color-orange, #e5a158);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--my-sc-s2);
   flex-wrap: wrap;
 }
 
@@ -354,9 +313,9 @@ button.my-sc-icon-btn.is-active {
 
 .my-sc-inline-link-btn {
   min-height: 24px;
-  padding: 0 8px;
-  font-size: 0.74rem;
-  border-radius: 5px;
+  padding: 0 var(--my-sc-s2);
+  font-size: var(--my-sc-fs-xs);
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -364,63 +323,63 @@ button.my-sc-icon-btn.is-active {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: var(--my-sc-s1);
 }
 
 .my-sc-quick-types-label {
-  font-size: 0.73rem;
+  font-size: var(--my-sc-fs-xs);
   color: var(--text-muted);
-  margin-right: 2px;
+  margin-right: var(--my-sc-s1);
 }
 
 .my-sc-props-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--my-sc-s2);
 }
 
 .my-sc-prop-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--my-sc-s2);
   align-items: center;
 }
 
 .my-sc-prop-key {
   flex: 0 1 160px;
   min-width: 120px;
-  min-height: 30px;
-  font-size: 0.82rem;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
 }
 
 .my-sc-prop-val {
   flex: 1 1 180px;
   min-width: 140px;
-  min-height: 30px;
-  font-size: 0.82rem;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
 }
 
 .my-sc-prop-kind {
-  flex: 0 0 115px;
-  min-height: 30px;
-  font-size: 0.78rem;
+  flex: 0 0 120px;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
 }
 
 .my-sc-form-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  padding-top: 4px;
+  gap: var(--my-sc-s2);
+  padding-top: var(--my-sc-s1);
 }
 
 /* ---------- Дерево материалов ---------- */
 .my-sc-body {
   flex: 1 1 auto;
   min-height: 240px;
-  max-height: 62vh;
+  max-height: 64vh;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--my-sc-s1);
 }
 
 .my-sc-body.is-hidden {
@@ -430,43 +389,23 @@ button.my-sc-icon-btn.is-active {
 .my-sc-tree-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .my-sc-node-group {
-  --branch-accent: var(--color-blue, #599ed6);
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
-}
-
-.my-sc-node-group.is-depth-0 {
-  --branch-accent: var(--color-blue, #599ed6);
-}
-.my-sc-node-group.is-depth-1 {
-  --branch-accent: var(--color-purple, #9c83e8);
-}
-.my-sc-node-group.is-depth-2 {
-  --branch-accent: var(--color-green, #4aab80);
-}
-.my-sc-node-group.is-depth-3 {
-  --branch-accent: var(--color-orange, #e5a158);
-}
-.my-sc-node-group.is-depth-4 {
-  --branch-accent: var(--color-cyan, #4fb3d9);
 }
 
 .my-sc-tree-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 2px 6px 2px 4px;
-  border-radius: 7px;
+  gap: var(--my-sc-s2);
+  min-height: var(--my-sc-row-h);
+  padding: 0 var(--my-sc-s2) 0 var(--my-sc-s1);
+  border-radius: 8px;
   background: transparent;
-  border: 1px solid transparent;
-  transition: background-color 0.14s ease, border-color 0.14s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .my-sc-tree-row:hover {
@@ -475,22 +414,21 @@ button.my-sc-icon-btn.is-active {
 
 .my-sc-tree-row.is-kb-active {
   background: var(--background-modifier-hover);
-  border-color: var(--interactive-accent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
 }
 
 .my-sc-tree-row.is-match {
   background: color-mix(in srgb, var(--color-yellow, #e5a158) 14%, transparent);
 }
 
-/* Подсветка только что появившегося узла */
 .my-sc-tree-row.is-new {
   animation: my-sc-row-fresh 2.2s ease-out;
 }
 
 @keyframes my-sc-row-fresh {
   from {
-    background: color-mix(in srgb, var(--interactive-accent) 26%, transparent);
-    border-color: var(--interactive-accent);
+    background: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
 }
 
@@ -498,44 +436,43 @@ button.my-sc-icon-btn.is-active {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 2px 6px 4px 28px;
-  padding: 6px 10px;
-  border-radius: 7px;
+  gap: var(--my-sc-s2);
+  margin: var(--my-sc-s1) var(--my-sc-s2) var(--my-sc-s2) 36px;
+  padding: var(--my-sc-s2) var(--my-sc-s3);
+  border-radius: 8px;
   background: var(--background-secondary);
-  border: 1px solid var(--interactive-accent);
+  border: 1px solid var(--background-modifier-border);
 }
 
 .my-sc-inline-label {
-  font-size: 0.76rem;
-  font-weight: 600;
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
-/* Раскрытие и сворачивание анимируются из modal.ts (motion.ts), не через CSS */
+/* Раскрытие и сворачивание анимируются из modal.ts (motion.ts) */
 .my-sc-children-container {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-left: 15px;
-  padding-left: 10px;
-  border-left: 1px solid color-mix(in srgb, var(--branch-accent) 40%, var(--background-modifier-border));
+  margin-left: 17px;
+  padding-left: var(--my-sc-s2);
+  border-left: 1px solid var(--my-sc-rail);
 }
 
 .my-sc-tree-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--my-sc-s1);
   min-width: 0;
   flex: 1;
 }
 
 button.my-sc-toggle-btn {
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
-  min-height: 22px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
   padding: 0;
   border-radius: 6px;
   display: inline-flex;
@@ -544,14 +481,19 @@ button.my-sc-toggle-btn {
   background: transparent;
   border: none;
   box-shadow: none;
-  color: var(--branch-accent);
-  font-size: 0.8rem;
+  color: var(--text-muted);
   cursor: pointer;
-  transition: transform 0.16s ease, background-color 0.14s ease;
+  transition: transform 0.16s ease, background-color 0.15s ease;
+}
+
+button.my-sc-toggle-btn .svg-icon {
+  width: 16px;
+  height: 16px;
 }
 
 button.my-sc-toggle-btn:hover {
-  background: color-mix(in srgb, var(--branch-accent) 18%, transparent);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 button.my-sc-toggle-btn.is-open {
@@ -559,23 +501,23 @@ button.my-sc-toggle-btn.is-open {
 }
 
 .my-sc-leaf-marker {
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .my-sc-leaf-dot {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--branch-accent) 70%, var(--text-faint));
+  background: var(--text-faint);
 }
 
 .my-sc-node-title {
-  font-size: 0.9rem;
+  font-size: var(--my-sc-fs);
   font-weight: 500;
   color: var(--text-normal);
   cursor: pointer;
@@ -600,18 +542,46 @@ button.my-sc-toggle-btn.is-open {
   border-radius: 3px;
 }
 
-/* Тип материала: тихий ярлык, цвет только в названии */
+.my-sc-multi-parent {
+  flex-shrink: 0;
+  font-size: var(--my-sc-fs-xs);
+  color: var(--text-faint);
+}
+
+/* Правая колонка: количество · срок · тип · действия (справа налево стабильна) */
+.my-sc-tree-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--my-sc-s1);
+  flex-shrink: 0;
+}
+
+.my-sc-tree-right .my-sc-subcount-pill {
+  order: 1;
+}
+.my-sc-tree-right .my-sc-deadline {
+  order: 2;
+}
+.my-sc-tree-right .my-sc-type-badge {
+  order: 3;
+}
+.my-sc-tree-right .my-sc-row-more {
+  order: 4;
+}
+
 button.my-sc-type-badge {
   display: inline-flex;
   align-items: center;
-  flex-shrink: 0;
-  gap: 4px;
-  height: 20px;
-  min-height: 20px;
-  padding: 0 5px;
-  border-radius: 5px;
-  font-size: 0.72rem;
-  font-weight: 500;
+  justify-content: flex-start;
+  gap: var(--my-sc-s1);
+  min-width: 96px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
+  border-radius: 6px;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 400;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -625,62 +595,45 @@ button.my-sc-type-badge:hover {
 }
 
 .my-sc-type-icon {
-  font-size: 0.78rem;
+  font-size: var(--my-sc-fs-sm);
   line-height: 1;
 }
 
 .my-sc-type-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: color-mix(in srgb, var(--badge-color, #599ed6) 70%, var(--text-muted));
 }
 
-.my-sc-multi-parent {
-  flex-shrink: 0;
-  font-size: 0.66rem;
-  font-weight: 700;
-  padding: 0 5px;
-  border-radius: 4px;
-  color: var(--text-faint);
-  border: 1px dashed var(--background-modifier-border);
-}
-
-.my-sc-tree-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
 button.my-sc-subcount-pill {
-  min-height: 20px;
-  height: 20px;
-  padding: 0 7px;
+  min-width: 28px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
   border-radius: 99px;
-  font-size: 0.7rem;
-  font-weight: 650;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   background: transparent;
   border: none;
   box-shadow: none;
+  color: var(--text-faint);
   cursor: pointer;
-  white-space: nowrap;
 }
 
 button.my-sc-subcount-pill.is-collapsed {
-  color: var(--branch-accent);
-  background: color-mix(in srgb, var(--branch-accent) 14%, transparent);
-}
-
-button.my-sc-subcount-pill.is-expanded {
-  color: var(--text-faint);
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
 }
 
 button.my-sc-subcount-pill:hover {
-  background: color-mix(in srgb, var(--branch-accent) 22%, transparent);
+  color: var(--text-normal);
 }
 
 .my-sc-deadline {
-  font-size: 0.7rem;
-  padding: 1px 7px;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 500;
+  padding: 2px var(--my-sc-s2);
   border-radius: 6px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -694,27 +647,24 @@ button.my-sc-subcount-pill:hover {
 .my-sc-deadline.is-soon {
   color: var(--color-orange, #e5a158);
   background: color-mix(in srgb, var(--color-orange, #e5a158) 16%, transparent);
-  font-weight: 650;
 }
 
 .my-sc-deadline.is-overdue {
   color: var(--text-error, #e06c75);
   background: color-mix(in srgb, var(--text-error, #e06c75) 16%, transparent);
-  font-weight: 700;
 }
 
-/* Кнопка действий: видна при наведении, на сенсорных экранах всегда приглушена */
 button.my-sc-row-more {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   line-height: 1;
   background: transparent;
   border: none;
@@ -722,7 +672,7 @@ button.my-sc-row-more {
   color: var(--text-muted);
   opacity: 0;
   cursor: pointer;
-  transition: opacity 0.12s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
 .my-sc-tree-row:hover button.my-sc-row-more,
@@ -743,27 +693,28 @@ button.my-sc-row-more:hover {
 }
 
 .my-sc-empty {
-  padding: 24px;
+  padding: var(--my-sc-s4);
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: var(--my-sc-fs-sm);
 }
 
-/* ---------- Микро-анимации ---------- */
+/* ---------- Обратная связь ---------- */
 .my-sc-chip-btn,
-.my-sc-segment-btn,
 .my-sc-filter-chip,
 .my-sc-crumb-btn,
-button.my-sc-icon-btn {
-  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease,
+.my-sc-crumb-reset,
+button.my-sc-icon-btn,
+button.my-sc-type-badge,
+button.my-sc-subcount-pill {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
     transform 0.1s ease;
 }
 
 .my-sc-chip-btn:active,
-.my-sc-segment-btn:active,
 .my-sc-filter-chip:active,
 button.my-sc-icon-btn:active {
-  transform: scale(0.94);
+  transform: scale(0.95);
 }
 
 button.my-sc-toggle-btn:active {
@@ -796,10 +747,10 @@ button.my-sc-toggle-btn.is-open:active {
   border: 1px solid var(--background-modifier-border);
   background-color: var(--background-secondary);
   background-image: radial-gradient(
-    color-mix(in srgb, var(--text-faint) 35%, transparent) 1px,
+    color-mix(in srgb, var(--text-faint) 30%, transparent) 1px,
     transparent 1px
   );
-  background-size: 18px 18px;
+  background-size: 20px 20px;
 }
 
 .my-sc-graph-wrap.is-hidden {
@@ -843,7 +794,7 @@ button.my-sc-toggle-btn.is-open:active {
 
 .my-sc-gedge.is-lit {
   stroke: var(--interactive-accent);
-  stroke-width: 2.2;
+  stroke-width: 2;
 }
 
 .my-sc-gedge.is-dim {
@@ -860,8 +811,8 @@ button.my-sc-toggle-btn.is-open:active {
 }
 
 .my-sc-gnode-body {
-  fill: color-mix(in srgb, var(--node-color, #599ed6) 12%, var(--background-primary));
-  stroke: color-mix(in srgb, var(--node-color, #599ed6) 45%, var(--background-modifier-border));
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 10%, var(--background-primary));
+  stroke: color-mix(in srgb, var(--node-color, #599ed6) 40%, var(--background-modifier-border));
   stroke-width: 1.2;
   transition: stroke 0.15s ease, fill 0.15s ease;
 }
@@ -872,7 +823,7 @@ button.my-sc-toggle-btn.is-open:active {
 
 .my-sc-gnode.is-root .my-sc-gnode-body {
   stroke-width: 2;
-  fill: color-mix(in srgb, var(--node-color, #599ed6) 20%, var(--background-primary));
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 18%, var(--background-primary));
 }
 
 .my-sc-gnode.is-selected .my-sc-gnode-body {
@@ -887,13 +838,13 @@ button.my-sc-toggle-btn.is-open:active {
 .my-sc-gnode-label {
   fill: var(--text-normal);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   font-family: var(--font-interface);
   pointer-events: none;
 }
 
 .my-sc-gnode.is-root .my-sc-gnode-label {
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .my-sc-gnode-dot {
@@ -910,7 +861,7 @@ button.my-sc-toggle-btn.is-open:active {
 
 @keyframes my-sc-gnode-fresh {
   from {
-    fill: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-primary));
+    fill: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary));
     stroke: var(--interactive-accent);
     stroke-width: 2.4;
   }
@@ -933,13 +884,13 @@ button.my-sc-toggle-btn.is-open:active {
 
 .my-sc-gtoggle.is-collapsed .my-sc-gtoggle-pill {
   stroke: var(--interactive-accent);
-  fill: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+  fill: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
 }
 
 .my-sc-gtoggle-label {
   fill: var(--text-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--font-interface);
   pointer-events: none;
 }
@@ -950,49 +901,53 @@ button.my-sc-toggle-btn.is-open:active {
 
 .my-sc-graph-controls {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--my-sc-s2);
+  right: var(--my-sc-s2);
   display: flex;
-  gap: 6px;
+  gap: var(--my-sc-s1);
 }
 
-.my-sc-graph-ctrl {
-  width: 32px;
-  min-height: 32px;
+button.my-sc-graph-ctrl {
+  width: var(--my-sc-hit);
+  height: var(--my-sc-hit);
+  min-height: var(--my-sc-hit);
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 8px;
-  font-size: 0.95rem;
-  line-height: 1;
-  cursor: pointer;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: background-color 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    transform 0.1s ease;
 }
 
-.my-sc-graph-ctrl:hover {
-  border-color: var(--interactive-accent);
+button.my-sc-graph-ctrl:hover {
+  color: var(--text-normal);
+  border-color: var(--text-faint);
 }
 
-.my-sc-graph-ctrl:active {
-  transform: scale(0.94);
+button.my-sc-graph-ctrl:active {
+  transform: scale(0.95);
 }
 
 .my-sc-graph-info {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 220px;
+  top: var(--my-sc-s2);
+  left: var(--my-sc-s2);
+  right: 180px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--my-sc-s2);
+  padding: var(--my-sc-s1) var(--my-sc-s2) var(--my-sc-s1) var(--my-sc-s3);
   border-radius: 10px;
   background: var(--background-primary);
   border: 1px solid var(--interactive-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
-  animation: my-sc-form-in 0.14s ease-out;
+  animation: my-sc-form-in 0.16s ease-out;
 }
 
 .my-sc-graph-info.is-hidden {
@@ -1004,8 +959,8 @@ button.my-sc-toggle-btn.is-open:active {
 }
 
 .my-sc-graph-info-title {
-  font-size: 0.86rem;
-  font-weight: 700;
+  font-size: var(--my-sc-fs);
+  font-weight: 600;
   color: var(--text-normal);
   white-space: nowrap;
   overflow: hidden;
@@ -1013,7 +968,7 @@ button.my-sc-toggle-btn.is-open:active {
 }
 
 .my-sc-graph-info-sub {
-  font-size: 0.72rem;
+  font-size: var(--my-sc-fs-xs);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1022,26 +977,18 @@ button.my-sc-toggle-btn.is-open:active {
 
 .my-sc-graph-info-btns {
   display: flex;
-  gap: 6px;
+  align-items: center;
   flex-shrink: 0;
+  gap: var(--my-sc-s1);
 }
 
 .my-sc-graph-footer {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 0.7rem;
+  left: var(--my-sc-s3);
+  bottom: var(--my-sc-s2);
+  font-size: var(--my-sc-fs-xs);
   color: var(--text-faint);
   pointer-events: none;
-}
-
-.my-sc-graph-stat {
-  font-weight: 650;
-  color: var(--text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1049,13 +996,15 @@ button.my-sc-toggle-btn.is-open:active {
   button.my-sc-toggle-btn,
   button.my-sc-row-more,
   .my-sc-chip-btn,
-  .my-sc-segment-btn,
   .my-sc-filter-chip,
   .my-sc-crumb-btn,
+  .my-sc-crumb-reset,
   button.my-sc-icon-btn,
+  button.my-sc-type-badge,
+  button.my-sc-subcount-pill,
   .my-sc-add-box,
   .my-sc-graph-viewport,
-  .my-sc-graph-ctrl,
+  button.my-sc-graph-ctrl,
   .my-sc-graph-info,
   .my-sc-gnode,
   .my-sc-gnode-body,
@@ -1074,49 +1023,37 @@ button.my-sc-toggle-btn.is-open:active {
     max-height: 100dvh !important;
     margin: 0 !important;
     border-radius: 0 !important;
-    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+    padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
     padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
-    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
-    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
+    padding-left: max(12px, env(safe-area-inset-left, 12px)) !important;
+    padding-right: max(12px, env(safe-area-inset-right, 12px)) !important;
   }
 
   .modal.my-sc-modal-container > .modal-close-button {
-    top: max(10px, env(safe-area-inset-top, 10px));
+    top: max(12px, env(safe-area-inset-top, 12px));
     right: max(12px, env(safe-area-inset-right, 12px));
-  }
-
-  .my-sc-top-row {
-    flex-wrap: wrap;
-  }
-
-  .my-sc-top-row .my-sc-icon-group {
-    margin-left: auto;
-  }
-
-  .my-sc-top-row .my-sc-work-select {
-    order: 3;
-    flex: 1 1 100%;
   }
 
   .my-sc-body {
     max-height: none;
   }
 
-  .my-sc-search-row {
-    flex-wrap: wrap;
-  }
-
-  .my-sc-type-filter {
-    flex: 1 1 100%;
-  }
-
   .my-sc-children-container {
-    margin-left: 11px;
-    padding-left: 8px;
+    margin-left: 13px;
+    padding-left: var(--my-sc-s1);
   }
 
   .my-sc-inline-editor {
-    margin-left: 6px;
+    margin-left: var(--my-sc-s1);
+  }
+
+  button.my-sc-type-badge {
+    min-width: 0;
+    padding: 0 var(--my-sc-s1);
+  }
+
+  .my-sc-type-name {
+    display: none;
   }
 
   .my-sc-graph-wrap {
@@ -1127,10 +1064,6 @@ button.my-sc-toggle-btn.is-open:active {
 
   .my-sc-graph-info {
     top: 48px;
-    right: 8px;
-  }
-
-  .my-sc-graph-hint {
-    display: none;
+    right: var(--my-sc-s2);
   }
 }

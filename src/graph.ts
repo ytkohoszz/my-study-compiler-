@@ -1,3 +1,4 @@
+import { setIcon } from "obsidian";
 import type { DeadlineTone, StudyNoteItem } from "./types";
 import {
   ScanResult,
@@ -85,6 +86,7 @@ export class ProjectGraphView {
   private infoTitleEl: HTMLElement;
   private infoSubEl: HTMLElement;
   private focusBtn: HTMLButtonElement;
+  private toggleAllBtn: HTMLButtonElement;
 
   private scan: ScanResult | null = null;
   private branchRoot: StudyNoteItem | null = null;
@@ -129,24 +131,21 @@ export class ProjectGraphView {
     container.appendChild(this.svg);
 
     const controls = container.createDiv("my-sc-graph-controls");
-    const addCtrl = (text: string, title: string, fn: () => void) => {
+    const addCtrl = (icon: string, title: string, fn: () => void): HTMLButtonElement => {
       const b = controls.createEl("button", {
         cls: "my-sc-graph-ctrl",
-        text,
         attr: { type: "button", title, "aria-label": title },
       });
+      setIcon(b, icon);
       b.onclick = fn;
+      return b;
     };
-    addCtrl("＋", "Приблизить", () => this.zoomByCenter(1.3));
-    addCtrl("−", "Отдалить", () => this.zoomByCenter(1 / 1.3));
-    addCtrl("⌖", "Показать всё", () => this.fit(true));
-    addCtrl("⤢", "Развернуть все ветки", () => {
-      this.collapsed.clear();
-      this.rebuild();
-      this.fit(true);
-    });
-    addCtrl("⤡", "Свернуть до первого уровня", () => {
-      this.collapseDeep();
+    addCtrl("plus", "Приблизить", () => this.zoomByCenter(1.3));
+    addCtrl("minus", "Отдалить", () => this.zoomByCenter(1 / 1.3));
+    addCtrl("maximize", "Показать всё", () => this.fit(true));
+    this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", () => {
+      if (this.collapsed.size > 0) this.collapsed.clear();
+      else this.collapseDeep();
       this.rebuild();
       this.fit(true);
     });
@@ -158,7 +157,7 @@ export class ProjectGraphView {
     const infoBtns = this.infoEl.createDiv("my-sc-graph-info-btns");
     const openBtn = infoBtns.createEl("button", {
       cls: "my-sc-chip-btn",
-      text: "📄 Открыть",
+      text: "Открыть",
       attr: { type: "button" },
     });
     openBtn.onclick = () => {
@@ -166,25 +165,21 @@ export class ProjectGraphView {
     };
     this.focusBtn = infoBtns.createEl("button", {
       cls: "my-sc-chip-btn",
-      text: "🎯 Фокус",
+      text: "Фокус",
       attr: { type: "button", title: "Показать только эту ветку" },
     });
     this.focusBtn.onclick = () => {
       if (this.selectedPath) this.callbacks.onFocus(this.selectedPath);
     };
     const clearBtn = infoBtns.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "✕",
-      attr: { type: "button", title: "Снять выделение" },
+      cls: "my-sc-icon-btn",
+      attr: { type: "button", title: "Снять выделение", "aria-label": "Снять выделение" },
     });
+    setIcon(clearBtn, "x");
     clearBtn.onclick = () => this.select(null);
 
     const footer = container.createDiv("my-sc-graph-footer");
     this.statEl = footer.createSpan("my-sc-graph-stat");
-    footer.createSpan({
-      cls: "my-sc-graph-hint",
-      text: "колесо — масштаб · перетаскивание — сдвиг · клик — выделить · двойной клик — открыть",
-    });
 
     this.svg.addEventListener("pointerdown", this.onPointerDown);
     container.addEventListener("wheel", this.onWheel, { passive: false });
@@ -317,14 +312,24 @@ export class ProjectGraphView {
     }
     this.applySelection();
     this.updateInfo();
+    this.syncToggleAll();
 
     let hiddenTotal = 0;
     for (const n of this.placed) hiddenTotal += n.hiddenCount;
     this.statEl.setText(
       hiddenTotal > 0
-        ? `${this.placed.length} узлов · скрыто ${hiddenTotal}`
-        : `${this.placed.length} узлов`
+        ? `Узлов: ${this.placed.length} · скрыто: ${hiddenTotal}`
+        : `Узлов: ${this.placed.length}`
     );
+  }
+
+  private syncToggleAll(): void {
+    const anyCollapsed = this.collapsed.size > 0;
+    const title = anyCollapsed ? "Развернуть все ветки" : "Свернуть ветки";
+    this.toggleAllBtn.empty();
+    setIcon(this.toggleAllBtn, anyCollapsed ? "chevrons-up-down" : "chevrons-down-up");
+    this.toggleAllBtn.setAttribute("title", title);
+    this.toggleAllBtn.setAttribute("aria-label", title);
   }
 
   private renderLayers(extra: Array<[string, string]>): void {
@@ -378,17 +383,17 @@ export class ProjectGraphView {
       const title = this.doc.createElementNS(SVG_NS, "title");
       title.textContent =
         `${item.name} · ${item.noteType || "без типа"}` +
-        (item.deadline ? ` · ⏳ ${formatDeadlineBadge(item)}` : "");
+        (item.deadline ? ` · ${formatDeadlineBadge(item)}` : "");
       g.appendChild(title);
 
       const body = svgEl(this.doc, "rect", "my-sc-gnode-body");
       body.setAttribute("width", String(NODE_W));
       body.setAttribute("height", String(NODE_H));
-      body.setAttribute("rx", "9");
+      body.setAttribute("rx", "8");
       g.appendChild(body);
 
       const stripe = svgEl(this.doc, "rect", "my-sc-gnode-stripe");
-      stripe.setAttribute("width", "5");
+      stripe.setAttribute("width", "4");
       stripe.setAttribute("height", String(NODE_H));
       stripe.setAttribute("rx", "2");
       g.appendChild(stripe);
@@ -499,7 +504,7 @@ export class ProjectGraphView {
     this.infoEl.removeClass("is-hidden");
     this.infoTitleEl.setText(`${meta.icon} ${it.name}`);
     const parts = [it.noteType || "без типа"];
-    if (it.deadline) parts.push(`⏳ ${formatDeadlineBadge(it)}`);
+    if (it.deadline) parts.push(formatDeadlineBadge(it));
     this.infoSubEl.setText(parts.join(" · "));
     this.focusBtn.disabled = it.path === this.branchRoot?.path;
   }
