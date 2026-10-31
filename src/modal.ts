@@ -32,6 +32,7 @@ import {
   serializeYamlScalarOrList,
   todayISO,
 } from "./scanner";
+import { animateClose, animateOpen, prefersReducedMotion } from "./motion";
 
 export interface OpenOptions {
   rootPath?: string;
@@ -80,6 +81,14 @@ export class StudyCompilerModal extends Modal {
   private currentVisibleFlat: TreeNode[] = [];
   private rowElementByPath = new Map<string, HTMLElement>();
 
+  // Стадия 3: микро-анимации
+  private knownPaths: Set<string> = new Set();
+  private freshPaths = new Set<string>();
+  private freshTimer: number | null = null;
+  private pendingOpenPath: string | null = null;
+  private closingBranch = false;
+  private closed = false;
+
   // Быстрое редактирование типа или свойств конкретного узла дерева
   private editingNodePath: string | null = null;
   private editingNodeMode: "type" | "props" | null = null;
@@ -125,6 +134,7 @@ export class StudyCompilerModal extends Modal {
 
   onOpen(): void {
     this.noRestore();
+    this.closed = false;
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
 
@@ -154,6 +164,7 @@ export class StudyCompilerModal extends Modal {
     );
 
     this.scan = scanStudyVault(this.app, this.plugin.settings);
+    this.knownPaths = new Set(this.scan.byPath.keys());
     const addUnder = this.options.addUnder;
     if (addUnder && this.scan.byPath.has(addUnder)) {
       this.selectedPath = findRootPath(this.scan, addUnder);
@@ -184,12 +195,18 @@ export class StudyCompilerModal extends Modal {
   }
 
   onClose(): void {
+    this.closed = true;
     for (const fn of this.cleanups) fn();
     this.cleanups = [];
     if (this.refreshTimer !== null) {
       window.clearTimeout(this.refreshTimer);
       this.refreshTimer = null;
     }
+    if (this.freshTimer !== null) {
+      window.clearTimeout(this.freshTimer);
+      this.freshTimer = null;
+    }
+    this.freshPaths.clear();
     this.contentEl.empty();
   }
 
@@ -226,14 +243,80 @@ export class StudyCompilerModal extends Modal {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null;
-      this.scan = scanStudyVault(this.app, this.plugin.settings);
+      if (this.closed) return;
+
+      const next = scanStudyVault(this.app, this.plugin.settings);
+      const fresh: string[] = [];
+      for (const p of next.byPath.keys()) {
+        if (!this.knownPaths.has(p)) fresh.push(p);
+      }
+      this.knownPaths = new Set(next.byPath.keys());
+      this.scan = next;
+      if (fresh.length > 0 && fresh.length <= 20) this.markFresh(fresh);
+
       this.renderDatalists();
       this.renderBar();
       this.renderSearchPanel();
       this.renderBreadcrumbs();
       if (this.form.open) this.renderForm();
       this.renderTree();
+
+      const firstFresh = fresh
+        .map((p) => this.rowElementByPath.get(p))
+        .find((el): el is HTMLElement => el !== undefined);
+      if (firstFresh) {
+        firstFresh.scrollIntoView({
+          block: "nearest",
+          behavior: prefersReducedMotion() ? "auto" : "smooth",
+        });
+      }
     }, 220);
+  }
+
+  private markFresh(paths: string[]) {
+    for (const p of paths) this.freshPaths.add(p);
+    if (this.freshTimer !== null) window.clearTimeout(this.freshTimer);
+    this.freshTimer = window.setTimeout(() => {
+      this.freshTimer = null;
+      for (const p of this.freshPaths) {
+        this.rowElementByPath.get(p)?.removeClass("is-new");
+      }
+      this.freshPaths.clear();
+    }, 2400);
+  }
+
+  private getChildrenContainer(path: string): HTMLElement | null {
+    const group = this.rowElementByPath.get(path)?.parentElement;
+    return group?.querySelector<HTMLElement>(".my-sc-children-container") ?? null;
+  }
+
+  private toggleBranch(path: string) {
+    if (this.closingBranch) return;
+
+    if (!this.expanded.has(path)) {
+      this.expanded.add(path);
+      this.saveExpanded();
+      this.pendingOpenPath = path;
+      this.renderTree();
+      return;
+    }
+
+    this.expanded.delete(path);
+    this.saveExpanded();
+    const kids = this.getChildrenContainer(path);
+    if (!kids || prefersReducedMotion()) {
+      this.renderTree();
+      return;
+    }
+    this.rowElementByPath
+      .get(path)
+      ?.querySelector(".my-sc-toggle-btn")
+      ?.removeClass("is-open");
+    this.closingBranch = true;
+    void animateClose(kids).then(() => {
+      this.closingBranch = false;
+      if (!this.closed) this.renderTree();
+    });
   }
 
   private renderDatalists() {
@@ -325,11 +408,11 @@ export class StudyCompilerModal extends Modal {
     ) {
       const picked = this.currentVisibleFlat[this.activeRowIndex];
       if (!picked || !picked.hasChildren) return;
+      const isOpen = this.expanded.has(picked.item.path);
+      if (e.key === "ArrowRight" && isOpen) return;
+      if (e.key === "ArrowLeft" && !isOpen) return;
       e.preventDefault();
-      if (e.key === "ArrowRight") this.expanded.add(picked.item.path);
-      else this.expanded.delete(picked.item.path);
-      this.saveExpanded();
-      this.renderTree();
+      this.toggleBranch(picked.item.path);
     }
   }
 
@@ -668,6 +751,7 @@ export class StudyCompilerModal extends Modal {
     this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
     this.renderBar();
     this.renderForm();
+    this.formEl.querySelector(".my-sc-add-box")?.addClass("is-entering");
   }
 
   private renderForm() {
@@ -1080,6 +1164,7 @@ export class StudyCompilerModal extends Modal {
           ? "По текущему запросу или фильтру ничего не найдено."
           : "В этой ветке пока нет материалов. Нажми «＋ Добавить материал».",
       });
+      this.pendingOpenPath = null;
       return;
     }
 
@@ -1092,6 +1177,24 @@ export class StudyCompilerModal extends Modal {
       this.highlightActiveRow();
     }
     this.treeEl.scrollTop = scrollTop;
+
+    // Плавное раскрытие только той ветки, которую открыл пользователь
+    if (this.pendingOpenPath) {
+      const openPath = this.pendingOpenPath;
+      this.pendingOpenPath = null;
+      const kids = this.getChildrenContainer(openPath);
+      if (kids) animateOpen(kids);
+      if (!prefersReducedMotion()) {
+        const btn = this.rowElementByPath
+          .get(openPath)
+          ?.querySelector<HTMLElement>(".my-sc-toggle-btn");
+        if (btn) {
+          btn.removeClass("is-open");
+          void btn.offsetWidth;
+          btn.addClass("is-open");
+        }
+      }
+    }
   }
 
   private renderNodeGroup(
@@ -1115,7 +1218,8 @@ export class StudyCompilerModal extends Modal {
         "my-sc-tree-row" +
         (node.hasChildren ? " is-parent-row" : "") +
         (node.isExpanded ? " is-open-parent" : "") +
-        (node.isDirectMatch ? " is-match" : ""),
+        (node.isDirectMatch ? " is-match" : "") +
+        (this.freshPaths.has(item.path) ? " is-new" : ""),
     });
     this.rowElementByPath.set(item.path, row);
 
@@ -1134,10 +1238,7 @@ export class StudyCompilerModal extends Modal {
       });
       toggleBtn.onclick = (e) => {
         e.stopPropagation();
-        if (this.expanded.has(item.path)) this.expanded.delete(item.path);
-        else this.expanded.add(item.path);
-        this.saveExpanded();
-        this.renderTree();
+        this.toggleBranch(item.path);
       };
     } else {
       const dotWrap = left.createSpan("my-sc-leaf-marker");
@@ -1202,19 +1303,16 @@ export class StudyCompilerModal extends Modal {
       });
       countPill.onclick = (e) => {
         e.stopPropagation();
-        if (this.expanded.has(item.path)) this.expanded.delete(item.path);
-        else this.expanded.add(item.path);
-        this.saveExpanded();
-        this.renderTree();
+        this.toggleBranch(item.path);
       };
-
-      const focusBtn = right.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "🎯",
-        attr: { type: "button", title: "Сфокусироваться только на этой ветке" },
-      });
-      focusBtn.onclick = () => this.setFocusBranch(projectRoot, item.path);
     }
+
+    const focusBtn = right.createEl("button", {
+      cls: "my-sc-move-btn",
+      text: "🎯",
+      attr: { type: "button", title: "Сфокусироваться только на этой ветке" },
+    });
+    focusBtn.onclick = () => this.setFocusBranch(projectRoot, item.path);
 
     const propEditBtn = right.createEl("button", {
       cls:
@@ -1392,7 +1490,6 @@ export class StudyCompilerModal extends Modal {
       }
       const kind = kindSel.value === "list" ? "list" : "auto";
       const parsedVal = parseCustomPropertyValue(valInp.value, kind);
-
       try {
         await this.app.fileManager.processFrontMatter(
           item.file,
@@ -1452,7 +1549,10 @@ export class StudyCompilerModal extends Modal {
       this.saveExpanded();
       new Notice(`«${item.name}» → «${target.name}»`);
     } catch (err: unknown) {
-      new Notice("Не удалось сменить родителя: " + (err instanceof Error ? err.message : String(err)));
+      new Notice(
+        "Не удалось сменить родителя: " +
+          (err instanceof Error ? err.message : String(err))
+      );
     }
   }
 }

@@ -1,73 +1,3 @@
-=== FILE: ./.github/workflows/lint.yml ===
-name: Node.js build
-
-on:
-    push:
-        branches: ['**']
-    pull_request:
-        branches: ['**']
-
-jobs:
-    build:
-        runs-on: ubuntu-latest
-
-        strategy:
-            matrix:
-                node-version: [20.x, 22.x, 24.x]
-                # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
-
-        steps:
-            - uses: actions/checkout@v6
-            - name: Use Node.js ${{ matrix.node-version }}
-              uses: actions/setup-node@v6
-              with:
-                  node-version: ${{ matrix.node-version }}
-                  cache: 'npm'
-            - run: npm ci
-            - run: npm run build --if-present
-            - run: npm run lint
-
-
-=== FILE: ./.github/workflows/release.yml ===
-name: Release Obsidian Plugin
-
-on:
-  push:
-    tags:
-      - "[0-9]*.[0-9]*.[0-9]*"
-
-permissions:
-  contents: write
-
-jobs:
-  build-and-release:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install dependencies
-        run: npm ci || npm install --legacy-peer-deps
-
-      - name: Build production bundle
-        run: npm run build
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" main.js manifest.json styles.css --clobber
-          else
-            gh release create "$TAG" main.js manifest.json styles.css --title "$TAG" --generate-notes
-          fi
-
 === FILE: ./AGENTS.md ===
 # Obsidian community plugin
 
@@ -340,6 +270,1279 @@ this.registerInterval(
 - Style guide: https://help.obsidian.md/style-guide
 
 
+=== FILE: ./manifest.json ===
+{
+	"id": "my-study-compiler",
+	"name": "Конструктор учебных проектов",
+	"version": "0.2.4",
+	"minAppVersion": "1.5.0",
+	"description": "Рабочее дерево проектов и материалов для заметки «Учёба»: разделение активных и завершённых проектов, свободные типы и свойства",
+	"author": "Mersinho",
+	"isDesktopOnly": false
+}
+
+
+=== FILE: ./styles.css ===
+.modal.my-sc-modal-container {
+  position: relative;
+  width: min(860px, 96vw) !important;
+  max-width: 860px !important;
+  max-height: 92vh !important;
+  padding: 18px 22px !important;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Родной крестик Obsidian (.modal-close-button) всегда виден и аккуратно выровнен */
+.modal.my-sc-modal-container > .modal-close-button {
+  top: 14px;
+  right: 16px;
+  z-index: 10;
+}
+
+.my-sc-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 10px;
+}
+
+.my-sc-modal * {
+  box-sizing: border-box;
+}
+
+.my-sc-datalists-host {
+  display: none;
+}
+
+.my-sc-head-bar {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding-right: 40px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-head-title {
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: var(--text-normal);
+}
+
+.my-sc-project-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Сегмент-переключатель «Активные / Завершённые» */
+.my-sc-segment-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-segment-btn {
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-segment-btn.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.my-sc-empty-group-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px dashed var(--background-modifier-border);
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.my-sc-project-select-wrap,
+.my-sc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.my-sc-work-select {
+  flex: 1 1 260px;
+  min-width: 0;
+  min-height: 38px;
+  font-weight: 600;
+}
+
+.my-sc-chip-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.my-sc-chip-btn.is-active {
+  border: 1px solid var(--interactive-accent) !important;
+  color: var(--interactive-accent) !important;
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.my-sc-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.my-sc-summary-text {
+  font-weight: 500;
+}
+
+.my-sc-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.my-sc-search-input {
+  flex: 1 1 220px;
+  min-height: 34px;
+  font-size: 0.86rem;
+}
+
+.my-sc-type-filter {
+  flex: 0 0 160px;
+  min-height: 34px;
+}
+
+.my-sc-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.my-sc-filter-chip {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 99px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-filter-chip.is-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.my-sc-crumbs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-secondary));
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+}
+
+.my-sc-crumbs-bar.is-hidden {
+  display: none;
+}
+
+.my-sc-crumbs-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.my-sc-crumb-sep {
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
+
+.my-sc-crumb-btn {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.my-sc-crumb-btn.is-current {
+  color: var(--interactive-accent);
+  border: 1px solid var(--interactive-accent);
+}
+
+.my-sc-crumb-reset {
+  margin-left: auto;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* Форма создания материала со свободным типом и произвольными свойствами */
+.my-sc-add-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--interactive-accent);
+}
+
+.my-sc-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.my-sc-type-input-wrap {
+  flex: 0 1 170px;
+  min-width: 140px;
+}
+
+.my-sc-type-input {
+  width: 100%;
+  min-height: 34px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.my-sc-input {
+  flex: 1 1 200px;
+  min-height: 34px;
+  font-size: 0.86rem;
+}
+
+.my-sc-parent-select {
+  flex: 1 1 170px;
+  min-width: 0;
+  min-height: 34px;
+}
+
+.my-sc-date {
+  min-height: 34px;
+}
+
+.my-sc-case-hint {
+  font-size: 0.76rem;
+  color: var(--color-orange, #e5a158);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.my-sc-case-hint.is-hidden {
+  display: none;
+}
+
+.my-sc-inline-link-btn {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 0.74rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.my-sc-quick-types-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.my-sc-quick-types-label {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+
+.my-sc-props-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.my-sc-prop-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.my-sc-prop-key {
+  flex: 0 1 160px;
+  min-width: 120px;
+  min-height: 32px;
+  font-size: 0.82rem;
+}
+
+.my-sc-prop-val {
+  flex: 1 1 180px;
+  min-width: 140px;
+  min-height: 32px;
+  font-size: 0.82rem;
+}
+
+.my-sc-prop-kind {
+  flex: 0 0 115px;
+  min-height: 32px;
+  font-size: 0.78rem;
+}
+
+.my-sc-form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.my-sc-body {
+  flex: 1 1 auto;
+  min-height: 240px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.my-sc-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.my-sc-node-group {
+  --branch-accent: var(--color-blue, #599ed6);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+}
+
+.my-sc-node-group.is-depth-0 {
+  --branch-accent: var(--color-blue, #599ed6);
+}
+.my-sc-node-group.is-depth-1 {
+  --branch-accent: var(--color-purple, #9c83e8);
+}
+.my-sc-node-group.is-depth-2 {
+  --branch-accent: var(--color-green, #4aab80);
+}
+.my-sc-node-group.is-depth-3 {
+  --branch-accent: var(--color-orange, #e5a158);
+}
+.my-sc-node-group.is-depth-4 {
+  --branch-accent: var(--color-cyan, #4fb3d9);
+}
+
+.my-sc-node-group.is-branch.is-expanded {
+  background: color-mix(in srgb, var(--branch-accent) 5%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 28%, var(--background-modifier-border));
+  padding-bottom: 6px;
+}
+
+.my-sc-tree-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--branch-accent);
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.my-sc-tree-row.is-open-parent {
+  background: color-mix(in srgb, var(--branch-accent) 12%, var(--background-secondary));
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.my-sc-tree-row.is-open-parent .my-sc-node-title {
+  font-weight: 750;
+}
+
+.my-sc-tree-row.is-kb-active {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.my-sc-tree-row.is-match {
+  background: color-mix(in srgb, var(--color-yellow, #e5a158) 12%, var(--background-secondary));
+}
+
+.my-sc-inline-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 8px 0 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: var(--background-primary);
+  border: 1px solid var(--interactive-accent);
+}
+
+.my-sc-inline-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.my-sc-children-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  margin-left: 18px;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--branch-accent) 55%, var(--background-modifier-border));
+  animation: my-sc-branch-open 0.16s ease-out;
+}
+
+@keyframes my-sc-branch-open {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.my-sc-tree-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.my-sc-toggle-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--branch-accent) 14%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 35%, var(--background-modifier-border));
+  color: var(--branch-accent);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.14s ease;
+}
+
+.my-sc-toggle-btn:hover {
+  background: color-mix(in srgb, var(--branch-accent) 24%, var(--background-primary));
+}
+
+.my-sc-toggle-btn.is-open {
+  transform: rotate(90deg);
+}
+
+.my-sc-leaf-marker {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.my-sc-leaf-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--branch-accent) 65%, var(--text-muted));
+}
+
+.my-sc-node-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-node-title:hover {
+  color: var(--text-accent);
+}
+
+.my-sc-hl {
+  background: color-mix(in srgb, var(--color-yellow, #e5a158) 35%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+button.my-sc-type-badge {
+  min-height: 22px;
+  height: auto;
+  font-size: 0.68rem;
+  font-weight: 650;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-color, #599ed6) 35%, transparent);
+  color: var(--badge-color, #599ed6);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+button.my-sc-type-badge:hover {
+  border-color: var(--badge-color, #599ed6);
+}
+
+.my-sc-multi-parent {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  border: 1px dashed var(--background-modifier-border);
+}
+
+.my-sc-tree-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.my-sc-subcount-pill {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 99px;
+  font-size: 0.73rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.my-sc-subcount-pill.is-collapsed {
+  color: var(--branch-accent);
+  background: color-mix(in srgb, var(--branch-accent) 16%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 42%, var(--background-modifier-border));
+}
+
+.my-sc-subcount-pill.is-expanded {
+  color: var(--text-muted);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-deadline {
+  font-size: 0.73rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-deadline.is-far {
+  color: var(--color-green, #4aab80);
+  background: color-mix(in srgb, var(--color-green, #4aab80) 14%, transparent);
+}
+
+.my-sc-deadline.is-soon {
+  color: var(--color-orange, #e5a158);
+  background: color-mix(in srgb, var(--color-orange, #e5a158) 16%, transparent);
+  font-weight: 650;
+}
+
+.my-sc-deadline.is-overdue {
+  color: var(--text-error, #e06c75);
+  background: color-mix(in srgb, var(--text-error, #e06c75) 16%, transparent);
+  font-weight: 700;
+}
+
+.my-sc-move-btn {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.my-sc-move-btn.is-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.my-sc-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-sc-tree-row,
+  .my-sc-toggle-btn,
+  .my-sc-children-container {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal.my-sc-modal-container {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
+    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
+    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
+  }
+
+  .modal.my-sc-modal-container > .modal-close-button {
+    top: max(10px, env(safe-area-inset-top, 10px));
+    right: max(12px, env(safe-area-inset-right, 12px));
+  }
+
+  .my-sc-body {
+    max-height: none;
+  }
+
+  .my-sc-search-row {
+    flex-wrap: wrap;
+  }
+
+  .my-sc-type-filter {
+    flex: 1 1 100%;
+  }
+
+  .my-sc-children-container {
+    margin-left: 10px;
+    padding-left: 10px;
+  }
+
+  .my-sc-tree-row {
+    flex-wrap: wrap;
+  }
+}
+
+=== FILE: ./package-lock.json ===
+{
+  "name": "my-study-compiler",
+  "version": "0.1.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "my-study-compiler",
+      "version": "0.1.0",
+      "license": "MIT",
+      "devDependencies": {
+        "@types/node": "^16.11.6",
+        "builtin-modules": "3.3.0",
+        "esbuild": "0.17.3",
+        "obsidian": "latest",
+        "tslib": "2.4.0",
+        "typescript": "4.7.4"
+      }
+    },
+    "node_modules/@esbuild/android-arm": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.17.3.tgz",
+      "integrity": "sha512-1Mlz934GvbgdDmt26rTLmf03cAgLg5HyOgJN+ZGCeP3Q9ynYTNMn2/LQxIl7Uy+o4K6Rfi2OuLsr12JQQR8gNg==",
+      "cpu": [
+        "arm"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/android-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.17.3.tgz",
+      "integrity": "sha512-XvJsYo3dO3Pi4kpalkyMvfQsjxPWHYjoX4MDiB/FUM4YMfWcXa5l4VCwFWVYI1+92yxqjuqrhNg0CZg3gSouyQ==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/android-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.17.3.tgz",
+      "integrity": "sha512-nuV2CmLS07Gqh5/GrZLuqkU9Bm6H6vcCspM+zjp9TdQlxJtIe+qqEXQChmfc7nWdyr/yz3h45Utk1tUn8Cz5+A==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "android"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/darwin-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.17.3.tgz",
+      "integrity": "sha512-01Hxaaat6m0Xp9AXGM8mjFtqqwDjzlMP0eQq9zll9U85ttVALGCGDuEvra5Feu/NbP5AEP1MaopPwzsTcUq1cw==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "darwin"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/darwin-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.17.3.tgz",
+      "integrity": "sha512-Eo2gq0Q/er2muf8Z83X21UFoB7EU6/m3GNKvrhACJkjVThd0uA+8RfKpfNhuMCl1bKRfBzKOk6xaYKQZ4lZqvA==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "darwin"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/freebsd-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.17.3.tgz",
+      "integrity": "sha512-CN62ESxaquP61n1ZjQP/jZte8CE09M6kNn3baos2SeUfdVBkWN5n6vGp2iKyb/bm/x4JQzEvJgRHLGd5F5b81w==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "freebsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/freebsd-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.17.3.tgz",
+      "integrity": "sha512-feq+K8TxIznZE+zhdVurF3WNJ/Sa35dQNYbaqM/wsCbWdzXr5lyq+AaTUSER2cUR+SXPnd/EY75EPRjf4s1SLg==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "freebsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-arm": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.17.3.tgz",
+      "integrity": "sha512-CLP3EgyNuPcg2cshbwkqYy5bbAgK+VhyfMU7oIYyn+x4Y67xb5C5ylxsNUjRmr8BX+MW3YhVNm6Lq6FKtRTWHQ==",
+      "cpu": [
+        "arm"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.17.3.tgz",
+      "integrity": "sha512-JHeZXD4auLYBnrKn6JYJ0o5nWJI9PhChA/Nt0G4MvLaMrvXuWnY93R3a7PiXeJQphpL1nYsaMcoV2QtuvRnF/g==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-ia32": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.17.3.tgz",
+      "integrity": "sha512-FyXlD2ZjZqTFh0sOQxFDiWG1uQUEOLbEh9gKN/7pFxck5Vw0qjWSDqbn6C10GAa1rXJpwsntHcmLqydY9ST9ZA==",
+      "cpu": [
+        "ia32"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-loong64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.17.3.tgz",
+      "integrity": "sha512-OrDGMvDBI2g7s04J8dh8/I7eSO+/E7nMDT2Z5IruBfUO/RiigF1OF6xoH33Dn4W/OwAWSUf1s2nXamb28ZklTA==",
+      "cpu": [
+        "loong64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-mips64el": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.17.3.tgz",
+      "integrity": "sha512-DcnUpXnVCJvmv0TzuLwKBC2nsQHle8EIiAJiJ+PipEVC16wHXaPEKP0EqN8WnBe0TPvMITOUlP2aiL5YMld+CQ==",
+      "cpu": [
+        "mips64el"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-ppc64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.17.3.tgz",
+      "integrity": "sha512-BDYf/l1WVhWE+FHAW3FzZPtVlk9QsrwsxGzABmN4g8bTjmhazsId3h127pliDRRu5674k1Y2RWejbpN46N9ZhQ==",
+      "cpu": [
+        "ppc64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-riscv64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.17.3.tgz",
+      "integrity": "sha512-WViAxWYMRIi+prTJTyV1wnqd2mS2cPqJlN85oscVhXdb/ZTFJdrpaqm/uDsZPGKHtbg5TuRX/ymKdOSk41YZow==",
+      "cpu": [
+        "riscv64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-s390x": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.17.3.tgz",
+      "integrity": "sha512-Iw8lkNHUC4oGP1O/KhumcVy77u2s6+KUjieUqzEU3XuWJqZ+AY7uVMrrCbAiwWTkpQHkr00BuXH5RpC6Sb/7Ug==",
+      "cpu": [
+        "s390x"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/linux-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.17.3.tgz",
+      "integrity": "sha512-0AGkWQMzeoeAtXQRNB3s4J1/T2XbigM2/Mn2yU1tQSmQRmHIZdkGbVq2A3aDdNslPyhb9/lH0S5GMTZ4xsjBqg==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "linux"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/netbsd-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.17.3.tgz",
+      "integrity": "sha512-4+rR/WHOxIVh53UIQIICryjdoKdHsFZFD4zLSonJ9RRw7bhKzVyXbnRPsWSfwybYqw9sB7ots/SYyufL1mBpEg==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "netbsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/openbsd-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.17.3.tgz",
+      "integrity": "sha512-cVpWnkx9IYg99EjGxa5Gc0XmqumtAwK3aoz7O4Dii2vko+qXbkHoujWA68cqXjhh6TsLaQelfDO4MVnyr+ODeA==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "openbsd"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/sunos-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.17.3.tgz",
+      "integrity": "sha512-RxmhKLbTCDAY2xOfrww6ieIZkZF+KBqG7S2Ako2SljKXRFi+0863PspK74QQ7JpmWwncChY25JTJSbVBYGQk2Q==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "sunos"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/win32-arm64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.17.3.tgz",
+      "integrity": "sha512-0r36VeEJ4efwmofxVJRXDjVRP2jTmv877zc+i+Pc7MNsIr38NfsjkQj23AfF7l0WbB+RQ7VUb+LDiqC/KY/M/A==",
+      "cpu": [
+        "arm64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/win32-ia32": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.17.3.tgz",
+      "integrity": "sha512-wgO6rc7uGStH22nur4aLFcq7Wh86bE9cOFmfTr/yxN3BXvDEdCSXyKkO+U5JIt53eTOgC47v9k/C1bITWL/Teg==",
+      "cpu": [
+        "ia32"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@esbuild/win32-x64": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.17.3.tgz",
+      "integrity": "sha512-FdVl64OIuiKjgXBjwZaJLKp0eaEckifbhn10dXWhysMJkWblg3OEEGKSIyhiD5RSgAya8WzP3DNkngtIg3Nt7g==",
+      "cpu": [
+        "x64"
+      ],
+      "dev": true,
+      "license": "MIT",
+      "optional": true,
+      "os": [
+        "win32"
+      ],
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/@types/codemirror": {
+      "version": "5.60.8",
+      "resolved": "https://registry.npmjs.org/@types/codemirror/-/codemirror-5.60.8.tgz",
+      "integrity": "sha512-VjFgDF/eB+Aklcy15TtOTLQeMjTo07k7KAjql8OK5Dirr7a6sJY4T1uVBDuTVG9VEmn1uUsohOpYnVfgC6/jyw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/tern": "*"
+      }
+    },
+    "node_modules/@types/estree": {
+      "version": "1.0.9",
+      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+      "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
+      "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/@types/node": {
+      "version": "16.18.126",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-16.18.126.tgz",
+      "integrity": "sha512-OTcgaiwfGFBKacvfwuHzzn1KLxH/er8mluiy8/uM3sGXHaRe73RrSIj01jow9t4kJEW633Ov+cOexXeiApTyAw==",
+      "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/@types/tern": {
+      "version": "0.23.9",
+      "resolved": "https://registry.npmjs.org/@types/tern/-/tern-0.23.9.tgz",
+      "integrity": "sha512-ypzHFE/wBzh+BlH6rrBgS5I/Z7RD21pGhZ2rltb/+ZrVM1awdZwjx7hE5XfuYgHWk9uvV5HLZN3SloevCAp3Bw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/estree": "*"
+      }
+    },
+    "node_modules/builtin-modules": {
+      "version": "3.3.0",
+      "resolved": "https://registry.npmjs.org/builtin-modules/-/builtin-modules-3.3.0.tgz",
+      "integrity": "sha512-zhaCDicdLuWN5UbN5IMnFqNMhNfo919sH85y2/ea+5Yg9TsTkeZxpL+JLbp6cgYFS4sRLp3YV4S6yDuqVWHYOw==",
+      "dev": true,
+      "license": "MIT",
+      "engines": {
+        "node": ">=6"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/sindresorhus"
+      }
+    },
+    "node_modules/esbuild": {
+      "version": "0.17.3",
+      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.17.3.tgz",
+      "integrity": "sha512-9n3AsBRe6sIyOc6kmoXg2ypCLgf3eZSraWFRpnkto+svt8cZNuKTkb1bhQcitBcvIqjNiK7K0J3KPmwGSfkA8g==",
+      "dev": true,
+      "hasInstallScript": true,
+      "license": "MIT",
+      "bin": {
+        "esbuild": "bin/esbuild"
+      },
+      "engines": {
+        "node": ">=12"
+      },
+      "optionalDependencies": {
+        "@esbuild/android-arm": "0.17.3",
+        "@esbuild/android-arm64": "0.17.3",
+        "@esbuild/android-x64": "0.17.3",
+        "@esbuild/darwin-arm64": "0.17.3",
+        "@esbuild/darwin-x64": "0.17.3",
+        "@esbuild/freebsd-arm64": "0.17.3",
+        "@esbuild/freebsd-x64": "0.17.3",
+        "@esbuild/linux-arm": "0.17.3",
+        "@esbuild/linux-arm64": "0.17.3",
+        "@esbuild/linux-ia32": "0.17.3",
+        "@esbuild/linux-loong64": "0.17.3",
+        "@esbuild/linux-mips64el": "0.17.3",
+        "@esbuild/linux-ppc64": "0.17.3",
+        "@esbuild/linux-riscv64": "0.17.3",
+        "@esbuild/linux-s390x": "0.17.3",
+        "@esbuild/linux-x64": "0.17.3",
+        "@esbuild/netbsd-x64": "0.17.3",
+        "@esbuild/openbsd-x64": "0.17.3",
+        "@esbuild/sunos-x64": "0.17.3",
+        "@esbuild/win32-arm64": "0.17.3",
+        "@esbuild/win32-ia32": "0.17.3",
+        "@esbuild/win32-x64": "0.17.3"
+      }
+    },
+    "node_modules/moment": {
+      "version": "2.29.4",
+      "resolved": "https://registry.npmjs.org/moment/-/moment-2.29.4.tgz",
+      "integrity": "sha512-5LC9SOxjSc2HF6vO2CyuTDNivEdoz2IvyJJGj6X8DJ0eFyfszE0QiEd+iXmBvUP3WHxSjFH/vIsA0EN00cgr8w==",
+      "dev": true,
+      "license": "MIT",
+      "engines": {
+        "node": "*"
+      }
+    },
+    "node_modules/obsidian": {
+      "version": "1.12.3",
+      "resolved": "https://registry.npmjs.org/obsidian/-/obsidian-1.12.3.tgz",
+      "integrity": "sha512-HxWqe763dOqzXjnNiHmAJTRERN8KILBSqxDSEqbeSr7W8R8Jxezzbca+nz1LiiqXnMpM8lV2jzAezw3CZ4xNUw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "@types/codemirror": "5.60.8",
+        "moment": "2.29.4"
+      },
+      "peerDependencies": {
+        "@codemirror/state": "6.5.0",
+        "@codemirror/view": "6.38.6"
+      }
+    },
+    "node_modules/tslib": {
+      "version": "2.4.0",
+      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.4.0.tgz",
+      "integrity": "sha512-d6xOpEDfsi2CZVlPQzGeux8XMwLT9hssAsaPYExaQMuYskwb+x1x7J371tWlbBdWHroy99KnVB6qIkUbs5X3UQ==",
+      "dev": true,
+      "license": "0BSD"
+    },
+    "node_modules/typescript": {
+      "version": "4.7.4",
+      "resolved": "https://registry.npmjs.org/typescript/-/typescript-4.7.4.tgz",
+      "integrity": "sha512-C0WQT0gezHuw6AdY1M2jxUO83Rjf0HP7Sk1DtXj6j1EwkQNZrHAg2XPWlq62oqEhYvONq5pkC2Y9oPljWToLmQ==",
+      "dev": true,
+      "license": "Apache-2.0",
+      "bin": {
+        "tsc": "bin/tsc",
+        "tsserver": "bin/tsserver"
+      },
+      "engines": {
+        "node": ">=4.2.0"
+      }
+    }
+  }
+}
+
+
+=== FILE: ./tsconfig.json ===
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "module": "ESNext",
+    "target": "ES2018",
+    "allowJs": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "importHelpers": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
+  },
+  "include": ["src/**/*.ts"]
+}
+
 === FILE: ./README.md ===
 # Obsidian Sample Plugin
 
@@ -435,6 +1638,17 @@ If you have multiple URLs, you can also do:
 See https://docs.obsidian.md
 
 
+=== FILE: ./versions.json ===
+{
+	"0.1.0": "1.5.0",
+	"0.2.0": "1.5.0",
+	"0.2.1": "1.5.0",
+	"0.2.2": "1.5.0",
+	"0.2.3": "1.5.0",
+	"0.2.4": "1.5.0"
+}
+
+
 === FILE: ./esbuild.config.mjs ===
 import esbuild from "esbuild";
 import process from "process";
@@ -477,69 +1691,1520 @@ if (prod) {
   await context.watch();
 }
 
-=== FILE: ./manifest.json ===
-{
-	"id": "my-study-compiler",
-	"name": "Конструктор учебных проектов",
-	"version": "0.2.0",
-	"minAppVersion": "1.5.0",
-	"description": "Дерево проектов и подпроектов для заметки «Учёба»: быстрое создание, смена родителя, статусы и прогресс",
-	"author": "Mersinho",
-	"isDesktopOnly": false
+=== FILE: ./src/modal.ts ===
+import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
+import type MyStudyCompilerPlugin from "./main";
+import {
+  CustomPropertyDraft,
+  KEYS,
+  ProjectGroupTab,
+  QuickFilterMode,
+  ROOT_STATUS_ACTIVE,
+  ROOT_STATUS_DONE,
+  StudyNoteItem,
+  TreeNode,
+} from "./types";
+import {
+  ScanResult,
+  buildBreadcrumbChain,
+  buildNestedFilteredTree,
+  byName,
+  collectDescendants,
+  emptyScan,
+  ensureFolder,
+  findCaseInsensitiveTypeMatch,
+  findRootPath,
+  flattenVisibleTree,
+  formatDeadlineBadge,
+  formatFullDateTooltip,
+  getDeadlineTone,
+  getWorkMeta,
+  isReservedYamlKey,
+  normalizeSpaces,
+  parseCustomPropertyValue,
+  scanStudyVault,
+  serializeYamlScalarOrList,
+  todayISO,
+} from "./scanner";
+
+export interface OpenOptions {
+  rootPath?: string;
+  addUnder?: string;
 }
 
+class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
+  private items: StudyNoteItem[];
+  private onPick: (item: StudyNoteItem) => void;
 
-=== FILE: ./package.json ===
-{
-	"name": "my-study-compiler",
-	"version": "0.2.0",
-	"description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
-	"main": "main.js",
-	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"bump": "node version-bump.mjs"
-	},
-	"keywords": [],
-	"author": "Mersinho",
-	"license": "MIT",
-	"devDependencies": {
-		"@types/node": "^16.11.6",
-		"builtin-modules": "3.3.0",
-		"esbuild": "0.17.3",
-		"obsidian": "latest",
-		"tslib": "2.4.0",
-		"typescript": "4.7.4"
-	}
+  constructor(app: App, items: StudyNoteItem[], onPick: (item: StudyNoteItem) => void) {
+    super(app);
+    this.items = items;
+    this.onPick = onPick;
+    this.setPlaceholder("Выбери нового родителя…");
+  }
+
+  getItems(): StudyNoteItem[] {
+    return this.items;
+  }
+
+  getItemText(item: StudyNoteItem): string {
+    return `${item.name} · ${item.noteType || "без типа"}`;
+  }
+
+  onChooseItem(item: StudyNoteItem): void {
+    this.onPick(item);
+  }
 }
 
+export class StudyCompilerModal extends Modal {
+  private plugin: MyStudyCompilerPlugin;
+  private options: OpenOptions;
+  private scan: ScanResult = emptyScan();
+  private groupTab: ProjectGroupTab;
+  private selectedPath: string;
+  private focusBranchPath = "";
+  private expanded: Set<string>;
+  private cleanups: Array<() => void> = [];
+  private refreshTimer: number | null = null;
+
+  private searchQuery = "";
+  private filterMode: QuickFilterMode = "all";
+  private typeFilter = "";
+  private activeRowIndex = -1;
+  private currentVisibleFlat: TreeNode[] = [];
+  private rowElementByPath = new Map<string, HTMLElement>();
+
+  // Быстрое редактирование типа или свойств конкретного узла дерева
+  private editingNodePath: string | null = null;
+  private editingNodeMode: "type" | "props" | null = null;
+
+  private barEl!: HTMLElement;
+  private searchWrapEl!: HTMLElement;
+  private crumbsEl!: HTMLElement;
+  private formEl!: HTMLElement;
+  private treeEl!: HTMLElement;
+  private datalistsEl!: HTMLElement;
+  private searchInputEl: HTMLInputElement | null = null;
+
+  private form: {
+    open: boolean;
+    title: string;
+    type: string;
+    parentPath: string;
+    deadline: string;
+    customProps: CustomPropertyDraft[];
+  };
+
+  constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
+    super(app);
+    this.plugin = plugin;
+    this.options = options;
+    this.groupTab = plugin.settings.projectGroupTab || "active";
+    this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
+    this.expanded = new Set(plugin.settings.expandedPaths);
+    this.form = {
+      open: false,
+      title: "",
+      type: plugin.settings.lastUsedMaterialType || "Термин",
+      parentPath: "",
+      deadline: "",
+      customProps: [],
+    };
+    this.noRestore();
+  }
+
+  private noRestore() {
+    (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
+  }
+
+  onOpen(): void {
+    this.noRestore();
+    this.modalEl.addClass("my-sc-modal-container");
+    this.contentEl.addClass("my-sc-modal");
+
+    // Только заголовок с отступом справа под родной крестик Obsidian (.modal-close-button)
+    const head = this.contentEl.createDiv("my-sc-head-bar");
+    head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и рабочее дерево" });
+
+    this.datalistsEl = this.contentEl.createDiv("my-sc-datalists-host");
+    this.barEl = this.contentEl.createDiv("my-sc-project-bar");
+    this.searchWrapEl = this.contentEl.createDiv("my-sc-search-panel");
+    this.crumbsEl = this.contentEl.createDiv("my-sc-crumbs-bar");
+    this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
+    this.treeEl = this.contentEl.createDiv("my-sc-body");
+
+    const onKeyDown = (e: KeyboardEvent) => this.handleKeyboardNav(e);
+    this.modalEl.addEventListener("keydown", onKeyDown);
+    this.cleanups.push(() => this.modalEl.removeEventListener("keydown", onKeyDown));
+
+    const onChange = () => this.scheduleRefresh();
+    const r1 = this.app.metadataCache.on("changed", onChange);
+    const r2 = this.app.vault.on("delete", onChange);
+    const r3 = this.app.vault.on("rename", onChange);
+    this.cleanups.push(
+      () => this.app.metadataCache.offref(r1),
+      () => this.app.vault.offref(r2),
+      () => this.app.vault.offref(r3)
+    );
+
+    this.scan = scanStudyVault(this.app, this.plugin.settings);
+    const addUnder = this.options.addUnder;
+    if (addUnder && this.scan.byPath.has(addUnder)) {
+      this.selectedPath = findRootPath(this.scan, addUnder);
+    }
+
+    // Если выбранный/запомненный проект находится в другой вкладке (Активные/Завершённые), переключаемся туда автоматически
+    this.syncGroupTabWithSelectedProject();
+
+    const root = this.getRootInCurrentGroup();
+    if (root) {
+      const savedFocus = this.plugin.settings.focusedBranchByWork[root.path];
+      if (savedFocus && this.scan.byPath.has(savedFocus)) {
+        this.focusBranchPath = savedFocus;
+      }
+    }
+
+    this.renderDatalists();
+    this.renderBar();
+    this.renderSearchPanel();
+    this.renderBreadcrumbs();
+    this.renderTree();
+
+    if (addUnder && this.scan.byPath.has(addUnder)) {
+      this.openForm(addUnder);
+    } else {
+      window.setTimeout(() => this.searchInputEl?.focus(), 40);
+    }
+  }
+
+  onClose(): void {
+    for (const fn of this.cleanups) fn();
+    this.cleanups = [];
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.contentEl.empty();
+  }
+
+  private syncGroupTabWithSelectedProject() {
+    if (!this.selectedPath) return;
+    const found = this.scan.roots.find((r) => r.path === this.selectedPath);
+    if (!found) return;
+    const targetGroup: ProjectGroupTab = found.isCompletedRoot ? "completed" : "active";
+    if (this.groupTab !== targetGroup) {
+      this.groupTab = targetGroup;
+      this.plugin.settings.projectGroupTab = targetGroup;
+      this.plugin.requestSaveSettings();
+    }
+  }
+
+  private getRootsForTab(tab: ProjectGroupTab): StudyNoteItem[] {
+    return tab === "completed" ? this.scan.completedRoots : this.scan.activeRoots;
+  }
+
+  private getRootInCurrentGroup(): StudyNoteItem | null {
+    const groupList = this.getRootsForTab(this.groupTab);
+    const direct = groupList.find((r) => r.path === this.selectedPath);
+    if (direct) return direct;
+    const first = groupList[0] ?? null;
+    if (first) {
+      this.selectedPath = first.path;
+      this.plugin.settings.lastWorkPath = first.path;
+      this.plugin.requestSaveSettings();
+    }
+    return first;
+  }
+
+  private scheduleRefresh() {
+    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      this.scan = scanStudyVault(this.app, this.plugin.settings);
+      this.renderDatalists();
+      this.renderBar();
+      this.renderSearchPanel();
+      this.renderBreadcrumbs();
+      if (this.form.open) this.renderForm();
+      this.renderTree();
+    }, 220);
+  }
+
+  private renderDatalists() {
+    this.datalistsEl.empty();
+
+    const typeDl = this.datalistsEl.createEl("datalist", {
+      attr: { id: "my-sc-types-datalist" },
+    });
+    for (const t of this.scan.schema.typeCounts) {
+      typeDl.createEl("option", {
+        attr: { value: t.name, label: `${t.name} (${t.count})` },
+      });
+    }
+
+    const keysDl = this.datalistsEl.createEl("datalist", {
+      attr: { id: "my-sc-prop-keys-datalist" },
+    });
+    for (const k of this.scan.schema.propertyKeys) {
+      keysDl.createEl("option", { attr: { value: k } });
+    }
+  }
+
+  private getActiveBranchRoot(projectRoot: StudyNoteItem): StudyNoteItem {
+    if (this.focusBranchPath) {
+      const target = this.scan.byPath.get(this.focusBranchPath);
+      if (target && findRootPath(this.scan, target.path) === projectRoot.path) {
+        return target;
+      }
+    }
+    this.focusBranchPath = "";
+    return projectRoot;
+  }
+
+  private setFocusBranch(projectRoot: StudyNoteItem, branchPath: string) {
+    this.focusBranchPath = branchPath === projectRoot.path ? "" : branchPath;
+    if (this.focusBranchPath) {
+      this.plugin.settings.focusedBranchByWork[projectRoot.path] = this.focusBranchPath;
+    } else {
+      delete this.plugin.settings.focusedBranchByWork[projectRoot.path];
+    }
+    this.plugin.requestSaveSettings();
+    this.activeRowIndex = -1;
+    this.renderBar();
+    this.renderBreadcrumbs();
+    this.renderTree();
+  }
+
+  private saveExpanded() {
+    this.plugin.settings.expandedPaths = [...this.expanded];
+    this.plugin.requestSaveSettings();
+  }
+
+  private handleKeyboardNav(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      this.searchInputEl?.focus();
+      this.searchInputEl?.select();
+      return;
+    }
+
+    const activeEl = document.activeElement;
+    const inOtherInput =
+      (activeEl instanceof HTMLInputElement && activeEl !== this.searchInputEl) ||
+      activeEl instanceof HTMLSelectElement ||
+      activeEl instanceof HTMLTextAreaElement;
+    if (inOtherInput) return;
+
+    const len = this.currentVisibleFlat.length;
+    if (len === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      this.activeRowIndex = Math.min(len - 1, this.activeRowIndex + 1);
+      this.highlightActiveRow();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      this.activeRowIndex = Math.max(0, this.activeRowIndex - 1);
+      this.highlightActiveRow();
+    } else if (e.key === "Enter" && this.activeRowIndex >= 0) {
+      const picked = this.currentVisibleFlat[this.activeRowIndex];
+      if (picked) {
+        e.preventDefault();
+        this.openNote(picked.item.path);
+      }
+    } else if (
+      (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
+      activeEl !== this.searchInputEl &&
+      this.activeRowIndex >= 0
+    ) {
+      const picked = this.currentVisibleFlat[this.activeRowIndex];
+      if (!picked || !picked.hasChildren) return;
+      e.preventDefault();
+      if (e.key === "ArrowRight") this.expanded.add(picked.item.path);
+      else this.expanded.delete(picked.item.path);
+      this.saveExpanded();
+      this.renderTree();
+    }
+  }
+
+  private highlightActiveRow() {
+    for (const el of this.rowElementByPath.values()) {
+      el.removeClass("is-kb-active");
+    }
+    const picked = this.currentVisibleFlat[this.activeRowIndex];
+    if (!picked) return;
+    const targetEl = this.rowElementByPath.get(picked.item.path);
+    if (targetEl) {
+      targetEl.addClass("is-kb-active");
+      targetEl.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  private renderBar() {
+    this.barEl.empty();
+
+    // 1. Сегмент-переключатель «Активные · N / Завершённые · M»
+    const segRow = this.barEl.createDiv("my-sc-segment-bar");
+    const activeCount = this.scan.activeRoots.length;
+    const completedCount = this.scan.completedRoots.length;
+
+    const segments: Array<{ id: ProjectGroupTab; label: string }> = [
+      { id: "active", label: `🔥 Активные · ${activeCount}` },
+      { id: "completed", label: `✓ Завершённые · ${completedCount}` },
+    ];
+
+    for (const seg of segments) {
+      const btn = segRow.createEl("button", {
+        cls: "my-sc-segment-btn" + (this.groupTab === seg.id ? " is-active" : ""),
+        text: seg.label,
+        attr: { type: "button" },
+      });
+      btn.onclick = () => {
+        if (this.groupTab === seg.id) return;
+        this.groupTab = seg.id;
+        this.plugin.settings.projectGroupTab = seg.id;
+        const firstInGroup = this.getRootsForTab(seg.id)[0];
+        this.selectedPath = firstInGroup ? firstInGroup.path : "";
+        if (firstInGroup) {
+          this.plugin.settings.lastWorkPath = firstInGroup.path;
+          this.focusBranchPath =
+            this.plugin.settings.focusedBranchByWork[firstInGroup.path] || "";
+        } else {
+          this.focusBranchPath = "";
+        }
+        this.plugin.requestSaveSettings();
+        this.form.open = false;
+        this.formEl.empty();
+        this.activeRowIndex = -1;
+        this.renderBar();
+        this.renderBreadcrumbs();
+        this.renderTree();
+      };
+    }
+
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      this.formEl.empty();
+      const emptyBox = this.barEl.createDiv("my-sc-empty-group-box");
+      if (this.groupTab === "active" && completedCount > 0) {
+        emptyBox.createSpan({
+          text: `Активных проектов сейчас нет (в завершённых: ${completedCount}). `,
+        });
+        const switchBtn = emptyBox.createEl("button", {
+          cls: "my-sc-chip-btn",
+          text: "Показать завершённые",
+          attr: { type: "button" },
+        });
+        switchBtn.onclick = () => {
+          this.groupTab = "completed";
+          this.plugin.settings.projectGroupTab = "completed";
+          this.plugin.requestSaveSettings();
+          this.renderBar();
+          this.renderBreadcrumbs();
+          this.renderTree();
+        };
+      } else if (this.groupTab === "completed" && activeCount > 0) {
+        emptyBox.createSpan({
+          text: `Завершённых проектов пока нет (активных: ${activeCount}).`,
+        });
+      } else {
+        emptyBox.setText(
+          `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`
+        );
+      }
+      return;
+    }
+
+    const branchRoot = this.getActiveBranchRoot(root);
+    const groupRoots = this.getRootsForTab(this.groupTab);
+
+    const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
+    const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
+    for (const r of groupRoots) {
+      const meta = getWorkMeta(r.noteType, r.icon);
+      const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
+      const o = sel.createEl("option", {
+        text: `${meta.icon} ${r.name} (${r.noteType || "Проект"})${dlText}`,
+        value: r.path,
+      });
+      if (r.path === root.path) o.selected = true;
+    }
+    sel.onchange = () => {
+      this.selectedPath = sel.value;
+      this.plugin.settings.lastWorkPath = sel.value;
+      this.focusBranchPath =
+        this.plugin.settings.focusedBranchByWork[sel.value] || "";
+      this.plugin.requestSaveSettings();
+      this.form.open = false;
+      this.formEl.empty();
+      this.activeRowIndex = -1;
+      this.renderBar();
+      this.renderBreadcrumbs();
+      this.renderTree();
+    };
+
+    const toggleRootStatusBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: root.isCompletedRoot ? "↩ В работу" : "✓ Завершить проект",
+      attr: {
+        type: "button",
+        title: root.isCompletedRoot
+          ? "Вернуть корневой проект в список активных"
+          : "Перевести корневой проект в завершённые",
+      },
+    });
+    toggleRootStatusBtn.onclick = () => void this.toggleRootProjectStatus(root);
+
+    const openBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "📄 Открыть",
+      attr: { type: "button", title: "Открыть заметку текущей ветки или проекта" },
+    });
+    openBtn.onclick = () => this.openNote(branchRoot.path);
+
+    const descendants = collectDescendants(branchRoot.path, this.scan);
+    const directKidsCount = (this.scan.childrenOf.get(branchRoot.path) ?? []).length;
+    const summaryRow = this.barEl.createDiv("my-sc-summary-row");
+    const scopePrefix =
+      branchRoot.path !== root.path ? `Ветка «${branchRoot.name}»: ` : "";
+    summaryRow.createSpan({
+      cls: "my-sc-summary-text",
+      text:
+        descendants.size > 0
+          ? `${scopePrefix}материалов в дереве — ${descendants.size} (разделов 1-го уровня: ${directKidsCount})`
+          : `${scopePrefix}материалов пока нет`,
+    });
+    this.renderDeadline(summaryRow, branchRoot);
+
+    const tools = this.barEl.createDiv("my-sc-tools");
+    const addBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.form.open ? " is-active" : ""),
+      text: this.form.open ? "✕ Закрыть форму" : "＋ Добавить материал",
+      attr: { type: "button" },
+    });
+    addBtn.onclick = () => {
+      if (this.form.open) {
+        this.form.open = false;
+        this.formEl.empty();
+        this.renderBar();
+      } else {
+        this.openForm(branchRoot.path);
+      }
+    };
+
+    const expandBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⤢ Развернуть всё",
+      attr: { type: "button" },
+    });
+    expandBtn.onclick = () => {
+      for (const p of collectDescendants(branchRoot.path, this.scan)) {
+        if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
+      }
+      this.saveExpanded();
+      this.renderTree();
+    };
+
+    const collapseBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⤡ Свернуть всё",
+      attr: { type: "button" },
+    });
+    collapseBtn.onclick = () => {
+      for (const p of collectDescendants(branchRoot.path, this.scan)) {
+        this.expanded.delete(p);
+      }
+      this.saveExpanded();
+      this.renderTree();
+    };
+  }
+
+  private async toggleRootProjectStatus(root: StudyNoteItem) {
+    const nextDone = !root.isCompletedRoot;
+    try {
+      await this.app.fileManager.processFrontMatter(
+        root.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.status] = nextDone ? ROOT_STATUS_DONE : ROOT_STATUS_ACTIVE;
+          if (nextDone && !fm[KEYS.finishedAt]) {
+            fm[KEYS.finishedAt] = todayISO();
+          }
+        }
+      );
+      this.groupTab = nextDone ? "completed" : "active";
+      this.plugin.settings.projectGroupTab = this.groupTab;
+      this.plugin.requestSaveSettings();
+      new Notice(
+        nextDone
+          ? `Проект «${root.name}» перенесён в завершённые`
+          : `Проект «${root.name}» возвращён в активные`
+      );
+    } catch (err: unknown) {
+      new Notice(
+        "Не удалось изменить статус проекта: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+    }
+  }
+
+  private renderSearchPanel() {
+    this.searchWrapEl.empty();
+    const row = this.searchWrapEl.createDiv("my-sc-search-row");
+
+    const inp = row.createEl("input", {
+      cls: "my-sc-search-input",
+      attr: {
+        type: "search",
+        placeholder: "🔍 Поиск по дереву (название, тип, #тег)… ↑/↓ и Enter",
+      },
+    });
+    inp.value = this.searchQuery;
+    this.searchInputEl = inp;
+    inp.oninput = () => {
+      this.searchQuery = inp.value;
+      this.activeRowIndex = 0;
+      this.renderTree();
+    };
+
+    const typeSel = row.createEl("select", {
+      cls: "dropdown my-sc-type-filter",
+      attr: { title: "Фильтр по типу из хранилища" },
+    });
+    typeSel.createEl("option", { text: "Все типы", value: "" });
+    for (const t of this.scan.schema.typeCounts) {
+      const o = typeSel.createEl("option", {
+        text: `${t.name} (${t.count})`,
+        value: t.name,
+      });
+      if (t.name.toLowerCase() === this.typeFilter.toLowerCase()) {
+        o.selected = true;
+      }
+    }
+    typeSel.onchange = () => {
+      this.typeFilter = typeSel.value;
+      this.activeRowIndex = -1;
+      this.renderTree();
+    };
+
+    if (this.scan.orphans.length > 0 || this.filterMode === "orphans") {
+      const chipsRow = this.searchWrapEl.createDiv("my-sc-filter-chips");
+      const modes: Array<{ id: QuickFilterMode; label: string }> = [
+        { id: "all", label: "🌳 Дерево проекта" },
+        {
+          id: "orphans",
+          label: `🧭 Без родителя (${this.scan.orphans.length})`,
+        },
+      ];
+
+      for (const m of modes) {
+        const chip = chipsRow.createEl("button", {
+          cls: "my-sc-filter-chip" + (this.filterMode === m.id ? " is-active" : ""),
+          text: m.label,
+          attr: { type: "button" },
+        });
+        chip.onclick = () => {
+          this.filterMode =
+            this.filterMode === m.id && m.id !== "all" ? "all" : m.id;
+          this.activeRowIndex = -1;
+          this.renderSearchPanel();
+          this.renderTree();
+        };
+      }
+    }
+  }
+
+  private renderBreadcrumbs() {
+    this.crumbsEl.empty();
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      this.crumbsEl.addClass("is-hidden");
+      return;
+    }
+    const branchRoot = this.getActiveBranchRoot(root);
+    if (branchRoot.path === root.path) {
+      this.crumbsEl.addClass("is-hidden");
+      return;
+    }
+    this.crumbsEl.removeClass("is-hidden");
+
+    const chain = buildBreadcrumbChain(this.scan, root.path, branchRoot.path);
+    this.crumbsEl.createSpan({ cls: "my-sc-crumbs-label", text: "Фокус ветки:" });
+
+    chain.forEach((node, idx) => {
+      if (idx > 0) {
+        this.crumbsEl.createSpan({ cls: "my-sc-crumb-sep", text: "›" });
+      }
+      const isLast = idx === chain.length - 1;
+      const btn = this.crumbsEl.createEl("button", {
+        cls: "my-sc-crumb-btn" + (isLast ? " is-current" : ""),
+        text: idx === 0 ? `🏠 ${node.name}` : node.name,
+        attr: { type: "button" },
+      });
+      btn.onclick = () => this.setFocusBranch(root, node.path);
+    });
+
+    const resetBtn = this.crumbsEl.createEl("button", {
+      cls: "my-sc-crumb-reset",
+      text: "✕ Весь проект",
+      attr: { type: "button", title: "Вернуться ко всему дереву проекта" },
+    });
+    resetBtn.onclick = () => this.setFocusBranch(root, root.path);
+  }
+
+  private openForm(parentPath: string) {
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+    this.form.open = true;
+    this.form.type =
+      this.plugin.settings.lastUsedMaterialType ||
+      this.scan.schema.typeCounts[0]?.name ||
+      "Термин";
+    this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
+    this.renderBar();
+    this.renderForm();
+  }
+
+  private renderForm() {
+    this.formEl.empty();
+    if (!this.form.open) return;
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+
+    const box = this.formEl.createDiv("my-sc-add-box");
+    const topRow = box.createDiv("my-sc-form-row");
+
+    // 3.1. Свободное поле «Тип» с подсказками из реальных типов хранилища
+    const typeWrap = topRow.createDiv("my-sc-type-input-wrap");
+    const typeInp = typeWrap.createEl("input", {
+      cls: "my-sc-type-input",
+      attr: {
+        type: "text",
+        list: "my-sc-types-datalist",
+        placeholder: "Тип (Термин, Расчёт, Схема…)",
+        title: "Впиши любой тип или выбери из подсказок",
+      },
+    });
+    typeInp.value = this.form.type;
+
+    const caseHintEl = box.createDiv("my-sc-case-hint is-hidden");
+
+    const updateCaseHint = () => {
+      const existingCase = findCaseInsensitiveTypeMatch(
+        typeInp.value,
+        this.scan.schema.typeCounts
+      );
+      caseHintEl.empty();
+      if (!existingCase) {
+        caseHintEl.addClass("is-hidden");
+        return;
+      }
+      caseHintEl.removeClass("is-hidden");
+      caseHintEl.createSpan({
+        text: `В базе уже есть тип «${existingCase}». `,
+      });
+      const useExistingBtn = caseHintEl.createEl("button", {
+        cls: "my-sc-inline-link-btn",
+        text: `Использовать «${existingCase}»`,
+        attr: { type: "button" },
+      });
+      useExistingBtn.onclick = () => {
+        this.form.type = existingCase;
+        typeInp.value = existingCase;
+        caseHintEl.addClass("is-hidden");
+      };
+    };
+
+    typeInp.oninput = () => {
+      this.form.type = typeInp.value;
+      updateCaseHint();
+    };
+    updateCaseHint();
+
+    const titleInp = topRow.createEl("input", {
+      cls: "my-sc-input",
+      attr: { type: "text", placeholder: "Название темы или материала…" },
+    });
+    titleInp.value = this.form.title;
+    titleInp.oninput = () => {
+      this.form.title = titleInp.value;
+    };
+
+    const parentSel = topRow.createEl("select", {
+      cls: "dropdown my-sc-parent-select",
+    });
+    parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
+    const allTree = buildNestedFilteredTree(root, this.scan, null, {
+      query: "",
+      mode: "all",
+      typeFilter: "",
+    });
+    for (const n of flattenVisibleTree(allTree)) {
+      parentSel.createEl("option", {
+        text: `${"\u00A0\u00A0".repeat(n.depth + 1)}↳ ${n.item.name}`,
+        value: n.item.path,
+      });
+    }
+    parentSel.value = this.form.parentPath;
+    if (parentSel.value !== this.form.parentPath) {
+      this.form.parentPath = root.path;
+      parentSel.value = root.path;
+    }
+    parentSel.onchange = () => {
+      this.form.parentPath = parentSel.value;
+    };
+
+    const dateInp = topRow.createEl("input", {
+      cls: "my-sc-date",
+      attr: { type: "date", title: "Дедлайн (необязательно)" },
+    });
+    dateInp.value = this.form.deadline;
+    dateInp.onchange = () => {
+      this.form.deadline = dateInp.value;
+    };
+
+    // Быстрые чипы самых частых типов
+    if (this.scan.schema.typeCounts.length > 0) {
+      const quickTypesRow = box.createDiv("my-sc-quick-types-row");
+      quickTypesRow.createSpan({
+        cls: "my-sc-quick-types-label",
+        text: "Частые типы:",
+      });
+      for (const tc of this.scan.schema.typeCounts.slice(0, 7)) {
+        const chip = quickTypesRow.createEl("button", {
+          cls:
+            "my-sc-filter-chip" +
+            (normalizeSpaces(this.form.type).toLowerCase() ===
+            tc.name.toLowerCase()
+              ? " is-active"
+              : ""),
+          text: `${tc.name} (${tc.count})`,
+          attr: { type: "button" },
+        });
+        chip.onclick = () => {
+          this.form.type = tc.name;
+          this.renderForm();
+        };
+      }
+    }
+
+    // 3.2. Произвольные свойства при создании
+    const propsSection = box.createDiv("my-sc-props-section");
+    for (let i = 0; i < this.form.customProps.length; i++) {
+      const draft = this.form.customProps[i];
+      if (!draft) continue;
+      const pRow = propsSection.createDiv("my-sc-prop-row");
+      const valDatalistId = `my-sc-val-dl-${draft.id}`;
+
+      const keyInp = pRow.createEl("input", {
+        cls: "my-sc-prop-key",
+        attr: {
+          type: "text",
+          list: "my-sc-prop-keys-datalist",
+          placeholder: "Ключ (напр. источник, автор)…",
+        },
+      });
+      keyInp.value = draft.key;
+
+      const valDl = pRow.createEl("datalist", { attr: { id: valDatalistId } });
+      const populateValSuggestions = (kName: string) => {
+        valDl.empty();
+        const vals = this.scan.schema.valuesByKey.get(normalizeSpaces(kName)) ?? [];
+        for (const v of vals.slice(0, 25)) {
+          valDl.createEl("option", { attr: { value: v } });
+        }
+      };
+      populateValSuggestions(draft.key);
+
+      keyInp.oninput = () => {
+        draft.key = keyInp.value;
+        populateValSuggestions(draft.key);
+      };
+
+      const valInp = pRow.createEl("input", {
+        cls: "my-sc-prop-val",
+        attr: {
+          type: "text",
+          list: valDatalistId,
+          placeholder:
+            draft.kind === "list"
+              ? "Значения через запятую…"
+              : "Значение (дата ГГГГ-ММ-ДД, число или текст)…",
+        },
+      });
+      valInp.value = draft.value;
+      valInp.oninput = () => {
+        draft.value = valInp.value;
+      };
+
+      const kindSel = pRow.createEl("select", {
+        cls: "dropdown my-sc-prop-kind",
+        attr: { title: "Формат записи в YAML" },
+      });
+      kindSel.createEl("option", { text: "Значение", value: "auto" });
+      kindSel.createEl("option", { text: "Список (,)", value: "list" });
+      kindSel.value = draft.kind;
+      kindSel.onchange = () => {
+        draft.kind = kindSel.value === "list" ? "list" : "auto";
+        valInp.placeholder =
+          draft.kind === "list"
+            ? "Значения через запятую…"
+            : "Значение (дата ГГГГ-ММ-ДД, число или текст)…";
+      };
+
+      const delBtn = pRow.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "✕",
+        attr: { type: "button", title: "Удалить свойство" },
+      });
+      delBtn.onclick = () => {
+        this.form.customProps.splice(i, 1);
+        this.renderForm();
+      };
+    }
+
+    const actionsRow = box.createDiv("my-sc-form-actions");
+    const addPropBtn = actionsRow.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "＋ Свойство",
+      attr: { type: "button" },
+    });
+    addPropBtn.onclick = () => {
+      this.form.customProps.push({
+        id: String(Date.now() + Math.random()),
+        key: "",
+        value: "",
+        kind: "auto",
+      });
+      this.renderForm();
+    };
+
+    const createBtn = actionsRow.createEl("button", {
+      cls: "mod-cta my-sc-action-btn",
+      text: "Создать материал",
+      attr: { type: "button" },
+    });
+
+    const submit = async () => {
+      createBtn.disabled = true;
+      const ok = await this.createNote(root);
+      if (ok) {
+        this.form.title = "";
+        this.form.deadline = "";
+        this.form.customProps = [];
+        this.renderForm();
+      } else {
+        createBtn.disabled = false;
+      }
+    };
+    createBtn.onclick = () => void submit();
+    titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.isComposing) void submit();
+    });
+    titleInp.focus();
+  }
+
+  private async createNote(root: StudyNoteItem): Promise<boolean> {
+    const cleanTitle = normalizeSpaces(this.form.title).replace(/[\\/:*?"<>|]/g, "");
+    if (!cleanTitle) {
+      new Notice("Введи название материала.");
+      return false;
+    }
+
+    const normalizedType = normalizeSpaces(this.form.type) || "Материал";
+
+    // Валидация произвольных свойств перед созданием файла
+    const seenKeysLower = new Set<string>([
+      KEYS.area.toLowerCase(),
+      KEYS.type.toLowerCase(),
+      KEYS.parent.toLowerCase(),
+    ]);
+    if (root.discipline) seenKeysLower.add(KEYS.discipline.toLowerCase());
+    if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+      seenKeysLower.add(KEYS.deadline.toLowerCase());
+    }
+
+    const preparedProps: Array<{ key: string; serialized: string }> = [];
+
+    for (const draft of this.form.customProps) {
+      const k = normalizeSpaces(draft.key);
+      const parsedVal = parseCustomPropertyValue(draft.value, draft.kind);
+      if (!k && parsedVal === undefined) continue;
+      if (!k) {
+        new Notice("Укажи имя ключа для добавленного свойства или удали пустую строку.");
+        return false;
+      }
+      if (isReservedYamlKey(k)) {
+        new Notice(
+          `Ключ «${k}» задаётся основными полями формы. Удали его из дополнительных свойств.`
+        );
+        return false;
+      }
+      const kLow = k.toLowerCase();
+      if (seenKeysLower.has(kLow)) {
+        new Notice(`Дублирующийся ключ свойства «${k}». Оставь только одно поле.`);
+        return false;
+      }
+      if (parsedVal === undefined) continue; // Пустые значения не записываем совсем
+
+      seenKeysLower.add(kLow);
+      preparedProps.push({
+        key: k,
+        serialized: serializeYamlScalarOrList(parsedVal),
+      });
+    }
+
+    const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
+    const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
+    if (this.app.vault.getAbstractFileByPath(targetPath)) {
+      new Notice(`Заметка «${cleanTitle}» уже есть в папке ${folder}.`);
+      return false;
+    }
+    const parent = this.scan.byPath.get(this.form.parentPath) ?? root;
+
+    try {
+      await ensureFolder(this.app, folder);
+      const link = this.app.metadataCache.fileToLinktext(parent.file, targetPath);
+      const lines = [
+        "---",
+        `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
+        `${KEYS.type}: ${JSON.stringify(normalizedType)}`,
+        `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
+      ];
+      if (root.discipline) {
+        lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+        lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
+      }
+      for (const prop of preparedProps) {
+        lines.push(`${prop.key}: ${prop.serialized}`);
+      }
+      lines.push("---", "", `# ${cleanTitle}`, "", "");
+      await this.app.vault.create(targetPath, lines.join("\n"));
+
+      this.plugin.settings.lastUsedMaterialType = normalizedType;
+      this.expanded.add(parent.path);
+      this.saveExpanded();
+      new Notice(`Создано: «${cleanTitle}» (${normalizedType})`);
+      return true;
+    } catch (err: unknown) {
+      new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
+      return false;
+    }
+  }
+
+  private renderDeadline(parent: HTMLElement, item: StudyNoteItem) {
+    if (!item.deadline) return;
+    const tone = getDeadlineTone(item);
+    const cls =
+      tone === "overdue"
+        ? " is-overdue"
+        : tone === "soon"
+          ? " is-soon"
+          : " is-far";
+    parent.createSpan({
+      cls: "my-sc-deadline" + cls,
+      text: `⏳ ${formatDeadlineBadge(item)}`,
+      attr: {
+        title: formatFullDateTooltip(item.deadline),
+      },
+    });
+  }
+
+  private renderHighlightedTitle(container: HTMLElement, text: string, query: string) {
+    const cleanQ = query
+      .trim()
+      .split(/\s+/)
+      .filter((t) => !t.startsWith("#"))[0];
+    if (!cleanQ) {
+      container.setText(text);
+      return;
+    }
+    const lowerText = text.toLowerCase();
+    const lowerQ = cleanQ.toLowerCase();
+    const idx = lowerText.indexOf(lowerQ);
+    if (idx === -1) {
+      container.setText(text);
+      return;
+    }
+    if (idx > 0) container.appendText(text.slice(0, idx));
+    container.createEl("mark", {
+      cls: "my-sc-hl",
+      text: text.slice(idx, idx + cleanQ.length),
+    });
+    if (idx + cleanQ.length < text.length) {
+      container.appendText(text.slice(idx + cleanQ.length));
+    }
+  }
+
+  private openNote(path: string) {
+    this.noRestore();
+    this.close();
+    void this.app.workspace.openLinkText(path, "", false);
+  }
+
+  private renderTree() {
+    const scrollTop = this.treeEl.scrollTop;
+    this.treeEl.empty();
+    this.rowElementByPath.clear();
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+
+    const branchRoot = this.getActiveBranchRoot(root);
+    const nestedNodes = buildNestedFilteredTree(
+      branchRoot,
+      this.scan,
+      this.expanded,
+      {
+        query: this.searchQuery,
+        mode: this.filterMode,
+        typeFilter: this.typeFilter,
+      }
+    );
+    this.currentVisibleFlat = flattenVisibleTree(nestedNodes);
+
+    if (nestedNodes.length === 0) {
+      const hasFilters =
+        this.searchQuery.trim().length > 0 ||
+        this.filterMode !== "all" ||
+        this.typeFilter.length > 0;
+      this.treeEl.createDiv({
+        cls: "my-sc-empty",
+        text: hasFilters
+          ? "По текущему запросу или фильтру ничего не найдено."
+          : "В этой ветке пока нет материалов. Нажми «＋ Добавить материал».",
+      });
+      return;
+    }
+
+    const listEl = this.treeEl.createDiv("my-sc-tree-list");
+    for (const node of nestedNodes) {
+      this.renderNodeGroup(listEl, node, root);
+    }
+
+    if (this.activeRowIndex >= 0) {
+      this.highlightActiveRow();
+    }
+    this.treeEl.scrollTop = scrollTop;
+  }
+
+  private renderNodeGroup(
+    parentContainer: HTMLElement,
+    node: TreeNode,
+    projectRoot: StudyNoteItem
+  ) {
+    const item = node.item;
+    const depthSlot = node.depth % 5;
+
+    const groupEl = parentContainer.createDiv({
+      cls:
+        "my-sc-node-group" +
+        ` is-depth-${depthSlot}` +
+        (node.hasChildren ? " is-branch" : " is-leaf") +
+        (node.isExpanded ? " is-expanded" : " is-collapsed"),
+    });
+
+    const row = groupEl.createDiv({
+      cls:
+        "my-sc-tree-row" +
+        (node.hasChildren ? " is-parent-row" : "") +
+        (node.isExpanded ? " is-open-parent" : "") +
+        (node.isDirectMatch ? " is-match" : ""),
+    });
+    this.rowElementByPath.set(item.path, row);
+
+    const left = row.createDiv("my-sc-tree-left");
+
+    if (node.hasChildren) {
+      const toggleBtn = left.createEl("button", {
+        cls: "my-sc-toggle-btn" + (node.isExpanded ? " is-open" : ""),
+        text: "▸",
+        attr: {
+          type: "button",
+          title: node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
+          "aria-label": node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
+          "aria-expanded": String(node.isExpanded),
+        },
+      });
+      toggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (this.expanded.has(item.path)) this.expanded.delete(item.path);
+        else this.expanded.add(item.path);
+        this.saveExpanded();
+        this.renderTree();
+      };
+    } else {
+      const dotWrap = left.createSpan("my-sc-leaf-marker");
+      dotWrap.createSpan("my-sc-leaf-dot");
+    }
+
+    const title = left.createSpan({
+      cls: "my-sc-node-title",
+      attr: { title: `${item.name} (${item.path})` },
+    });
+    this.renderHighlightedTitle(title, item.name, this.searchQuery);
+    title.onclick = () => this.openNote(item.path);
+
+    // Кликабельный бейдж типа: позволяет быстро сменить тип существующей заметки прямо из дерева
+    const meta = getWorkMeta(item.noteType, item.icon);
+    const badge = left.createEl("button", {
+      cls: "my-sc-type-badge",
+      text: `${meta.icon} ${item.noteType || "без типа"}`,
+      attr: {
+        type: "button",
+        title: "Нажми, чтобы изменить тип заметки",
+      },
+    });
+    badge.style.setProperty("--badge-color", meta.color);
+    badge.onclick = (e) => {
+      e.stopPropagation();
+      if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+      } else {
+        this.editingNodePath = item.path;
+        this.editingNodeMode = "type";
+      }
+      this.renderTree();
+    };
+
+    if (item.parentPaths.length > 1) {
+      left.createSpan({
+        cls: "my-sc-multi-parent",
+        text: `×${item.parentPaths.length}`,
+        attr: { title: `Привязана к ${item.parentPaths.length} родителям` },
+      });
+    }
+
+    const right = row.createDiv("my-sc-tree-right");
+    this.renderDeadline(right, item);
+
+    if (node.hasChildren) {
+      const countPill = right.createEl("button", {
+        cls:
+          "my-sc-subcount-pill" +
+          (node.isExpanded ? " is-expanded" : " is-collapsed"),
+        text: node.isExpanded
+          ? `▾ ${node.descendantCount}`
+          : `+${node.descendantCount} внутри`,
+        attr: {
+          type: "button",
+          title: node.isExpanded
+            ? `Вложено элементов в ветке: ${node.descendantCount} (нажми, чтобы свернуть)`
+            : `Скрыто вложенных элементов: ${node.descendantCount} (нажми, чтобы раскрыть)`,
+        },
+      });
+      countPill.onclick = (e) => {
+        e.stopPropagation();
+        if (this.expanded.has(item.path)) this.expanded.delete(item.path);
+        else this.expanded.add(item.path);
+        this.saveExpanded();
+        this.renderTree();
+      };
+
+      const focusBtn = right.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "🎯",
+        attr: { type: "button", title: "Сфокусироваться только на этой ветке" },
+      });
+      focusBtn.onclick = () => this.setFocusBranch(projectRoot, item.path);
+    }
+
+    const propEditBtn = right.createEl("button", {
+      cls:
+        "my-sc-move-btn" +
+        (this.editingNodePath === item.path && this.editingNodeMode === "props"
+          ? " is-active"
+          : ""),
+      text: "⚙",
+      attr: {
+        type: "button",
+        title: "Изменить тип или добавить/обновить YAML-свойство заметки",
+      },
+    });
+    propEditBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (this.editingNodePath === item.path && this.editingNodeMode === "props") {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+      } else {
+        this.editingNodePath = item.path;
+        this.editingNodeMode = "props";
+      }
+      this.renderTree();
+    };
+
+    const addBtn = right.createEl("button", {
+      cls: "my-sc-move-btn",
+      text: "＋",
+      attr: { type: "button", title: "Добавить вложенный материал сюда" },
+    });
+    addBtn.onclick = () => this.openForm(item.path);
+
+    const moveBtn = right.createEl("button", {
+      cls: "my-sc-move-btn",
+      text: "⇄",
+      attr: { type: "button", title: "Сменить родителя" },
+    });
+    moveBtn.onclick = () => this.openMovePicker(item);
+
+    // Компактная панель быстрого изменения типа или свойства у существующей заметки
+    if (this.editingNodePath === item.path && this.editingNodeMode) {
+      this.renderInlineNodeEditor(groupEl, item);
+    }
+
+    if (node.isExpanded && node.children.length > 0) {
+      const childrenWrap = groupEl.createDiv("my-sc-children-container");
+      for (const child of node.children) {
+        this.renderNodeGroup(childrenWrap, child, projectRoot);
+      }
+    }
+  }
+
+  private renderInlineNodeEditor(parentGroup: HTMLElement, item: StudyNoteItem) {
+    const editorBox = parentGroup.createDiv("my-sc-inline-editor");
+
+    if (this.editingNodeMode === "type") {
+      editorBox.createSpan({ cls: "my-sc-inline-label", text: "Тип:" });
+      const inp = editorBox.createEl("input", {
+        cls: "my-sc-type-input",
+        attr: {
+          type: "text",
+          list: "my-sc-types-datalist",
+          value: item.noteType,
+          placeholder: "Новый тип…",
+        },
+      });
+      const saveBtn = editorBox.createEl("button", {
+        cls: "mod-cta my-sc-chip-btn",
+        text: "Сохранить",
+        attr: { type: "button" },
+      });
+      const cancelBtn = editorBox.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text: "Отмена",
+        attr: { type: "button" },
+      });
+
+      const applyType = async () => {
+        const nextType = normalizeSpaces(inp.value);
+        if (!nextType) {
+          new Notice("Введи название типа.");
+          return;
+        }
+        try {
+          await this.app.fileManager.processFrontMatter(
+            item.file,
+            (fm: Record<string, unknown>) => {
+              fm[KEYS.type] = nextType;
+            }
+          );
+          this.plugin.settings.lastUsedMaterialType = nextType;
+          this.plugin.requestSaveSettings();
+          this.editingNodePath = null;
+          this.editingNodeMode = null;
+          new Notice(`Тип «${item.name}» → ${nextType}`);
+        } catch (err: unknown) {
+          new Notice(
+            "Ошибка записи YAML: " +
+              (err instanceof Error ? err.message : String(err))
+          );
+        }
+      };
+
+      saveBtn.onclick = () => void applyType();
+      cancelBtn.onclick = () => {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        this.renderTree();
+      };
+      inp.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter") void applyType();
+      });
+      window.setTimeout(() => inp.focus(), 20);
+      return;
+    }
+
+    // Режим добавления/обновления произвольного свойства у существующей заметки
+    editorBox.createSpan({ cls: "my-sc-inline-label", text: "Свойство YAML:" });
+    const dlId = `my-sc-inline-val-${Date.now()}`;
+    const keyInp = editorBox.createEl("input", {
+      cls: "my-sc-prop-key",
+      attr: {
+        type: "text",
+        list: "my-sc-prop-keys-datalist",
+        placeholder: "Ключ (напр. источник)…",
+      },
+    });
+    const valDl = editorBox.createEl("datalist", { attr: { id: dlId } });
+    keyInp.oninput = () => {
+      valDl.empty();
+      const vals =
+        this.scan.schema.valuesByKey.get(normalizeSpaces(keyInp.value)) ?? [];
+      for (const v of vals.slice(0, 25)) {
+        valDl.createEl("option", { attr: { value: v } });
+      }
+    };
+
+    const valInp = editorBox.createEl("input", {
+      cls: "my-sc-prop-val",
+      attr: {
+        type: "text",
+        list: dlId,
+        placeholder: "Значение (пусто = удалить ключ)…",
+      },
+    });
+
+    const kindSel = editorBox.createEl("select", {
+      cls: "dropdown my-sc-prop-kind",
+    });
+    kindSel.createEl("option", { text: "Значение", value: "auto" });
+    kindSel.createEl("option", { text: "Список (,)", value: "list" });
+
+    const saveBtn = editorBox.createEl("button", {
+      cls: "mod-cta my-sc-chip-btn",
+      text: "Записать",
+      attr: { type: "button" },
+    });
+    const cancelBtn = editorBox.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Отмена",
+      attr: { type: "button" },
+    });
+
+    const applyProp = async () => {
+      const k = normalizeSpaces(keyInp.value);
+      if (!k) {
+        new Notice("Укажи ключ свойства.");
+        return;
+      }
+      if (isReservedYamlKey(k)) {
+        new Notice(
+          `Служебный ключ «${k}» меняется через кнопку типа или смены родителя.`
+        );
+        return;
+      }
+      const kind = kindSel.value === "list" ? "list" : "auto";
+      const parsedVal = parseCustomPropertyValue(valInp.value, kind);
+
+      try {
+        await this.app.fileManager.processFrontMatter(
+          item.file,
+          (fm: Record<string, unknown>) => {
+            if (parsedVal === undefined) {
+              delete fm[k];
+            } else {
+              fm[k] = parsedVal;
+            }
+          }
+        );
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        new Notice(
+          parsedVal === undefined
+            ? `Свойство «${k}» удалено из «${item.name}»`
+            : `Записано «${k}» в «${item.name}»`
+        );
+      } catch (err: unknown) {
+        new Notice(
+          "Ошибка записи YAML: " +
+            (err instanceof Error ? err.message : String(err))
+        );
+      }
+    };
+
+    saveBtn.onclick = () => void applyProp();
+    cancelBtn.onclick = () => {
+      this.editingNodePath = null;
+      this.editingNodeMode = null;
+      this.renderTree();
+    };
+    window.setTimeout(() => keyInp.focus(), 20);
+  }
+
+  private openMovePicker(item: StudyNoteItem) {
+    const forbidden = collectDescendants(item.path, this.scan);
+    forbidden.add(item.path);
+    const candidates = [...this.scan.byPath.values()]
+      .filter((c) => !forbidden.has(c.path))
+      .sort(byName);
+    new ParentPickerModal(this.app, candidates, (target) => {
+      void this.setParent(item, target);
+    }).open();
+  }
+
+  private async setParent(item: StudyNoteItem, target: StudyNoteItem) {
+    try {
+      const link = this.app.metadataCache.fileToLinktext(target.file, item.path);
+      await this.app.fileManager.processFrontMatter(
+        item.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.parent] = `[[${link}]]`;
+        }
+      );
+      this.expanded.add(target.path);
+      this.saveExpanded();
+      new Notice(`«${item.name}» → «${target.name}»`);
+    } catch (err: unknown) {
+      new Notice("Не удалось сменить родителя: " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+}
 
 === FILE: ./src/main.ts ===
 import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
-import { DEFAULT_SETTINGS, StudyCompilerSettings } from "./types";
+import {
+  DEFAULT_SETTINGS,
+  ProjectGroupTab,
+  StudyCompilerSettings,
+} from "./types";
 import { OpenOptions, StudyCompilerModal } from "./modal";
 
 function migrateSettings(raw: unknown): StudyCompilerSettings {
-  const s = raw && typeof raw === "object" ? (raw as Partial<StudyCompilerSettings>) : {};
+  const s =
+    raw && typeof raw === "object"
+      ? (raw as Partial<StudyCompilerSettings> & { showCompletedWorks?: boolean })
+      : {};
   const strList = (v: unknown, fallback: string[]): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [...fallback];
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [...fallback];
+
+  const focusedBranchByWork: Record<string, string> = {};
+  if (s.focusedBranchByWork && typeof s.focusedBranchByWork === "object") {
+    for (const [k, v] of Object.entries(s.focusedBranchByWork as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim()) focusedBranchByWork[k] = v;
+    }
+  }
+
+  let projectGroupTab: ProjectGroupTab = "active";
+  if (s.projectGroupTab === "active" || s.projectGroupTab === "completed") {
+    projectGroupTab = s.projectGroupTab;
+  }
 
   return {
     studyAreaName:
       typeof s.studyAreaName === "string" && s.studyAreaName.trim()
-        ? s.studyAreaName
+        ? s.studyAreaName.trim()
         : DEFAULT_SETTINGS.studyAreaName,
     newNoteFolder:
       typeof s.newNoteFolder === "string" && s.newNoteFolder.trim()
-        ? s.newNoteFolder
+        ? s.newNoteFolder.trim()
         : DEFAULT_SETTINGS.newNoteFolder,
-    showCompletedWorks:
-      typeof s.showCompletedWorks === "boolean"
-        ? s.showCompletedWorks
-        : DEFAULT_SETTINGS.showCompletedWorks,
+    projectGroupTab,
+    lastUsedMaterialType:
+      typeof s.lastUsedMaterialType === "string" && s.lastUsedMaterialType.trim()
+        ? s.lastUsedMaterialType.trim()
+        : DEFAULT_SETTINGS.lastUsedMaterialType,
     excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
+    excludedTitlePrefixes: strList(
+      s.excludedTitlePrefixes,
+      DEFAULT_SETTINGS.excludedTitlePrefixes
+    ),
+    excludedTags: strList(s.excludedTags, DEFAULT_SETTINGS.excludedTags),
     expandedPaths: strList(s.expandedPaths, []),
     lastWorkPath: typeof s.lastWorkPath === "string" ? s.lastWorkPath : "",
+    focusedBranchByWork,
   };
 }
 
@@ -561,7 +3226,8 @@ class StudyCompilerSettingTab extends PluginSettingTab {
       .setDesc("Значение свойства «направление». По умолчанию: Учёба")
       .addText((text) =>
         text.setValue(this.plugin.settings.studyAreaName).onChange((val) => {
-          this.plugin.settings.studyAreaName = val.trim() || DEFAULT_SETTINGS.studyAreaName;
+          this.plugin.settings.studyAreaName =
+            val.trim() || DEFAULT_SETTINGS.studyAreaName;
           this.plugin.requestSaveSettings();
         })
       );
@@ -571,22 +3237,55 @@ class StudyCompilerSettingTab extends PluginSettingTab {
       .setDesc("По умолчанию: Знания")
       .addText((text) =>
         text.setValue(this.plugin.settings.newNoteFolder).onChange((val) => {
-          this.plugin.settings.newNoteFolder = val.trim() || DEFAULT_SETTINGS.newNoteFolder;
+          this.plugin.settings.newNoteFolder =
+            val.trim() || DEFAULT_SETTINGS.newNoteFolder;
           this.plugin.requestSaveSettings();
         })
       );
 
     new Setting(containerEl)
       .setName("Игнорируемые папки")
-      .setDesc("Через запятую. Заметки внутри не попадают в дерево")
+      .setDesc("Через запятую. Заметки и шаблоны внутри этих папок не попадают в список")
       .addText((text) =>
-        text.setValue(this.plugin.settings.excludedFolders.join(", ")).onChange((val) => {
-          this.plugin.settings.excludedFolders = val
-            .split(",")
-            .map((x) => x.trim())
-            .filter((x) => x.length > 0);
-          this.plugin.requestSaveSettings();
-        })
+        text
+          .setValue(this.plugin.settings.excludedFolders.join(", "))
+          .onChange((val) => {
+            this.plugin.settings.excludedFolders = val
+              .split(",")
+              .map((x) => x.trim())
+              .filter((x) => x.length > 0);
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Игнорируемые префиксы имён файлов (шаблоны)")
+      .setDesc("Через запятую. Например: «Учёба — , Шаблон, Template»")
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.excludedTitlePrefixes.join(", "))
+          .onChange((val) => {
+            this.plugin.settings.excludedTitlePrefixes = val
+              .split(",")
+              .map((x) => x.trim())
+              .filter((x) => x.length > 0);
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Игнорируемые теги")
+      .setDesc("Через запятую без решётки (по умолчанию: шаблон, template)")
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.excludedTags.join(", "))
+          .onChange((val) => {
+            this.plugin.settings.excludedTags = val
+              .split(",")
+              .map((x) => x.trim().replace(/^#/, ""))
+              .filter((x) => x.length > 0);
+            this.plugin.requestSaveSettings();
+          })
       );
   }
 }
@@ -648,580 +3347,66 @@ export default class MyStudyCompilerPlugin extends Plugin {
   }
 }
 
-=== FILE: ./src/modal.ts ===
-import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
-import type MyStudyCompilerPlugin from "./main";
-import {
-  KEYS,
-  MATERIAL_TYPES,
-  NEW_NOTE_TYPES,
-  STATUS_ACTIVE,
-  STATUS_DONE,
-  StudyNoteItem,
-} from "./types";
-import {
-  ScanResult,
-  buildTree,
-  byName,
-  collectDescendants,
-  emptyScan,
-  ensureFolder,
-  findRootPath,
-  formatDeadline,
-  getWorkMeta,
-  progressOf,
-  scanStudyVault,
-  todayISO,
-} from "./scanner";
-
-export interface OpenOptions {
-  rootPath?: string;
-  addUnder?: string;
-}
-
-class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
-  private items: StudyNoteItem[];
-  private onPick: (item: StudyNoteItem) => void;
-
-  constructor(app: App, items: StudyNoteItem[], onPick: (item: StudyNoteItem) => void) {
-    super(app);
-    this.items = items;
-    this.onPick = onPick;
-    this.setPlaceholder("Новый родитель…");
-  }
-
-  getItems(): StudyNoteItem[] {
-    return this.items;
-  }
-
-  getItemText(item: StudyNoteItem): string {
-    return `${item.name} · ${item.noteType || "без типа"}`;
-  }
-
-  onChooseItem(item: StudyNoteItem): void {
-    this.onPick(item);
-  }
-}
-
-export class StudyCompilerModal extends Modal {
-  private plugin: MyStudyCompilerPlugin;
-  private options: OpenOptions;
-  private scan: ScanResult = emptyScan();
-  private selectedPath: string;
-  private expanded: Set<string>;
-  private cleanups: Array<() => void> = [];
-  private refreshTimer: number | null = null;
-
-  private barEl!: HTMLElement;
-  private formEl!: HTMLElement;
-  private treeEl!: HTMLElement;
-
-  private form = {
-    open: false,
-    title: "",
-    type: "Подпроект",
-    parentPath: "",
-    deadline: "",
-  };
-
-  constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
-    super(app);
-    this.plugin = plugin;
-    this.options = options;
-    this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
-    this.expanded = new Set(plugin.settings.expandedPaths);
-    this.noRestore();
-  }
-
-  private noRestore() {
-    (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
-  }
-
-  safeClose() {
-    try {
-      this.noRestore();
-      this.close();
-    } catch {
-      // игнорируем
-    }
-  }
-
-  onOpen(): void {
-    this.noRestore();
-    this.modalEl.addClass("my-sc-modal-container");
-    this.contentEl.addClass("my-sc-modal");
-
-    const head = this.contentEl.createDiv("my-sc-head-bar");
-    head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и подпроекты" });
-    const closeBtn = head.createEl("button", {
-      cls: "my-sc-close-btn",
-      text: "✕",
-      attr: { type: "button", title: "Закрыть (Esc)", "aria-label": "Закрыть" },
-    });
-    closeBtn.onclick = () => this.safeClose();
-
-    this.barEl = this.contentEl.createDiv("my-sc-project-bar");
-    this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
-    this.treeEl = this.contentEl.createDiv("my-sc-body");
-
-    const onChange = () => this.scheduleRefresh();
-    const r1 = this.app.metadataCache.on("changed", onChange);
-    const r2 = this.app.vault.on("delete", onChange);
-    const r3 = this.app.vault.on("rename", onChange);
-    this.cleanups.push(
-      () => this.app.metadataCache.offref(r1),
-      () => this.app.vault.offref(r2),
-      () => this.app.vault.offref(r3)
-    );
-
-    this.scan = scanStudyVault(this.app, this.plugin.settings);
-    const addUnder = this.options.addUnder;
-    if (addUnder && this.scan.byPath.has(addUnder)) {
-      this.selectedPath = findRootPath(this.scan, addUnder);
-    }
-    this.refresh(false);
-    if (addUnder && this.scan.byPath.has(addUnder)) this.openForm(addUnder);
-  }
-
-  onClose(): void {
-    for (const fn of this.cleanups) fn();
-    this.cleanups = [];
-    if (this.refreshTimer !== null) {
-      window.clearTimeout(this.refreshTimer);
-      this.refreshTimer = null;
-    }
-    this.contentEl.empty();
-  }
-
-  private scheduleRefresh() {
-    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-    this.refreshTimer = window.setTimeout(() => {
-      this.refreshTimer = null;
-      this.refresh(true);
-    }, 200);
-  }
-
-  private refresh(rescan: boolean) {
-    if (rescan) this.scan = scanStudyVault(this.app, this.plugin.settings);
-    this.renderBar();
-    this.renderTree();
-  }
-
-  private visibleRoots(): StudyNoteItem[] {
-    return this.scan.roots.filter(
-      (r) => this.plugin.settings.showCompletedWorks || !r.isDone
-    );
-  }
-
-  private getRoot(): StudyNoteItem | null {
-    const direct = this.scan.roots.find((r) => r.path === this.selectedPath);
-    if (direct) return direct;
-    const first = this.visibleRoots()[0] ?? null;
-    if (first) this.selectedPath = first.path;
-    return first;
-  }
-
-  private saveExpanded() {
-    this.plugin.settings.expandedPaths = [...this.expanded];
-    this.plugin.requestSaveSettings();
-  }
-
-  private renderBar() {
-    this.barEl.empty();
-    const root = this.getRoot();
-    if (!root) {
-      this.formEl.empty();
-      this.barEl.createDiv({
-        cls: "my-sc-empty",
-        text: `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`,
-      });
-      return;
-    }
-
-    const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
-    const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
-    let list = this.visibleRoots();
-    if (!list.some((r) => r.path === root.path)) list = [root, ...list];
-    for (const r of list) {
-      const meta = getWorkMeta(r.noteType, r.icon);
-      const o = sel.createEl("option", {
-        text: `${meta.icon} ${r.name}${r.isDone ? " [завершён]" : ""}`,
-        value: r.path,
-      });
-      if (r.path === root.path) o.selected = true;
-    }
-    sel.onchange = () => {
-      this.selectedPath = sel.value;
-      this.plugin.settings.lastWorkPath = sel.value;
-      this.plugin.requestSaveSettings();
-      this.form.open = false;
-      this.formEl.empty();
-      this.refresh(false);
-    };
-
-    const doneBtn = row1.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.plugin.settings.showCompletedWorks ? " is-active" : ""),
-      text: this.plugin.settings.showCompletedWorks ? "✓ Все проекты" : "В работе",
-      attr: { type: "button", title: "Показывать завершённые проекты" },
-    });
-    doneBtn.onclick = () => {
-      this.plugin.settings.showCompletedWorks = !this.plugin.settings.showCompletedWorks;
-      this.plugin.requestSaveSettings();
-      this.refresh(false);
-    };
-
-    const openBtn = row1.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📄 Открыть",
-      attr: { type: "button", title: "Открыть заметку проекта" },
-    });
-    openBtn.onclick = () => this.openNote(root.path);
-
-    const stats = progressOf(collectDescendants(root.path, this.scan), this.scan);
-    const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
-    const progWrap = this.barEl.createDiv("my-sc-progress-wrap");
-    const progText = progWrap.createDiv("my-sc-progress-text");
-    progText.createSpan({
-      text: stats.total > 0 ? `Выполнено ${stats.done} из ${stats.total} · ${pct}%` : "Подпроектов пока нет",
-    });
-    this.renderDeadline(progText, root);
-    const bar = progWrap.createDiv("my-sc-progress");
-    bar.createDiv("my-sc-progress-fill").style.width = `${pct}%`;
-
-    const tools = this.barEl.createDiv("my-sc-tools");
-    const addBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.form.open ? " is-active" : ""),
-      text: this.form.open ? "✕ Закрыть форму" : "＋ Подпроект",
-      attr: { type: "button" },
-    });
-    addBtn.onclick = () => {
-      if (this.form.open) {
-        this.form.open = false;
-        this.formEl.empty();
-        this.renderBar();
-      } else {
-        this.openForm(root.path);
-      }
-    };
-
-    const expandBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "⤢ Развернуть всё",
-      attr: { type: "button" },
-    });
-    expandBtn.onclick = () => {
-      for (const p of collectDescendants(root.path, this.scan)) {
-        if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
-      }
-      this.saveExpanded();
-      this.renderTree();
-    };
-
-    const collapseBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "⤡ Свернуть всё",
-      attr: { type: "button" },
-    });
-    collapseBtn.onclick = () => {
-      for (const p of collectDescendants(root.path, this.scan)) this.expanded.delete(p);
-      this.saveExpanded();
-      this.renderTree();
-    };
-  }
-
-  private openForm(parentPath: string) {
-    const root = this.getRoot();
-    if (!root) return;
-    this.form.open = true;
-    this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
-    this.renderBar();
-    this.renderForm();
-  }
-
-  private renderForm() {
-    this.formEl.empty();
-    if (!this.form.open) return;
-    const root = this.getRoot();
-    if (!root) return;
-
-    const box = this.formEl.createDiv("my-sc-add-box");
-
-    const typeSel = box.createEl("select", { cls: "dropdown" });
-    for (const t of NEW_NOTE_TYPES) {
-      const o = typeSel.createEl("option", { text: t, value: t });
-      if (t === this.form.type) o.selected = true;
-    }
-    typeSel.onchange = () => {
-      this.form.type = typeSel.value;
-    };
-
-    const titleInp = box.createEl("input", {
-      cls: "my-sc-input",
-      attr: { type: "text", placeholder: "Название…" },
-    });
-    titleInp.value = this.form.title;
-    titleInp.oninput = () => {
-      this.form.title = titleInp.value;
-    };
-
-    const parentSel = box.createEl("select", { cls: "dropdown my-sc-parent-select" });
-    parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
-    for (const n of buildTree(root, this.scan, null)) {
-      parentSel.createEl("option", {
-        text: `${"\u00A0\u00A0".repeat(n.depth + 1)}↳ ${n.item.name}`,
-        value: n.item.path,
-      });
-    }
-    parentSel.value = this.form.parentPath;
-    if (parentSel.value !== this.form.parentPath) {
-      this.form.parentPath = root.path;
-      parentSel.value = root.path;
-    }
-    parentSel.onchange = () => {
-      this.form.parentPath = parentSel.value;
-    };
-
-    const dateInp = box.createEl("input", {
-      cls: "my-sc-date",
-      attr: { type: "date", title: "Дедлайн (необязательно)" },
-    });
-    dateInp.value = this.form.deadline;
-    dateInp.onchange = () => {
-      this.form.deadline = dateInp.value;
-    };
-
-    const createBtn = box.createEl("button", {
-      cls: "mod-cta my-sc-action-btn",
-      text: "Создать",
-      attr: { type: "button" },
-    });
-
-    const submit = async () => {
-      createBtn.disabled = true;
-      const ok = await this.createNote(root);
-      if (ok) {
-        this.form.title = "";
-        this.form.deadline = "";
-        this.renderForm();
-      } else {
-        createBtn.disabled = false;
-      }
-    };
-    createBtn.onclick = () => void submit();
-    titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !e.isComposing) void submit();
-    });
-    titleInp.focus();
-  }
-
-  private async createNote(root: StudyNoteItem): Promise<boolean> {
-    const cleanTitle = this.form.title.trim().replace(/[\\/:*?"<>|]/g, "");
-    if (!cleanTitle) {
-      new Notice("Введи название.");
-      return false;
-    }
-    const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
-    const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
-    if (this.app.vault.getAbstractFileByPath(targetPath)) {
-      new Notice(`Заметка «${cleanTitle}» уже есть в папке ${folder}.`);
-      return false;
-    }
-    const parent = this.scan.byPath.get(this.form.parentPath) ?? root;
-
-    try {
-      await ensureFolder(this.app, folder);
-      const link = this.app.metadataCache.fileToLinktext(parent.file, targetPath);
-      const lines = [
-        "---",
-        `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
-        `${KEYS.type}: ${JSON.stringify(this.form.type)}`,
-        `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
-      ];
-      if (root.discipline) lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
-        lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
-      }
-      lines.push("---", "", `# ${cleanTitle}`, "", "");
-      await this.app.vault.create(targetPath, lines.join("\n"));
-
-      this.expanded.add(parent.path);
-      this.saveExpanded();
-      new Notice(`Создано: «${cleanTitle}»`);
-      return true;
-    } catch (err: unknown) {
-      new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
-      return false;
-    }
-  }
-
-  private renderDeadline(parent: HTMLElement, item: StudyNoteItem) {
-    if (!item.deadline) return;
-    const overdue = !item.isDone && item.deadline < todayISO();
-    parent.createSpan({
-      cls: "my-sc-deadline" + (overdue ? " is-overdue" : ""),
-      text: `⏳ ${formatDeadline(item.deadline)}`,
-      attr: { title: overdue ? "Срок прошёл" : "Дедлайн" },
-    });
-  }
-
-  private openNote(path: string) {
-    this.safeClose();
-    void this.app.workspace.openLinkText(path, "", false);
-  }
-
-  private renderTree() {
-    const scrollTop = this.treeEl.scrollTop;
-    this.treeEl.empty();
-    const root = this.getRoot();
-    if (!root) return;
-
-    const nodes = buildTree(root, this.scan, this.expanded);
-    if (nodes.length === 0) {
-      this.treeEl.createDiv({
-        cls: "my-sc-empty",
-        text: "Подпроектов пока нет. Нажми «＋ Подпроект».",
-      });
-      return;
-    }
-
-    const list = this.treeEl.createDiv("my-sc-tree-list");
-    for (const node of nodes) {
-      const item = node.item;
-      const row = list.createDiv("my-sc-tree-row" + (item.isDone ? " is-done" : ""));
-      row.style.paddingLeft = `${8 + node.depth * 18}px`;
-
-      const left = row.createDiv("my-sc-tree-left");
-
-      if (node.hasChildren) {
-        const open = this.expanded.has(item.path);
-        const arrow = left.createEl("button", {
-          cls: "my-sc-arrow",
-          text: open ? "▾" : "▸",
-          attr: { type: "button", "aria-label": open ? "Свернуть" : "Развернуть" },
-        });
-        arrow.onclick = () => {
-          if (open) this.expanded.delete(item.path);
-          else this.expanded.add(item.path);
-          this.saveExpanded();
-          this.renderTree();
-        };
-      } else {
-        left.createSpan("my-sc-arrow-spacer");
-      }
-
-      const chk = left.createEl("input", {
-        attr: { type: "checkbox", title: "Отметить выполненным" },
-      });
-      chk.checked = item.isDone;
-      chk.onchange = () => void this.setDone(item, chk.checked);
-
-      const title = left.createSpan({
-        cls: "my-sc-node-title",
-        text: item.name,
-        attr: { title: "Открыть заметку" },
-      });
-      title.onclick = () => this.openNote(item.path);
-
-      const meta = getWorkMeta(item.noteType, item.icon);
-      const badge = left.createSpan({
-        cls: "my-sc-type-badge",
-        text: `${meta.icon} ${item.noteType || "без типа"}`,
-      });
-      badge.style.setProperty("--badge-color", meta.color);
-
-      const right = row.createDiv("my-sc-tree-right");
-      this.renderDeadline(right, item);
-      if (node.total > 0) {
-        right.createSpan({
-          cls: "my-sc-branch-count",
-          text: `${node.done}/${node.total}`,
-          attr: { title: "Выполнено в ветке" },
-        });
-      }
-
-      const addBtn = right.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "＋",
-        attr: { type: "button", title: "Добавить подпроект сюда" },
-      });
-      addBtn.onclick = () => this.openForm(item.path);
-
-      const moveBtn = right.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "⇄",
-        attr: { type: "button", title: "Сменить родителя" },
-      });
-      moveBtn.onclick = () => this.openMovePicker(item);
-    }
-    this.treeEl.scrollTop = scrollTop;
-  }
-
-  private async setDone(item: StudyNoteItem, done: boolean) {
-    try {
-      await this.app.fileManager.processFrontMatter(
-        item.file,
-        (fm: Record<string, unknown>) => {
-          fm[KEYS.status] = done ? STATUS_DONE : STATUS_ACTIVE;
-        }
-      );
-    } catch (err: unknown) {
-      new Notice("Не удалось изменить статус: " + (err instanceof Error ? err.message : String(err)));
-    }
-  }
-
-  private openMovePicker(item: StudyNoteItem) {
-    const forbidden = collectDescendants(item.path, this.scan);
-    forbidden.add(item.path);
-    const candidates = [...this.scan.byPath.values()]
-      .filter((c) => !forbidden.has(c.path) && !MATERIAL_TYPES.includes(c.noteType))
-      .sort(byName);
-    new ParentPickerModal(this.app, candidates, (target) => {
-      void this.setParent(item, target);
-    }).open();
-  }
-
-  private async setParent(item: StudyNoteItem, target: StudyNoteItem) {
-    try {
-      const link = this.app.metadataCache.fileToLinktext(target.file, item.path);
-      await this.app.fileManager.processFrontMatter(
-        item.file,
-        (fm: Record<string, unknown>) => {
-          fm[KEYS.parent] = `[[${link}]]`;
-        }
-      );
-      this.expanded.add(target.path);
-      this.saveExpanded();
-      new Notice(`«${item.name}» → «${target.name}»`);
-    } catch (err: unknown) {
-      new Notice("Не удалось сменить родителя: " + (err instanceof Error ? err.message : String(err)));
-    }
-  }
-}
-
 === FILE: ./src/scanner.ts ===
-import { App, TFile, normalizePath } from "obsidian";
+import { App, TFile, getAllTags, normalizePath } from "obsidian";
 import {
-  DONE_STATUSES,
+  CustomPropValueKind,
+  DeadlineTone,
   KEYS,
-  MATERIAL_TYPES,
+  LEGACY_MATERIAL_TYPES,
+  RESERVED_YAML_KEYS,
+  ROOT_DONE_STATUSES,
   StudyCompilerSettings,
   StudyNoteItem,
+  TreeFilterOptions,
   TreeNode,
+  TypeSuggestion,
+  VaultPropertySchema,
   WorkMetaBadge,
 } from "./types";
 
 export interface ScanResult {
   roots: StudyNoteItem[];
+  activeRoots: StudyNoteItem[];
+  completedRoots: StudyNoteItem[];
+  orphans: StudyNoteItem[];
   byPath: Map<string, StudyNoteItem>;
   childrenOf: Map<string, string[]>;
+  schema: VaultPropertySchema;
 }
 
 export function emptyScan(): ScanResult {
-  return { roots: [], byPath: new Map(), childrenOf: new Map() };
+  return {
+    roots: [],
+    activeRoots: [],
+    completedRoots: [],
+    orphans: [],
+    byPath: new Map(),
+    childrenOf: new Map(),
+    schema: { typeCounts: [], propertyKeys: [], valuesByKey: new Map() },
+  };
 }
 
 export function byName(a: StudyNoteItem, b: StudyNoteItem): number {
   return a.name.localeCompare(b.name, "ru", { numeric: true });
+}
+
+export function sortActiveRoots(a: StudyNoteItem, b: StudyNoteItem): number {
+  const dA = a.deadline ?? "9999-99-99";
+  const dB = b.deadline ?? "9999-99-99";
+  if (dA !== dB) return dA.localeCompare(dB);
+  return byName(a, b);
+}
+
+export function sortCompletedRoots(a: StudyNoteItem, b: StudyNoteItem): number {
+  if (a.finishedAt && b.finishedAt && a.finishedAt !== b.finishedAt) {
+    return b.finishedAt.localeCompare(a.finishedAt);
+  }
+  return byName(a, b);
+}
+
+export function normalizeSpaces(s: string): string {
+  return String(s ?? "").replace(/\s+/g, " ").trim();
 }
 
 function stripOuterWikiBrackets(str: string): string {
@@ -1231,7 +3416,7 @@ function stripOuterWikiBrackets(str: string): string {
   return s;
 }
 
-function flattenFrontmatterValue(val: unknown): string[] {
+export function flattenFrontmatterValue(val: unknown): string[] {
   if (val === null || val === undefined) return [];
   if (Array.isArray(val)) {
     const res: string[] = [];
@@ -1249,6 +3434,12 @@ function readString(v: unknown): string {
   return v === null || v === undefined ? "" : String(v).trim();
 }
 
+export function isRootStatusCompleted(status: string): boolean {
+  const clean = normalizeSpaces(status).toLowerCase();
+  if (!clean) return false;
+  return ROOT_DONE_STATUSES.includes(clean);
+}
+
 export function resolveParentPaths(
   app: App,
   file: TFile,
@@ -1256,10 +3447,7 @@ export function resolveParentPaths(
 ): string[] {
   const resolved: string[] = [];
   for (const raw of flattenFrontmatterValue(rawParentProp)) {
-    const clean = stripOuterWikiBrackets(raw)
-      .split("|")[0]
-      ?.split("#")[0]
-      ?.trim();
+    const clean = stripOuterWikiBrackets(raw).split("|")[0]?.split("#")[0]?.trim();
     if (!clean) continue;
 
     const direct = app.vault.getAbstractFileByPath(clean);
@@ -1288,63 +3476,339 @@ export function todayISO(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function formatDeadline(iso: string): string {
-  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+export function daysUntilISO(iso: string): number {
+  const parts = iso.split("-").map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return 999;
+
+  const now = new Date();
+  const todayLocalMidnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+  const targetLocalMidnight = new Date(y, m - 1, d);
+  return Math.round(
+    (targetLocalMidnight.getTime() - todayLocalMidnight.getTime()) / 86_400_000
+  );
 }
+
+export function pluralizeDays(n: number): string {
+  const abs = Math.abs(Math.trunc(n));
+  const mod100 = abs % 100;
+  const mod10 = abs % 10;
+  if (mod100 >= 11 && mod100 <= 19) return `${abs} дней`;
+  if (mod10 === 1) return `${abs} день`;
+  if (mod10 >= 2 && mod10 <= 4) return `${abs} дня`;
+  return `${abs} дней`;
+}
+
+export function getDeadlineTone(item: StudyNoteItem): DeadlineTone {
+  if (!item.deadline || item.isCompletedRoot) return "none";
+  const diff = daysUntilISO(item.deadline);
+  if (diff < 0) return "overdue";
+  if (diff <= 7) return "soon";
+  return "far";
+}
+
+export function formatDeadlineBadge(item: StudyNoteItem): string {
+  if (!item.deadline) return "";
+  if (item.isCompletedRoot) {
+    return `${item.deadline.slice(8, 10)}.${item.deadline.slice(5, 7)}.${item.deadline.slice(0, 4)}`;
+  }
+  const diff = daysUntilISO(item.deadline);
+  if (diff === 0) return "сегодня";
+  if (diff === 1) return "завтра";
+  if (diff > 1) return `осталось ${pluralizeDays(diff)}`;
+  if (diff === -1) return "просрочено на 1 день";
+  return `просрочено на ${pluralizeDays(Math.abs(diff))}`;
+}
+
+export function formatFullDateTooltip(iso: string): string {
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  return `Дедлайн: ${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+
+function isTemplateOrExcludedFile(
+  file: TFile,
+  fm: Record<string, unknown>,
+  tagsLower: string[],
+  settings: StudyCompilerSettings
+): boolean {
+  const excludedFolders = settings.excludedFolders
+    .map((f) => f.trim().replace(/^\/+|\/+$/g, "").toLowerCase())
+    .filter((f) => f.length > 0);
+
+  const pathLower = file.path.toLowerCase();
+  const folderSegments = pathLower.split("/").slice(0, -1);
+  for (const exFolder of excludedFolders) {
+    if (
+      pathLower.startsWith(`${exFolder}/`) ||
+      folderSegments.includes(exFolder)
+    ) {
+      return true;
+    }
+  }
+
+  const prefixes = settings.excludedTitlePrefixes
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0);
+  const baseLower = file.basename.toLowerCase();
+  if (prefixes.some((pref) => baseLower.startsWith(pref))) {
+    return true;
+  }
+
+  const excludedTags = settings.excludedTags
+    .map((t) => t.trim().replace(/^#/, "").toLowerCase())
+    .filter((t) => t.length > 0);
+  if (tagsLower.some((t) => excludedTags.includes(t))) {
+    return true;
+  }
+
+  const noteTypeLower = readString(fm[KEYS.type]).toLowerCase();
+  if (noteTypeLower === "шаблон" || noteTypeLower === "template") {
+    return true;
+  }
+  if (
+    fm[KEYS.templateFlag] === true ||
+    String(fm[KEYS.templateFlag]).toLowerCase() === "true"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+const SYSTEM_FM_IGNORE = new Set([
+  KEYS.area,
+  KEYS.type,
+  KEYS.parent,
+  "position",
+  "tags",
+  "tag",
+  "aliases",
+  "alias",
+  "cssclasses",
+  "cssclass",
+]);
 
 export function scanStudyVault(
   app: App,
   settings: StudyCompilerSettings
 ): ScanResult {
   const byPath = new Map<string, StudyNoteItem>();
-  const excluded = settings.excludedFolders
-    .map((f) => f.trim().replace(/^\/+|\/+$/g, ""))
-    .filter((f) => f.length > 0);
+  const typeCounter = new Map<string, { display: string; count: number }>();
+  const propKeyFreq = new Map<string, number>();
+  const valuesSetByKey = new Map<string, Set<string>>();
 
   for (const file of app.vault.getMarkdownFiles()) {
-    if (excluded.some((f) => file.path.startsWith(`${f}/`))) continue;
-    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    const cache = app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter;
     if (!fm) continue;
+
     if (!flattenFrontmatterValue(fm[KEYS.area]).includes(settings.studyAreaName)) {
       continue;
     }
 
-    const status = readString(fm[KEYS.status]);
-    const rawDeadline = readString(fm[KEYS.deadline]).slice(0, 10);
+    const isCardDeck =
+      Boolean(fm["колода_карточек"]) ||
+      readString(fm["подтип"]).toLowerCase() === "карточки";
+    if (isCardDeck) continue;
+
+    const rawTags = cache ? getAllTags(cache) ?? [] : [];
+    const tags = rawTags.map((t) => t.replace(/^#/, "").toLowerCase());
+
+    if (isTemplateOrExcludedFile(file, fm, tags, settings)) {
+      continue;
+    }
+
+    const noteType = normalizeSpaces(readString(fm[KEYS.type]));
+    if (noteType) {
+      const lowerT = noteType.toLowerCase();
+      const prev = typeCounter.get(lowerT);
+      if (prev) prev.count++;
+      else typeCounter.set(lowerT, { display: noteType, count: 1 });
+    }
+
+    for (const [k, rawVal] of Object.entries(fm)) {
+      if (SYSTEM_FM_IGNORE.has(k)) continue;
+      propKeyFreq.set(k, (propKeyFreq.get(k) ?? 0) + 1);
+      const flatVals = flattenFrontmatterValue(rawVal);
+      if (flatVals.length > 0) {
+        let vSet = valuesSetByKey.get(k);
+        if (!vSet) {
+          vSet = new Set<string>();
+          valuesSetByKey.set(k, vSet);
+        }
+        if (vSet.size < 40) {
+          for (const fv of flatVals) {
+            if (fv.length <= 80) vSet.add(fv);
+          }
+        }
+      }
+    }
+
+    const status = normalizeSpaces(readString(fm[KEYS.status]));
+    const rawDeadline = (
+      readString(fm[KEYS.deadline]) || readString(fm[KEYS.deadlineAlt])
+    ).slice(0, 10);
+    const rawFinished = readString(fm[KEYS.finishedAt]).slice(0, 10);
+
     byPath.set(file.path, {
       file,
       path: file.path,
       name: file.basename,
-      noteType: readString(fm[KEYS.type]),
+      noteType,
       status,
+      isCompletedRoot: isRootStatusCompleted(status),
+      finishedAt: /^\d{4}-\d{2}-\d{2}$/.test(rawFinished) ? rawFinished : null,
       discipline: readString(fm[KEYS.discipline]),
       deadline: /^\d{4}-\d{2}-\d{2}$/.test(rawDeadline) ? rawDeadline : null,
       icon: readString(fm[KEYS.icon]),
+      tags,
       parentPaths: resolveParentPaths(app, file, fm[KEYS.parent]),
-      isDone: DONE_STATUSES.includes(status.toLowerCase()),
     });
   }
 
   const childrenOf = new Map<string, string[]>();
-  const roots: StudyNoteItem[] = [];
 
   for (const item of byPath.values()) {
-    const parents = item.parentPaths.filter(
-      (p) => p !== item.path && byPath.has(p)
-    );
+    const parents = item.parentPaths.filter((p) => p !== item.path && byPath.has(p));
     item.parentPaths = parents;
     for (const p of parents) {
       const list = childrenOf.get(p) ?? [];
       if (!list.includes(item.path)) list.push(item.path);
       childrenOf.set(p, list);
     }
-    if (parents.length === 0 && !MATERIAL_TYPES.includes(item.noteType)) {
+  }
+
+  const roots: StudyNoteItem[] = [];
+  const orphans: StudyNoteItem[] = [];
+  const legacyMaterialsLower = new Set(
+    LEGACY_MATERIAL_TYPES.map((t) => t.toLowerCase())
+  );
+
+  for (const item of byPath.values()) {
+    if (item.parentPaths.length > 0) continue;
+
+    const hasChildren = (childrenOf.get(item.path)?.length ?? 0) > 0;
+    const hasRootMarkers = Boolean(item.status || item.deadline);
+    const isLegacyLeafMaterial =
+      !hasChildren &&
+      !hasRootMarkers &&
+      legacyMaterialsLower.has(item.noteType.toLowerCase());
+
+    if (isLegacyLeafMaterial) {
+      orphans.push(item);
+    } else {
       roots.push(item);
     }
   }
 
+  const activeRoots = roots
+    .filter((r) => !r.isCompletedRoot)
+    .sort(sortActiveRoots);
+  const completedRoots = roots
+    .filter((r) => r.isCompletedRoot)
+    .sort(sortCompletedRoots);
   roots.sort(byName);
-  return { roots, byPath, childrenOf };
+  orphans.sort(byName);
+
+  const typeCounts: TypeSuggestion[] = [...typeCounter.values()]
+    .map((x) => ({ name: x.display, count: x.count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ru"));
+
+  const propertyKeys = [...propKeyFreq.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"))
+    .map(([k]) => k);
+
+  const valuesByKey = new Map<string, string[]>();
+  for (const [k, set] of valuesSetByKey.entries()) {
+    valuesByKey.set(
+      k,
+      [...set].sort((a, b) => a.localeCompare(b, "ru", { numeric: true }))
+    );
+  }
+
+  return {
+    roots,
+    activeRoots,
+    completedRoots,
+    orphans,
+    byPath,
+    childrenOf,
+    schema: { typeCounts, propertyKeys, valuesByKey },
+  };
+}
+
+export function findCaseInsensitiveTypeMatch(
+  input: string,
+  suggestions: TypeSuggestion[]
+): string | null {
+  const clean = normalizeSpaces(input);
+  if (!clean) return null;
+  const lower = clean.toLowerCase();
+  for (const s of suggestions) {
+    if (s.name.toLowerCase() === lower && s.name !== clean) {
+      return s.name;
+    }
+  }
+  return null;
+}
+
+/**
+ * Преобразует строковый ввод произвольного свойства в корректный тип для YAML:
+ * - пустая строка -> undefined (не записывать)
+ * - kind === "list" -> массив строк по запятой
+ * - YYYY-MM-DD -> строка (будет записана в кавычках в YAML)
+ * - true / false -> boolean
+ * - число -> number без кавычек
+ */
+export function parseCustomPropertyValue(
+  rawValue: string,
+  kind: CustomPropValueKind
+): unknown {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return undefined;
+
+  if (kind === "list") {
+    const items = trimmed
+      .split(",")
+      .map((x) => normalizeSpaces(x))
+      .filter((x) => x.length > 0);
+    return items.length > 0 ? items : undefined;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) return num;
+  }
+
+  return trimmed;
+}
+
+export function serializeYamlScalarOrList(val: unknown): string {
+  if (Array.isArray(val)) {
+    return `[${val.map((x) => JSON.stringify(String(x))).join(", ")}]`;
+  }
+  if (typeof val === "number" || typeof val === "boolean") {
+    return String(val);
+  }
+  return JSON.stringify(String(val ?? ""));
+}
+
+export function isReservedYamlKey(key: string): boolean {
+  const low = normalizeSpaces(key).toLowerCase();
+  return RESERVED_YAML_KEYS.some((k) => k.toLowerCase() === low);
 }
 
 export function findRootPath(scan: ScanResult, path: string): string {
@@ -1357,6 +3821,31 @@ export function findRootPath(scan: ScanResult, path: string): string {
     if (!next) return cur;
     cur = next;
   }
+}
+
+export function buildBreadcrumbChain(
+  scan: ScanResult,
+  projectRootPath: string,
+  focusPath: string
+): StudyNoteItem[] {
+  const chain: StudyNoteItem[] = [];
+  const seen = new Set<string>();
+  let cur: string | undefined = focusPath;
+
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const item = scan.byPath.get(cur);
+    if (!item) break;
+    chain.unshift(item);
+    if (cur === projectRootPath) break;
+    cur = item.parentPaths[0];
+  }
+
+  const rootItem = scan.byPath.get(projectRootPath);
+  if (rootItem && chain[0]?.path !== projectRootPath) {
+    chain.unshift(rootItem);
+  }
+  return chain;
 }
 
 export function collectDescendants(path: string, scan: ScanResult): Set<string> {
@@ -1374,84 +3863,222 @@ export function collectDescendants(path: string, scan: ScanResult): Set<string> 
   return result;
 }
 
-export function progressOf(
-  paths: Iterable<string>,
-  scan: ScanResult
-): { done: number; total: number } {
-  let done = 0;
-  let total = 0;
-  for (const p of paths) {
-    const it = scan.byPath.get(p);
-    if (!it || MATERIAL_TYPES.includes(it.noteType)) continue;
-    total++;
-    if (it.isDone) done++;
+function matchesFilter(item: StudyNoteItem, filter: TreeFilterOptions): boolean {
+  if (
+    filter.typeFilter &&
+    item.noteType.toLowerCase() !== filter.typeFilter.toLowerCase()
+  ) {
+    return false;
   }
-  return { done, total };
+
+  const q = filter.query.trim().toLowerCase();
+  if (!q) return true;
+
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const haystack = [
+    item.name,
+    item.noteType,
+    item.discipline,
+    ...item.tags.map((t) => `#${t}`),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return tokens.every((tok) => haystack.includes(tok));
 }
 
-/** expanded = null — развернуть всё дерево. */
-export function buildTree(
-  root: StudyNoteItem,
+export function buildNestedFilteredTree(
+  branchRoot: StudyNoteItem,
   scan: ScanResult,
-  expanded: Set<string> | null
+  expanded: Set<string> | null,
+  filter: TreeFilterOptions
 ): TreeNode[] {
-  const out: TreeNode[] = [];
+  if (filter.mode === "orphans") {
+    return scan.orphans
+      .filter((it) => matchesFilter(it, { ...filter, mode: "all" }))
+      .map((item) => ({
+        item,
+        depth: 0,
+        hasChildren: false,
+        isExpanded: false,
+        directChildrenCount: 0,
+        descendantCount: 0,
+        isDirectMatch: true,
+        children: [],
+      }));
+  }
 
-  const walk = (path: string, depth: number, trail: Set<string>) => {
-    const kids = (scan.childrenOf.get(path) ?? [])
+  const isFiltering =
+    filter.query.trim().length > 0 || filter.typeFilter.length > 0;
+
+  const directMatches = new Set<string>();
+  const visibleBranchPaths = new Set<string>();
+
+  if (isFiltering) {
+    const checkSubtree = (path: string, trail: Set<string>): boolean => {
+      let anyChildMatched = false;
+      for (const kidPath of scan.childrenOf.get(path) ?? []) {
+        if (trail.has(kidPath)) continue;
+        const kid = scan.byPath.get(kidPath);
+        if (!kid) continue;
+        trail.add(kidPath);
+        const childHas = checkSubtree(kidPath, trail);
+        trail.delete(kidPath);
+        const selfMatch = matchesFilter(kid, filter);
+        if (selfMatch) directMatches.add(kidPath);
+        if (selfMatch || childHas) {
+          visibleBranchPaths.add(kidPath);
+          anyChildMatched = true;
+        }
+      }
+      return anyChildMatched;
+    };
+    checkSubtree(branchRoot.path, new Set([branchRoot.path]));
+  }
+
+  const buildLevel = (
+    parentPath: string,
+    depth: number,
+    trail: Set<string>
+  ): TreeNode[] => {
+    const kids = (scan.childrenOf.get(parentPath) ?? [])
       .map((p) => scan.byPath.get(p))
       .filter((x): x is StudyNoteItem => x !== undefined)
       .sort(byName);
 
+    const levelNodes: TreeNode[] = [];
+
     for (const kid of kids) {
       if (trail.has(kid.path)) continue;
-      const hasChildren = (scan.childrenOf.get(kid.path)?.length ?? 0) > 0;
-      const stats = progressOf(collectDescendants(kid.path, scan), scan);
-      out.push({ item: kid, depth, hasChildren, done: stats.done, total: stats.total });
+      if (isFiltering && !visibleBranchPaths.has(kid.path)) continue;
 
-      if (hasChildren && (expanded === null || expanded.has(kid.path))) {
+      const allKidChildren = scan.childrenOf.get(kid.path) ?? [];
+      const hasChildren = isFiltering
+        ? allKidChildren.some((k) => visibleBranchPaths.has(k))
+        : allKidChildren.length > 0;
+
+      const descendants = collectDescendants(kid.path, scan);
+      const isExpanded =
+        hasChildren &&
+        (isFiltering || expanded === null || expanded.has(kid.path));
+
+      let childrenNodes: TreeNode[] = [];
+      if (isExpanded) {
         trail.add(kid.path);
-        walk(kid.path, depth + 1, trail);
+        childrenNodes = buildLevel(kid.path, depth + 1, trail);
         trail.delete(kid.path);
+      }
+
+      levelNodes.push({
+        item: kid,
+        depth,
+        hasChildren,
+        isExpanded,
+        directChildrenCount: allKidChildren.length,
+        descendantCount: descendants.size,
+        isDirectMatch: isFiltering ? directMatches.has(kid.path) : false,
+        children: childrenNodes,
+      });
+    }
+
+    return levelNodes;
+  };
+
+  return buildLevel(branchRoot.path, 0, new Set([branchRoot.path]));
+}
+
+export function flattenVisibleTree(nodes: TreeNode[]): TreeNode[] {
+  const flat: TreeNode[] = [];
+  const walk = (list: TreeNode[]) => {
+    for (const n of list) {
+      flat.push(n);
+      if (n.isExpanded && n.children.length > 0) {
+        walk(n.children);
       }
     }
   };
+  walk(nodes);
+  return flat;
+}
 
-  walk(root.path, 0, new Set([root.path]));
-  return out;
+const HASH_PALETTE: readonly string[] = [
+  "var(--color-blue, #599ed6)",
+  "var(--color-green, #4aab80)",
+  "var(--color-purple, #9c83e8)",
+  "var(--color-orange, #e5a158)",
+  "var(--color-cyan, #4fb3d9)",
+  "var(--color-pink, #d882b6)",
+  "var(--color-yellow, #d4c05a)",
+  "var(--color-red, #e06c75)",
+];
+
+function pickStableHashColor(str: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const idx = Math.abs(h) % HASH_PALETTE.length;
+  return HASH_PALETTE[idx] ?? "var(--color-blue, #599ed6)";
 }
 
 export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge {
-  const raw = String(typeStr || "Проект").trim();
+  const raw = normalizeSpaces(typeStr);
   const low = raw.toLowerCase();
-  let icon = "📁";
-  let color = "#599ed6";
-  const shortLabel = raw === "Лабораторная работа" ? "Лабораторная" : raw;
+  let icon = "📌";
+  let color = raw ? pickStableHashColor(low) : "var(--text-muted)";
+  const shortLabel = raw === "Лабораторная работа" ? "Лабораторная" : raw || "без типа";
 
   if (low.includes("лаб") || low.includes("лр") || low.includes("опыт") || low.includes("эксперим")) {
     icon = "🧪";
-    color = "#4aab80";
+    color = "var(--color-green, #4aab80)";
   } else if (low.includes("конф") || low.includes("доклад") || low.includes("выступ") || low.includes("семинар")) {
     icon = "🎤";
-    color = "#e06c75";
+    color = "var(--color-red, #e06c75)";
   } else if (low.includes("диплом") || low.includes("диссер") || low.includes("магист") || low.includes("вкр")) {
     icon = "🎓";
-    color = "#e5a158";
+    color = "var(--color-orange, #e5a158)";
   } else if (low.includes("стать") || low.includes("публик") || low.includes("тезис") || low.includes("нир")) {
     icon = "📄";
-    color = "#9c83e8";
-  } else if (low.includes("курс") || low.includes("рефер") || low.includes("чертеж") || low.includes("расчетно")) {
+    color = "var(--color-purple, #9c83e8)";
+  } else if (low.includes("курс") || low.includes("рефер") || low.includes("чертеж")) {
     icon = "📐";
-    color = "#d69852";
+    color = "var(--color-orange, #d69852)";
   } else if (low.includes("экзам") || low.includes("зачет") || low.includes("зачёт") || low.includes("коллок") || low.includes("тест")) {
     icon = "⚡";
-    color = "#e5a158";
+    color = "var(--color-orange, #e5a158)";
   } else if (low.includes("практ") || low.includes("стажир")) {
     icon = "🔬";
-    color = "#69b5aa";
+    color = "var(--color-cyan, #69b5aa)";
+  } else if (low.includes("проект")) {
+    icon = "📁";
+    color = "var(--color-blue, #599ed6)";
+  } else if (low.includes("термин")) {
+    icon = "🔤";
+    color = "var(--color-cyan, #4fb3d9)";
+  } else if (low.includes("источник") || low.includes("книг") || low.includes("литерат")) {
+    icon = "📚";
+    color = "var(--color-yellow, #d4c05a)";
+  } else if (low.includes("конспект") || low.includes("лекц")) {
+    icon = "📝";
+    color = "var(--color-green, #8bac5e)";
+  } else if (low.includes("рисунок") || low.includes("схема") || low.includes("граф")) {
+    icon = "🖼";
+    color = "var(--color-cyan, #69b5aa)";
+  } else if (low.includes("таблица")) {
+    icon = "📊";
+    color = "var(--color-blue, #5c8df6)";
+  } else if (low.includes("расчёт") || low.includes("расчет") || low.includes("формул")) {
+    icon = "🧮";
+    color = "var(--color-red, #e06c75)";
+  } else if (low.includes("алгоритм") || low.includes("метод")) {
+    icon = "⚙️";
+    color = "var(--color-purple, #9c83e8)";
   }
 
-  if (customIcon && String(customIcon).trim()) icon = String(customIcon).trim();
+  if (customIcon && String(customIcon).trim()) {
+    icon = String(customIcon).trim();
+  }
   return { icon, color, label: `${icon} ${shortLabel}` };
 }
 
@@ -1478,59 +4105,104 @@ export const KEYS = {
   parent: "родитель",
   status: "статус",
   deadline: "дедлайн",
+  deadlineAlt: "срок",
   discipline: "дисциплина",
   icon: "иконка",
+  templateFlag: "шаблон",
+  finishedAt: "дата_завершения",
 } as const;
 
-export const STATUS_DONE = "выполнено";
-export const STATUS_ACTIVE = "в работе";
+export const RESERVED_YAML_KEYS: readonly string[] = [
+  KEYS.area,
+  KEYS.type,
+  KEYS.parent,
+];
 
-export const DONE_STATUSES: readonly string[] = [
+export const ROOT_STATUS_ACTIVE = "В работе";
+export const ROOT_STATUS_DONE = "Завершён";
+
+/** Полный список завершающих статусов корневого проекта (объединён из v0.1.0 и v0.2.0). */
+export const ROOT_DONE_STATUSES: readonly string[] = [
   "выполнено",
   "выполнен",
   "завершён",
+  "завершена",
   "завершено",
+  "сдана",
+  "сдан",
   "готово",
-  "сдано",
+  "архив",
+  "отменён",
+  "отменена",
   "done",
 ];
 
-/** Пассивные материалы: не бывают корнем проекта и не считаются в прогрессе. */
-export const MATERIAL_TYPES: readonly string[] = [
+/**
+ * Типы атомарных материалов: если у такой заметки нет ни родителя, ни детей, ни статуса/дедлайна,
+ * она попадает в «🧭 Без родителя», а не засоряет список проектов.
+ */
+export const LEGACY_MATERIAL_TYPES: readonly string[] = [
   "Источник",
   "Термин",
   "Рисунок",
   "Схема",
   "Таблица",
+  "Конспект",
+  "Заметка",
+  "Расчёт",
+  "Алгоритм",
 ];
 
-export const NEW_NOTE_TYPES: readonly string[] = [
-  "Подпроект",
-  "Задача",
-  "Конспект",
-  "Источник",
-  "Термин",
-  "Рисунок",
-  "Схема",
-  "Таблица",
-];
+export type ProjectGroupTab = "active" | "completed";
+
+export type QuickFilterMode = "all" | "orphans";
+
+export type DeadlineTone = "none" | "far" | "soon" | "overdue";
+
+export type CustomPropValueKind = "auto" | "list";
+
+export interface CustomPropertyDraft {
+  id: string;
+  key: string;
+  value: string;
+  kind: CustomPropValueKind;
+}
+
+export interface TypeSuggestion {
+  name: string;
+  count: number;
+}
+
+export interface VaultPropertySchema {
+  typeCounts: TypeSuggestion[];
+  propertyKeys: string[];
+  valuesByKey: Map<string, string[]>;
+}
 
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
-  showCompletedWorks: boolean;
+  projectGroupTab: ProjectGroupTab;
+  lastUsedMaterialType: string;
   excludedFolders: string[];
+  excludedTitlePrefixes: string[];
+  excludedTags: string[];
   expandedPaths: string[];
   lastWorkPath: string;
+  focusedBranchByWork: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
   newNoteFolder: "Знания",
-  showCompletedWorks: false,
-  excludedFolders: ["Templates", "Шаблоны"],
+  projectGroupTab: "active",
+  lastUsedMaterialType: "Термин",
+  excludedFolders: ["Templates", "Шаблоны", "Знания/Карточки", "Знания/Сборки"],
+  excludedTitlePrefixes: ["Учёба — ", "Шаблон", "Template"],
+  excludedTags: ["шаблон", "template"],
   expandedPaths: [],
   lastWorkPath: "",
+  focusedBranchByWork: {},
 };
 
 export interface WorkMetaBadge {
@@ -1545,334 +4217,56 @@ export interface StudyNoteItem {
   name: string;
   noteType: string;
   status: string;
+  isCompletedRoot: boolean;
+  finishedAt: string | null;
   discipline: string;
   deadline: string | null;
   icon: string;
+  tags: string[];
   parentPaths: string[];
-  isDone: boolean;
 }
 
 export interface TreeNode {
   item: StudyNoteItem;
   depth: number;
   hasChildren: boolean;
-  done: number;
-  total: number;
+  isExpanded: boolean;
+  directChildrenCount: number;
+  descendantCount: number;
+  isDirectMatch: boolean;
+  children: TreeNode[];
 }
 
-=== FILE: ./styles.css ===
-.modal.my-sc-modal-container {
-  width: min(820px, 96vw) !important;
-  max-width: 820px !important;
-  max-height: 92vh !important;
-  padding: 18px 22px !important;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
+export interface TreeFilterOptions {
+  query: string;
+  mode: QuickFilterMode;
+  typeFilter: string;
 }
 
-.modal.my-sc-modal-container > .modal-close-button {
-  display: none !important;
-}
-
-.my-sc-modal {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  gap: 12px;
-}
-
-.my-sc-modal * {
-  box-sizing: border-box;
-}
-
-.my-sc-head-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-head-title {
-  font-size: 1.05rem;
-  font-weight: 750;
-  color: var(--text-normal);
-}
-
-.my-sc-close-btn {
-  width: 38px;
-  min-height: 38px;
-  padding: 0;
-  border-radius: 8px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.my-sc-project-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.my-sc-project-select-wrap,
-.my-sc-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.my-sc-work-select {
-  flex: 1 1 240px;
-  min-width: 0;
-  min-height: 38px;
-  font-weight: 600;
-}
-
-.my-sc-chip-btn {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.my-sc-chip-btn.is-active {
-  border: 1px solid var(--interactive-accent) !important;
-  color: var(--interactive-accent) !important;
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-}
-
-.my-sc-progress-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.my-sc-progress-text {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.my-sc-progress {
-  height: 8px;
-  border-radius: 99px;
-  background: var(--background-modifier-border);
-  overflow: hidden;
-}
-
-.my-sc-progress-fill {
-  height: 100%;
-  border-radius: 99px;
-  background: var(--color-green, #4aab80);
-  transition: width 0.25s ease;
-}
-
-.my-sc-add-box {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--interactive-accent);
-}
-
-.my-sc-input {
-  flex: 1 1 200px;
-  min-height: 34px;
-  font-size: 0.86rem;
-}
-
-.my-sc-parent-select {
-  flex: 1 1 180px;
-  min-width: 0;
-}
-
-.my-sc-date {
-  min-height: 34px;
-}
-
-.my-sc-body {
-  flex: 1 1 auto;
-  min-height: 220px;
-  max-height: 56vh;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.my-sc-tree-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.my-sc-tree-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-tree-row.is-done .my-sc-node-title {
-  text-decoration: line-through;
-  color: var(--text-muted);
-}
-
-.my-sc-tree-row.is-done {
-  opacity: 0.65;
-}
-
-.my-sc-tree-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.my-sc-arrow,
-.my-sc-arrow-spacer {
-  width: 24px;
-  min-width: 24px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.my-sc-arrow {
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.my-sc-node-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-normal);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.my-sc-node-title:hover {
-  color: var(--text-accent);
-}
-
-.my-sc-type-badge {
-  font-size: 0.68rem;
-  font-weight: 650;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
-  color: var(--badge-color, #599ed6);
-  white-space: nowrap;
-}
-
-.my-sc-tree-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.my-sc-branch-count {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.my-sc-deadline {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.my-sc-deadline.is-overdue {
-  color: var(--text-error, #e06c75);
-  font-weight: 650;
-}
-
-.my-sc-move-btn {
-  width: 30px;
-  min-height: 30px;
-  padding: 0;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.my-sc-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.86rem;
-}
-
-@media (max-width: 640px) {
-  .modal.my-sc-modal-container {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
-    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
-    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
-  }
-
-  .my-sc-body {
-    max-height: none;
-  }
-
-  .my-sc-tree-row {
-    flex-wrap: wrap;
-  }
-
-  .my-sc-type-badge {
-    display: none;
-  }
-}
-
-=== FILE: ./tsconfig.json ===
+=== FILE: ./package.json ===
 {
-  "compilerOptions": {
-    "baseUrl": ".",
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "module": "ESNext",
-    "target": "ES2018",
-    "allowJs": true,
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "strictNullChecks": true,
-    "noUncheckedIndexedAccess": true,
-    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
-  },
-  "include": ["src/**/*.ts"]
+	"name": "my-study-compiler",
+	"version": "0.2.4",
+	"description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"bump": "node version-bump.mjs"
+	},
+	"keywords": [],
+	"author": "Mersinho",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"builtin-modules": "3.3.0",
+		"esbuild": "0.17.3",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "4.7.4"
+	}
 }
+
 
 === FILE: ./version-bump.mjs ===
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -1899,11 +4293,4 @@ if (existsSync("versions.json")) {
 versions[targetVersion] = minAppVersion;
 writeFileSync("versions.json", JSON.stringify(versions, null, "\t") + "\n");
 console.log(`Версия успешно обновлена до ${targetVersion}`);
-
-=== FILE: ./versions.json ===
-{
-	"0.1.0": "1.5.0",
-	"0.2.0": "1.5.0"
-}
-
 

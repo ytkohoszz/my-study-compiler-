@@ -424,6 +424,10 @@
   transition: border-color 0.14s ease, background-color 0.14s ease;
 }
 
+.my-sc-tree-row:hover {
+  border-color: color-mix(in srgb, var(--branch-accent) 45%, var(--background-modifier-border));
+}
+
 .my-sc-tree-row.is-open-parent {
   background: color-mix(in srgb, var(--branch-accent) 12%, var(--background-secondary));
   border-bottom-left-radius: 6px;
@@ -441,6 +445,18 @@
 
 .my-sc-tree-row.is-match {
   background: color-mix(in srgb, var(--color-yellow, #e5a158) 12%, var(--background-secondary));
+}
+
+/* Подсветка только что появившегося узла */
+.my-sc-tree-row.is-new {
+  animation: my-sc-row-fresh 2.2s ease-out;
+}
+
+@keyframes my-sc-row-fresh {
+  from {
+    background: color-mix(in srgb, var(--interactive-accent) 26%, var(--background-secondary));
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+  }
 }
 
 .my-sc-inline-editor {
@@ -461,6 +477,7 @@
   color: var(--text-muted);
 }
 
+/* Раскрытие и сворачивание анимируются из modal.ts (motion.ts), не через CSS */
 .my-sc-children-container {
   position: relative;
   display: flex;
@@ -470,18 +487,6 @@
   margin-left: 18px;
   padding-left: 14px;
   border-left: 2px solid color-mix(in srgb, var(--branch-accent) 55%, var(--background-modifier-border));
-  animation: my-sc-branch-open 0.16s ease-out;
-}
-
-@keyframes my-sc-branch-open {
-  from {
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .my-sc-tree-left {
@@ -659,10 +664,55 @@ button.my-sc-type-badge:hover {
   font-size: 0.86rem;
 }
 
+/* Стадия 3: микро-анимации */
+.my-sc-chip-btn,
+.my-sc-segment-btn,
+.my-sc-filter-chip,
+.my-sc-crumb-btn,
+.my-sc-move-btn,
+button.my-sc-type-badge,
+.my-sc-subcount-pill {
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease,
+    transform 0.1s ease;
+}
+
+.my-sc-chip-btn:active,
+.my-sc-segment-btn:active,
+.my-sc-filter-chip:active,
+.my-sc-move-btn:active,
+.my-sc-subcount-pill:active {
+  transform: scale(0.96);
+}
+
+.my-sc-toggle-btn:active {
+  transform: scale(0.94);
+}
+
+.my-sc-toggle-btn.is-open:active {
+  transform: rotate(90deg) scale(0.94);
+}
+
+.my-sc-add-box.is-entering {
+  animation: my-sc-form-in 0.16s ease-out;
+}
+
+@keyframes my-sc-form-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .my-sc-tree-row,
   .my-sc-toggle-btn,
-  .my-sc-children-container {
+  .my-sc-chip-btn,
+  .my-sc-segment-btn,
+  .my-sc-filter-chip,
+  .my-sc-crumb-btn,
+  .my-sc-move-btn,
+  .my-sc-subcount-pill,
+  .my-sc-add-box {
     transition: none !important;
     animation: none !important;
   }
