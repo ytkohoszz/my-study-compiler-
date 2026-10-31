@@ -155,6 +155,10 @@
   border: 1px solid var(--background-modifier-border);
 }
 
+.my-sc-search-panel.is-hidden {
+  display: none;
+}
+
 .my-sc-search-row {
   display: flex;
   gap: 8px;
@@ -373,6 +377,10 @@
   max-height: 55vh;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.my-sc-body.is-hidden {
+  display: none;
 }
 
 .my-sc-tree-list {
@@ -703,6 +711,265 @@ button.my-sc-type-badge,
   }
 }
 
+/* Стадия 4: граф проекта */
+.my-sc-graph-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 300px;
+  height: min(58vh, 640px);
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--text-faint) 35%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 18px 18px;
+}
+
+.my-sc-graph-wrap.is-hidden {
+  display: none;
+}
+
+.my-sc-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.my-sc-graph-svg:active {
+  cursor: grabbing;
+}
+
+.my-sc-graph-viewport {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.my-sc-graph-viewport.is-animating {
+  transition: transform 0.24s ease-out;
+}
+
+.my-sc-gedge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-faint) 75%, transparent);
+  stroke-width: 1.5;
+  transition: opacity 0.15s ease, stroke 0.15s ease;
+}
+
+.my-sc-gedge.is-extra {
+  stroke-dasharray: 5 4;
+  stroke-width: 1.2;
+}
+
+.my-sc-gedge.is-lit {
+  stroke: var(--interactive-accent);
+  stroke-width: 2.2;
+}
+
+.my-sc-gedge.is-dim {
+  opacity: 0.15;
+}
+
+.my-sc-gnode {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.my-sc-gnode.is-dim {
+  opacity: 0.22;
+}
+
+.my-sc-gnode-body {
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 12%, var(--background-primary));
+  stroke: color-mix(in srgb, var(--node-color, #599ed6) 45%, var(--background-modifier-border));
+  stroke-width: 1.2;
+  transition: stroke 0.15s ease, fill 0.15s ease;
+}
+
+.my-sc-gnode:hover .my-sc-gnode-body {
+  stroke: var(--node-color, #599ed6);
+}
+
+.my-sc-gnode.is-root .my-sc-gnode-body {
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 20%, var(--background-primary));
+}
+
+.my-sc-gnode.is-selected .my-sc-gnode-body {
+  stroke: var(--interactive-accent);
+  stroke-width: 2.4;
+}
+
+.my-sc-gnode-stripe {
+  fill: var(--node-color, #599ed6);
+}
+
+.my-sc-gnode-label {
+  fill: var(--text-normal);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-interface);
+  pointer-events: none;
+}
+
+.my-sc-gnode.is-root .my-sc-gnode-label {
+  font-weight: 750;
+}
+
+.my-sc-gnode-dot {
+  fill: var(--color-orange, #e5a158);
+}
+
+.my-sc-gnode.is-overdue .my-sc-gnode-dot {
+  fill: var(--text-error, #e06c75);
+}
+
+.my-sc-gnode.is-new .my-sc-gnode-body {
+  animation: my-sc-gnode-fresh 2.2s ease-out;
+}
+
+@keyframes my-sc-gnode-fresh {
+  from {
+    fill: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-primary));
+    stroke: var(--interactive-accent);
+    stroke-width: 2.4;
+  }
+}
+
+.my-sc-gtoggle {
+  cursor: pointer;
+}
+
+.my-sc-gtoggle-pill {
+  fill: var(--background-primary);
+  stroke: color-mix(in srgb, var(--text-faint) 80%, transparent);
+  stroke-width: 1.2;
+  transition: stroke 0.15s ease;
+}
+
+.my-sc-gtoggle:hover .my-sc-gtoggle-pill {
+  stroke: var(--interactive-accent);
+}
+
+.my-sc-gtoggle.is-collapsed .my-sc-gtoggle-pill {
+  stroke: var(--interactive-accent);
+  fill: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.my-sc-gtoggle-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-interface);
+  pointer-events: none;
+}
+
+.my-sc-gtoggle.is-collapsed .my-sc-gtoggle-label {
+  fill: var(--interactive-accent);
+}
+
+.my-sc-graph-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.my-sc-graph-ctrl {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+}
+
+.my-sc-graph-ctrl:hover {
+  border-color: var(--interactive-accent);
+}
+
+.my-sc-graph-ctrl:active {
+  transform: scale(0.94);
+}
+
+.my-sc-graph-info {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--interactive-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  animation: my-sc-form-in 0.14s ease-out;
+}
+
+.my-sc-graph-info.is-hidden {
+  display: none;
+}
+
+.my-sc-graph-info-text {
+  min-width: 0;
+}
+
+.my-sc-graph-info-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-graph-info-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-graph-info-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.my-sc-graph-footer {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.my-sc-graph-stat {
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .my-sc-tree-row,
   .my-sc-toggle-btn,
@@ -712,7 +979,14 @@ button.my-sc-type-badge,
   .my-sc-crumb-btn,
   .my-sc-move-btn,
   .my-sc-subcount-pill,
-  .my-sc-add-box {
+  .my-sc-add-box,
+  .my-sc-graph-viewport,
+  .my-sc-graph-ctrl,
+  .my-sc-graph-info,
+  .my-sc-gnode,
+  .my-sc-gnode-body,
+  .my-sc-gedge,
+  .my-sc-gtoggle-pill {
     transition: none !important;
     animation: none !important;
   }
@@ -756,5 +1030,20 @@ button.my-sc-type-badge,
 
   .my-sc-tree-row {
     flex-wrap: wrap;
+  }
+
+  .my-sc-graph-wrap {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 280px;
+  }
+
+  .my-sc-graph-info {
+    top: 48px;
+    right: 8px;
+  }
+
+  .my-sc-graph-hint {
+    display: none;
   }
 }

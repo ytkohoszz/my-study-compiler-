@@ -33,11 +33,14 @@ import {
   todayISO,
 } from "./scanner";
 import { animateClose, animateOpen, prefersReducedMotion } from "./motion";
+import { ProjectGraphView } from "./graph";
 
 export interface OpenOptions {
   rootPath?: string;
   addUnder?: string;
 }
+
+type ViewMode = "tree" | "graph";
 
 class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
   private items: StudyNoteItem[];
@@ -89,6 +92,11 @@ export class StudyCompilerModal extends Modal {
   private closingBranch = false;
   private closed = false;
 
+  // Стадия 4: граф проекта
+  private viewMode: ViewMode = "tree";
+  private graphView: ProjectGraphView | null = null;
+  private lastGraphRootPath = "";
+
   // Быстрое редактирование типа или свойств конкретного узла дерева
   private editingNodePath: string | null = null;
   private editingNodeMode: "type" | "props" | null = null;
@@ -98,6 +106,7 @@ export class StudyCompilerModal extends Modal {
   private crumbsEl!: HTMLElement;
   private formEl!: HTMLElement;
   private treeEl!: HTMLElement;
+  private graphEl!: HTMLElement;
   private datalistsEl!: HTMLElement;
   private searchInputEl: HTMLInputElement | null = null;
 
@@ -135,6 +144,7 @@ export class StudyCompilerModal extends Modal {
   onOpen(): void {
     this.noRestore();
     this.closed = false;
+    this.viewMode = "tree";
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
 
@@ -148,6 +158,7 @@ export class StudyCompilerModal extends Modal {
     this.crumbsEl = this.contentEl.createDiv("my-sc-crumbs-bar");
     this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
     this.treeEl = this.contentEl.createDiv("my-sc-body");
+    this.graphEl = this.contentEl.createDiv("my-sc-graph-wrap is-hidden");
 
     const onKeyDown = (e: KeyboardEvent) => this.handleKeyboardNav(e);
     this.modalEl.addEventListener("keydown", onKeyDown);
@@ -185,6 +196,7 @@ export class StudyCompilerModal extends Modal {
     this.renderBar();
     this.renderSearchPanel();
     this.renderBreadcrumbs();
+    this.applyViewMode();
     this.renderTree();
 
     if (addUnder && this.scan.byPath.has(addUnder)) {
@@ -207,6 +219,11 @@ export class StudyCompilerModal extends Modal {
       this.freshTimer = null;
     }
     this.freshPaths.clear();
+    if (this.graphView) {
+      this.graphView.destroy();
+      this.graphView = null;
+    }
+    this.lastGraphRootPath = "";
     this.contentEl.empty();
   }
 
@@ -239,6 +256,57 @@ export class StudyCompilerModal extends Modal {
     return first;
   }
 
+  // ---------- Режимы «Дерево / Граф» ----------
+
+  private applyViewMode() {
+    const graph = this.viewMode === "graph";
+    this.searchWrapEl.toggleClass("is-hidden", graph);
+    this.treeEl.toggleClass("is-hidden", graph);
+    this.graphEl.toggleClass("is-hidden", !graph);
+  }
+
+  private setViewMode(mode: ViewMode) {
+    if (this.viewMode === mode) return;
+    this.viewMode = mode;
+    this.applyViewMode();
+    this.renderBar();
+    this.renderMain();
+  }
+
+  private renderMain() {
+    if (this.viewMode === "graph") this.renderGraph();
+    else this.renderTree();
+  }
+
+  private renderGraph() {
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      if (this.graphView) {
+        this.graphView.destroy();
+        this.graphView = null;
+      }
+      this.lastGraphRootPath = "";
+      this.graphEl.empty();
+      return;
+    }
+    const branchRoot = this.getActiveBranchRoot(root);
+
+    if (!this.graphView) {
+      this.graphView = new ProjectGraphView(this.graphEl, {
+        onOpen: (p) => this.openNote(p),
+        onFocus: (p) => {
+          const r = this.getRootInCurrentGroup();
+          if (r) this.setFocusBranch(r, p);
+        },
+      });
+      this.lastGraphRootPath = "";
+    }
+
+    const reset = this.lastGraphRootPath !== branchRoot.path;
+    this.lastGraphRootPath = branchRoot.path;
+    this.graphView.update(this.scan, branchRoot, reset, this.freshPaths);
+  }
+
   private scheduleRefresh() {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
@@ -259,16 +327,18 @@ export class StudyCompilerModal extends Modal {
       this.renderSearchPanel();
       this.renderBreadcrumbs();
       if (this.form.open) this.renderForm();
-      this.renderTree();
+      this.renderMain();
 
-      const firstFresh = fresh
-        .map((p) => this.rowElementByPath.get(p))
-        .find((el): el is HTMLElement => el !== undefined);
-      if (firstFresh) {
-        firstFresh.scrollIntoView({
-          block: "nearest",
-          behavior: prefersReducedMotion() ? "auto" : "smooth",
-        });
+      if (this.viewMode === "tree") {
+        const firstFresh = fresh
+          .map((p) => this.rowElementByPath.get(p))
+          .find((el): el is HTMLElement => el !== undefined);
+        if (firstFresh) {
+          firstFresh.scrollIntoView({
+            block: "nearest",
+            behavior: prefersReducedMotion() ? "auto" : "smooth",
+          });
+        }
       }
     }, 220);
   }
@@ -282,6 +352,7 @@ export class StudyCompilerModal extends Modal {
         this.rowElementByPath.get(p)?.removeClass("is-new");
       }
       this.freshPaths.clear();
+      this.graphView?.clearFresh();
     }, 2400);
   }
 
@@ -361,7 +432,7 @@ export class StudyCompilerModal extends Modal {
     this.activeRowIndex = -1;
     this.renderBar();
     this.renderBreadcrumbs();
-    this.renderTree();
+    this.renderMain();
   }
 
   private saveExpanded() {
@@ -370,6 +441,8 @@ export class StudyCompilerModal extends Modal {
   }
 
   private handleKeyboardNav(e: KeyboardEvent) {
+    if (this.viewMode === "graph") return;
+
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
       e.preventDefault();
       this.searchInputEl?.focus();
@@ -467,7 +540,7 @@ export class StudyCompilerModal extends Modal {
         this.activeRowIndex = -1;
         this.renderBar();
         this.renderBreadcrumbs();
-        this.renderTree();
+        this.renderMain();
       };
     }
 
@@ -490,7 +563,7 @@ export class StudyCompilerModal extends Modal {
           this.plugin.requestSaveSettings();
           this.renderBar();
           this.renderBreadcrumbs();
-          this.renderTree();
+          this.renderMain();
         };
       } else if (this.groupTab === "completed" && activeCount > 0) {
         emptyBox.createSpan({
@@ -529,7 +602,7 @@ export class StudyCompilerModal extends Modal {
       this.activeRowIndex = -1;
       this.renderBar();
       this.renderBreadcrumbs();
-      this.renderTree();
+      this.renderMain();
     };
 
     const toggleRootStatusBtn = row1.createEl("button", {
@@ -581,31 +654,47 @@ export class StudyCompilerModal extends Modal {
       }
     };
 
-    const expandBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "⤢ Развернуть всё",
-      attr: { type: "button" },
+    const viewBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.viewMode === "graph" ? " is-active" : ""),
+      text: this.viewMode === "graph" ? "🌳 Дерево" : "🕸 Граф",
+      attr: {
+        type: "button",
+        title:
+          this.viewMode === "graph"
+            ? "Вернуться к списку-дереву"
+            : "Показать связи материалов в виде графа",
+      },
     });
-    expandBtn.onclick = () => {
-      for (const p of collectDescendants(branchRoot.path, this.scan)) {
-        if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
-      }
-      this.saveExpanded();
-      this.renderTree();
-    };
+    viewBtn.onclick = () =>
+      this.setViewMode(this.viewMode === "graph" ? "tree" : "graph");
 
-    const collapseBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "⤡ Свернуть всё",
-      attr: { type: "button" },
-    });
-    collapseBtn.onclick = () => {
-      for (const p of collectDescendants(branchRoot.path, this.scan)) {
-        this.expanded.delete(p);
-      }
-      this.saveExpanded();
-      this.renderTree();
-    };
+    if (this.viewMode === "tree") {
+      const expandBtn = tools.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text: "⤢ Развернуть всё",
+        attr: { type: "button" },
+      });
+      expandBtn.onclick = () => {
+        for (const p of collectDescendants(branchRoot.path, this.scan)) {
+          if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
+        }
+        this.saveExpanded();
+        this.renderTree();
+      };
+
+      const collapseBtn = tools.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text: "⤡ Свернуть всё",
+        attr: { type: "button" },
+      });
+      collapseBtn.onclick = () => {
+        for (const p of collectDescendants(branchRoot.path, this.scan)) {
+          this.expanded.delete(p);
+        }
+        this.saveExpanded();
+        this.renderTree();
+      };
+    }
   }
 
   private async toggleRootProjectStatus(root: StudyNoteItem) {
