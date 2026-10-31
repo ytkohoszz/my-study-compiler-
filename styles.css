@@ -85,6 +85,11 @@
   background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
 }
 
+.my-sc-links-trigger {
+  border: 1px solid color-mix(in srgb, var(--color-orange, #e5a158) 55%, var(--background-modifier-border));
+  color: var(--color-orange, #e5a158);
+}
+
 .my-sc-summary-row {
   display: flex;
   justify-content: space-between;
@@ -204,6 +209,133 @@
   cursor: pointer;
 }
 
+/* Панель обнаруженных непривязанных [[ссылок]] */
+.my-sc-links-tray {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-orange, #e5a158) 7%, var(--background-secondary));
+  border: 1px solid color-mix(in srgb, var(--color-orange, #e5a158) 40%, var(--background-modifier-border));
+}
+
+.my-sc-links-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.my-sc-links-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.my-sc-links-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.my-sc-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.my-sc-link-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-link-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.my-sc-link-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.my-sc-link-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.my-sc-link-target {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-accent);
+}
+
+.my-sc-link-arrow {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.my-sc-link-status {
+  font-size: 0.71rem;
+  color: var(--text-muted);
+}
+
+.my-sc-link-status.is-missing {
+  color: var(--color-cyan, #4fb3d9);
+}
+
+.my-sc-link-status.is-existing-free {
+  color: var(--color-green, #4aab80);
+}
+
+.my-sc-link-status.is-has-other-parent {
+  color: var(--color-orange, #e5a158);
+}
+
+.my-sc-link-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.my-sc-link-type-sel {
+  min-height: 30px;
+  font-size: 0.76rem;
+}
+
+.my-sc-unlinked-pill {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 99px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-orange, #e5a158);
+  background: color-mix(in srgb, var(--color-orange, #e5a158) 15%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--color-orange, #e5a158) 45%, var(--background-modifier-border));
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .my-sc-add-box {
   display: flex;
   flex-wrap: wrap;
@@ -237,7 +369,6 @@
   padding-right: 4px;
 }
 
-/* Иерархическое дерево с цветовыми акцентами по глубине и направляющими линиями */
 .my-sc-tree-list {
   display: flex;
   flex-direction: column;
@@ -337,7 +468,6 @@
   flex: 1;
 }
 
-/* Крупная кнопка стрелки 32x32 px для удобного нажатия пальцем */
 .my-sc-toggle-btn {
   width: 32px;
   min-width: 32px;
@@ -518,7 +648,8 @@
     max-height: none;
   }
 
-  .my-sc-search-row {
+  .my-sc-search-row,
+  .my-sc-link-row {
     flex-wrap: wrap;
   }
 

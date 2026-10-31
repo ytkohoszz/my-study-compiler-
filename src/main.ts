@@ -1,6 +1,16 @@
-import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
-import { DEFAULT_SETTINGS, StudyCompilerSettings } from "./types";
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import {
+  DEFAULT_SETTINGS,
+  KEYS,
+  NEW_NOTE_TYPES,
+  StudyCompilerSettings,
+} from "./types";
 import { OpenOptions, StudyCompilerModal } from "./modal";
+import {
+  findRootPath,
+  flattenFrontmatterValue,
+  scanStudyVault,
+} from "./scanner";
 
 function migrateSettings(raw: unknown): StudyCompilerSettings {
   const s = raw && typeof raw === "object" ? (raw as Partial<StudyCompilerSettings>) : {};
@@ -25,6 +35,14 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
       typeof s.newNoteFolder === "string" && s.newNoteFolder.trim()
         ? s.newNoteFolder.trim()
         : DEFAULT_SETTINGS.newNoteFolder,
+    defaultLinkNoteType:
+      typeof s.defaultLinkNoteType === "string" && s.defaultLinkNoteType.trim()
+        ? s.defaultLinkNoteType.trim()
+        : DEFAULT_SETTINGS.defaultLinkNoteType,
+    autoLinkNewNotesFromProject:
+      typeof s.autoLinkNewNotesFromProject === "boolean"
+        ? s.autoLinkNewNotesFromProject
+        : DEFAULT_SETTINGS.autoLinkNewNotesFromProject,
     excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
     excludedTitlePrefixes: strList(
       s.excludedTitlePrefixes,
@@ -73,6 +91,34 @@ class StudyCompilerSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Тип по умолчанию для привязанных [[ссылок]]")
+      .setDesc("Какой тип подставлять при добавлении ссылок из текста в проект")
+      .addDropdown((drop) => {
+        for (const t of NEW_NOTE_TYPES) {
+          drop.addOption(t, t);
+        }
+        drop.setValue(this.plugin.settings.defaultLinkNoteType || "Термин");
+        drop.onChange((val) => {
+          this.plugin.settings.defaultLinkNoteType = val;
+          this.plugin.requestSaveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Автопривязка при клике по новой [[ссылке]] из заметки проекта")
+      .setDesc(
+        "Если включено: когда ты кликаешь по ещё не существующей [[ссылке]] внутри заметки учебного проекта и Obsidian создаёт пустой файл, плагин автоматически пропишет ему направление «Учёба», тип и родителя"
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoLinkNewNotesFromProject)
+          .onChange((val) => {
+            this.plugin.settings.autoLinkNewNotesFromProject = val;
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Игнорируемые папки")
       .setDesc("Через запятую. Заметки и шаблоны внутри этих папок не попадают в список")
       .addText((text) =>
@@ -89,9 +135,7 @@ class StudyCompilerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Игнорируемые префиксы имён файлов (шаблоны)")
-      .setDesc(
-        "Через запятую. Например: «Учёба — , Шаблон, Template» — скрывает заметки-шаблоны из выпадающего списка проектов"
-      )
+      .setDesc("Через запятую. Например: «Учёба — , Шаблон, Template»")
       .addText((text) =>
         text
           .setValue(this.plugin.settings.excludedTitlePrefixes.join(", "))
@@ -124,6 +168,7 @@ class StudyCompilerSettingTab extends PluginSettingTab {
 export default class MyStudyCompilerPlugin extends Plugin {
   settings!: StudyCompilerSettings;
   private saveTimer: number | null = null;
+  private lastActiveStudyFile: TFile | null = null;
 
   async onload() {
     this.settings = migrateSettings(await this.loadData());
@@ -156,6 +201,89 @@ export default class MyStudyCompilerPlugin extends Plugin {
         return true;
       },
     });
+
+    this.app.workspace.onLayoutReady(() => {
+      this.trackActiveStudyFile(this.app.workspace.getActiveFile());
+
+      this.registerEvent(
+        this.app.workspace.on("file-open", (file) => {
+          this.trackActiveStudyFile(file);
+        })
+      );
+
+      this.registerEvent(
+        this.app.vault.on("create", (abstractFile) => {
+          if (
+            this.settings.autoLinkNewNotesFromProject &&
+            abstractFile instanceof TFile &&
+            abstractFile.extension.toLowerCase() === "md"
+          ) {
+            void this.tryAutoLinkCreatedNote(abstractFile);
+          }
+        })
+      );
+    });
+  }
+
+  private trackActiveStudyFile(file: TFile | null) {
+    if (!file || file.extension.toLowerCase() !== "md") return;
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (
+      fm &&
+      flattenFrontmatterValue(fm[KEYS.area]).includes(this.settings.studyAreaName)
+    ) {
+      this.lastActiveStudyFile = file;
+    }
+  }
+
+  private async tryAutoLinkCreatedNote(newFile: TFile) {
+    const parentFile = this.lastActiveStudyFile;
+    if (!parentFile || parentFile.path === newFile.path) return;
+
+    // Небольшая пауза, чтобы Obsidian успел записать ссылку и базовое содержимое
+    await new Promise((r) => window.setTimeout(r, 180));
+
+    const parentCache = this.app.metadataCache.getFileCache(parentFile);
+    const linksInParent = parentCache?.links ?? [];
+    const isLinkedFromParent = linksInParent.some((l) => {
+      const dest = this.app.metadataCache.getFirstLinkpathDest(
+        l.link.split("#")[0]?.split("|")[0]?.trim() || "",
+        parentFile.path
+      );
+      return dest?.path === newFile.path || l.link.includes(newFile.basename);
+    });
+
+    if (!isLinkedFromParent) return;
+
+    const newCache = this.app.metadataCache.getFileCache(newFile);
+    if (newCache?.frontmatter && newCache.frontmatter[KEYS.parent]) return;
+
+    const scan = scanStudyVault(this.app, this.settings);
+    const rootPath = findRootPath(scan, parentFile.path);
+    const rootItem = scan.byPath.get(rootPath);
+
+    const parentLink = `[[${this.app.metadataCache.fileToLinktext(
+      parentFile,
+      newFile.path
+    )}]]`;
+    const defaultType = this.settings.defaultLinkNoteType || "Термин";
+
+    try {
+      await this.app.fileManager.processFrontMatter(
+        newFile,
+        (fm: Record<string, unknown>) => {
+          if (!fm[KEYS.area]) fm[KEYS.area] = this.settings.studyAreaName;
+          if (!fm[KEYS.type]) fm[KEYS.type] = defaultType;
+          if (!fm[KEYS.parent]) fm[KEYS.parent] = parentLink;
+          if (rootItem?.discipline && !fm[KEYS.discipline]) {
+            fm[KEYS.discipline] = rootItem.discipline;
+          }
+        }
+      );
+      new Notice(`🔗 Автопривязка к «${parentFile.basename}»: ${newFile.basename}`);
+    } catch {
+      // игнорируем
+    }
   }
 
   openCompiler(options: OpenOptions = {}) {

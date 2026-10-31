@@ -3,6 +3,7 @@ import type MyStudyCompilerPlugin from "./main";
 import {
   KEYS,
   NEW_NOTE_TYPES,
+  OutgoingLinkCandidate,
   QuickFilterMode,
   StudyNoteItem,
   TreeNode,
@@ -23,6 +24,10 @@ import {
   getWorkMeta,
   scanStudyVault,
 } from "./scanner";
+import {
+  applyOutgoingLinkCandidate,
+  scanUnlinkedOutgoingLinks,
+} from "./links";
 
 export interface OpenOptions {
   rootPath?: string;
@@ -70,9 +75,17 @@ export class StudyCompilerModal extends Modal {
   private currentVisibleFlat: TreeNode[] = [];
   private rowElementByPath = new Map<string, HTMLElement>();
 
+  private linkCandidates: OutgoingLinkCandidate[] = [];
+  private linksBySourcePath = new Map<string, OutgoingLinkCandidate[]>();
+  private linksPanelOpen = false;
+  private linksFilterSourcePath = "";
+  private candidateTypeOverrides = new Map<string, string>();
+  private candidateChecked = new Map<string, boolean>();
+
   private barEl!: HTMLElement;
   private searchWrapEl!: HTMLElement;
   private crumbsEl!: HTMLElement;
+  private linksEl!: HTMLElement;
   private formEl!: HTMLElement;
   private treeEl!: HTMLElement;
   private searchInputEl: HTMLInputElement | null = null;
@@ -124,6 +137,7 @@ export class StudyCompilerModal extends Modal {
     this.barEl = this.contentEl.createDiv("my-sc-project-bar");
     this.searchWrapEl = this.contentEl.createDiv("my-sc-search-panel");
     this.crumbsEl = this.contentEl.createDiv("my-sc-crumbs-bar");
+    this.linksEl = this.contentEl.createDiv("my-sc-links-wrap");
     this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
     this.treeEl = this.contentEl.createDiv("my-sc-body");
 
@@ -141,23 +155,22 @@ export class StudyCompilerModal extends Modal {
       () => this.app.vault.offref(r3)
     );
 
-    this.scan = scanStudyVault(this.app, this.plugin.settings);
+    this.rescanVaultAndLinks();
     const addUnder = this.options.addUnder;
     if (addUnder && this.scan.byPath.has(addUnder)) {
       this.selectedPath = findRootPath(this.scan, addUnder);
+      this.rescanVaultAndLinks();
     }
     const root = this.getRoot();
     if (root) {
       const savedFocus = this.plugin.settings.focusedBranchByWork[root.path];
       if (savedFocus && this.scan.byPath.has(savedFocus)) {
         this.focusBranchPath = savedFocus;
+        this.rescanVaultAndLinks();
       }
     }
 
-    this.renderBar();
-    this.renderSearchPanel();
-    this.renderBreadcrumbs();
-    this.renderTree();
+    this.renderAll();
 
     if (addUnder && this.scan.byPath.has(addUnder)) {
       this.openForm(addUnder);
@@ -176,15 +189,50 @@ export class StudyCompilerModal extends Modal {
     this.contentEl.empty();
   }
 
+  private rescanVaultAndLinks() {
+    this.scan = scanStudyVault(this.app, this.plugin.settings);
+    const root = this.getRoot();
+    if (!root) {
+      this.linkCandidates = [];
+      this.linksBySourcePath.clear();
+      return;
+    }
+    const branchRoot = this.getActiveBranchRoot(root);
+    const found = scanUnlinkedOutgoingLinks(
+      this.app,
+      branchRoot,
+      root,
+      this.scan,
+      this.plugin.settings
+    );
+    this.linkCandidates = found.allCandidates;
+    this.linksBySourcePath = found.bySourcePath;
+
+    if (
+      this.linksFilterSourcePath &&
+      !this.linksBySourcePath.has(this.linksFilterSourcePath)
+    ) {
+      this.linksFilterSourcePath = "";
+    }
+    if (this.linkCandidates.length === 0) {
+      this.linksPanelOpen = false;
+    }
+  }
+
+  private renderAll() {
+    this.renderBar();
+    this.renderSearchPanel();
+    this.renderBreadcrumbs();
+    this.renderLinksTray();
+    this.renderTree();
+  }
+
   private scheduleRefresh() {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null;
-      this.scan = scanStudyVault(this.app, this.plugin.settings);
-      this.renderBar();
-      this.renderSearchPanel();
-      this.renderBreadcrumbs();
-      this.renderTree();
+      this.rescanVaultAndLinks();
+      this.renderAll();
     }, 220);
   }
 
@@ -216,9 +264,9 @@ export class StudyCompilerModal extends Modal {
     }
     this.plugin.requestSaveSettings();
     this.activeRowIndex = -1;
-    this.renderBar();
-    this.renderBreadcrumbs();
-    this.renderTree();
+    this.linksFilterSourcePath = "";
+    this.rescanVaultAndLinks();
+    this.renderAll();
   }
 
   private saveExpanded() {
@@ -289,6 +337,7 @@ export class StudyCompilerModal extends Modal {
     const root = this.getRoot();
     if (!root) {
       this.formEl.empty();
+      this.linksEl.empty();
       this.barEl.createDiv({
         cls: "my-sc-empty",
         text: `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`,
@@ -315,10 +364,11 @@ export class StudyCompilerModal extends Modal {
       this.plugin.requestSaveSettings();
       this.form.open = false;
       this.formEl.empty();
+      this.linksPanelOpen = false;
+      this.linksFilterSourcePath = "";
       this.activeRowIndex = -1;
-      this.renderBar();
-      this.renderBreadcrumbs();
-      this.renderTree();
+      this.rescanVaultAndLinks();
+      this.renderAll();
     };
 
     const openBtn = row1.createEl("button", {
@@ -358,6 +408,30 @@ export class StudyCompilerModal extends Modal {
       }
     };
 
+    if (this.linkCandidates.length > 0) {
+      const linksBtn = tools.createEl("button", {
+        cls:
+          "my-sc-chip-btn my-sc-links-trigger" +
+          (this.linksPanelOpen ? " is-active" : ""),
+        text: `🔗 Ссылки вне проекта (${this.linkCandidates.length})`,
+        attr: {
+          type: "button",
+          title:
+            "Найдены [[ссылки]] в тексте заметок, которые ещё не привязаны к этому проекту",
+        },
+      });
+      linksBtn.onclick = () => {
+        if (this.linksPanelOpen && !this.linksFilterSourcePath) {
+          this.linksPanelOpen = false;
+        } else {
+          this.linksPanelOpen = true;
+          this.linksFilterSourcePath = "";
+        }
+        this.renderBar();
+        this.renderLinksTray();
+      };
+    }
+
     const expandBtn = tools.createEl("button", {
       cls: "my-sc-chip-btn",
       text: "⤢ Развернуть всё",
@@ -382,6 +456,204 @@ export class StudyCompilerModal extends Modal {
       }
       this.saveExpanded();
       this.renderTree();
+    };
+  }
+
+  private renderLinksTray() {
+    this.linksEl.empty();
+    if (!this.linksPanelOpen || this.linkCandidates.length === 0) return;
+
+    const root = this.getRoot();
+    if (!root) return;
+
+    const visibleList = this.linksFilterSourcePath
+      ? this.linksBySourcePath.get(this.linksFilterSourcePath) ?? []
+      : this.linkCandidates;
+
+    if (visibleList.length === 0) {
+      this.linksPanelOpen = false;
+      return;
+    }
+
+    const defaultType = this.plugin.settings.defaultLinkNoteType || "Термин";
+    for (const c of visibleList) {
+      if (!this.candidateTypeOverrides.has(c.id)) {
+        this.candidateTypeOverrides.set(c.id, defaultType);
+      }
+      if (!this.candidateChecked.has(c.id)) {
+        // Заметки с другим родителем по умолчанию не отмечаем галочкой для пакетного добавления, чтобы пользователь решил сам
+        this.candidateChecked.set(c.id, c.kind !== "has-other-parent");
+      }
+    }
+
+    const tray = this.linksEl.createDiv("my-sc-links-tray");
+    const head = tray.createDiv("my-sc-links-head");
+
+    const titleSpan = head.createDiv("my-sc-links-title");
+    if (this.linksFilterSourcePath) {
+      const srcItem = this.scan.byPath.get(this.linksFilterSourcePath);
+      titleSpan.setText(
+        `🔗 Непривязанные [[ссылки]] в заметке «${srcItem?.name ?? ""}» (${visibleList.length})`
+      );
+    } else {
+      titleSpan.setText(
+        `🔗 Обнаружены [[ссылки]] в тексте без привязки к проекту (${visibleList.length})`
+      );
+    }
+
+    const headActions = head.createDiv("my-sc-links-head-actions");
+    if (this.linksFilterSourcePath) {
+      const showAllBtn = headActions.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text: `Показать все (${this.linkCandidates.length})`,
+        attr: { type: "button" },
+      });
+      showAllBtn.onclick = () => {
+        this.linksFilterSourcePath = "";
+        this.renderLinksTray();
+      };
+    }
+
+    const batchBtn = headActions.createEl("button", {
+      cls: "mod-cta my-sc-action-btn",
+      text: "✓ Привязать выбранные",
+      attr: { type: "button" },
+    });
+
+    const closeTrayBtn = headActions.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "✕",
+      attr: { type: "button", title: "Скрыть панель ссылок" },
+    });
+    closeTrayBtn.onclick = () => {
+      this.linksPanelOpen = false;
+      this.linksFilterSourcePath = "";
+      this.renderBar();
+      this.renderLinksTray();
+    };
+
+    const listEl = tray.createDiv("my-sc-links-list");
+
+    for (const cand of visibleList) {
+      const row = listEl.createDiv("my-sc-link-row");
+      const left = row.createDiv("my-sc-link-left");
+
+      const chk = left.createEl("input", {
+        attr: { type: "checkbox", title: "Выбрать для пакетного добавления" },
+      });
+      chk.checked = Boolean(this.candidateChecked.get(cand.id));
+      chk.onchange = () => {
+        this.candidateChecked.set(cand.id, chk.checked);
+      };
+
+      const infoCol = left.createDiv("my-sc-link-info");
+      const mainLine = infoCol.createDiv("my-sc-link-main");
+      mainLine.createSpan({
+        cls: "my-sc-link-target",
+        text: `[[${cand.targetName}]]`,
+      });
+      mainLine.createSpan({
+        cls: "my-sc-link-arrow",
+        text: `← из «${cand.sourceName}»`,
+      });
+
+      const statusBadge = infoCol.createSpan({
+        cls: `my-sc-link-status is-${cand.kind}`,
+      });
+      if (cand.kind === "missing") {
+        statusBadge.setText("✨ Файла ещё нет — будет создан в папке «Знания»");
+      } else if (cand.kind === "existing-free") {
+        statusBadge.setText("📄 Заметка существует (без родителя) — пропишем родителя");
+      } else {
+        const parentNames = cand.existingParents
+          .map((p) => p.split("/").pop()?.replace(/\.md$/i, "") || p)
+          .join(", ");
+        statusBadge.setText(
+          `⚠️ Уже есть родитель (${parentNames}) — добавим вторым родителем без перезаписи`
+        );
+      }
+
+      const right = row.createDiv("my-sc-link-right");
+      const typeSel = right.createEl("select", {
+        cls: "dropdown my-sc-link-type-sel",
+        attr: { title: "Тип для этой заметки" },
+      });
+      const currentType =
+        this.candidateTypeOverrides.get(cand.id) || defaultType;
+      for (const t of NEW_NOTE_TYPES) {
+        const o = typeSel.createEl("option", { text: t, value: t });
+        if (t === currentType) o.selected = true;
+      }
+      typeSel.onchange = () => {
+        this.candidateTypeOverrides.set(cand.id, typeSel.value);
+      };
+
+      const singleBtn = right.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text:
+          cand.kind === "missing"
+            ? "＋ Создать"
+            : cand.kind === "has-other-parent"
+              ? "＋ Привязать вторым"
+              : "＋ В проект",
+        attr: { type: "button" },
+      });
+      singleBtn.onclick = async () => {
+        singleBtn.disabled = true;
+        try {
+          const chosenType =
+            this.candidateTypeOverrides.get(cand.id) || defaultType;
+          await applyOutgoingLinkCandidate(
+            this.app,
+            cand,
+            chosenType,
+            root,
+            this.plugin.settings
+          );
+          this.expanded.add(cand.sourcePath);
+          this.saveExpanded();
+          new Notice(`Привязано: «${cand.targetName}» → «${cand.sourceName}»`);
+          this.rescanVaultAndLinks();
+          this.renderAll();
+        } catch (err: unknown) {
+          new Notice(
+            "Ошибка привязки: " +
+              (err instanceof Error ? err.message : String(err))
+          );
+          singleBtn.disabled = false;
+        }
+      };
+    }
+
+    batchBtn.onclick = async () => {
+      const toApply = visibleList.filter((c) => this.candidateChecked.get(c.id));
+      if (toApply.length === 0) {
+        new Notice("Отметь галочками хотя бы одну ссылку.");
+        return;
+      }
+      batchBtn.disabled = true;
+      let count = 0;
+      for (const cand of toApply) {
+        try {
+          const chosenType =
+            this.candidateTypeOverrides.get(cand.id) || defaultType;
+          await applyOutgoingLinkCandidate(
+            this.app,
+            cand,
+            chosenType,
+            root,
+            this.plugin.settings
+          );
+          this.expanded.add(cand.sourcePath);
+          count++;
+        } catch {
+          // пропускаем проблемный файл и продолжаем пакет
+        }
+      }
+      this.saveExpanded();
+      new Notice(`Добавлено в проект материалов: ${count}`);
+      this.rescanVaultAndLinks();
+      this.renderAll();
     };
   }
 
@@ -779,6 +1051,25 @@ export class StudyCompilerModal extends Modal {
 
     const right = row.createDiv("my-sc-tree-right");
     this.renderDeadline(right, item);
+
+    const nodeUnlinked = this.linksBySourcePath.get(item.path);
+    if (nodeUnlinked && nodeUnlinked.length > 0) {
+      const linkPill = right.createEl("button", {
+        cls: "my-sc-unlinked-pill",
+        text: `🔗 +${nodeUnlinked.length}`,
+        attr: {
+          type: "button",
+          title: `В тексте «${item.name}» найдено непривязанных ссылок: ${nodeUnlinked.length}. Нажми, чтобы добавить их в проект`,
+        },
+      });
+      linkPill.onclick = (e) => {
+        e.stopPropagation();
+        this.linksPanelOpen = true;
+        this.linksFilterSourcePath = item.path;
+        this.renderBar();
+        this.renderLinksTray();
+      };
+    }
 
     if (node.hasChildren) {
       const countPill = right.createEl("button", {

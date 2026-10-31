@@ -41,9 +41,25 @@ export type QuickFilterMode = "all" | "orphans";
 
 export type DeadlineTone = "none" | "far" | "soon" | "overdue";
 
+export type LinkCandidateKind = "missing" | "existing-free" | "has-other-parent";
+
+export interface OutgoingLinkCandidate {
+  id: string;
+  sourceFile: TFile;
+  sourcePath: string;
+  sourceName: string;
+  targetName: string;
+  targetFile: TFile | null;
+  targetPath: string;
+  kind: LinkCandidateKind;
+  existingParents: string[];
+}
+
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
+  defaultLinkNoteType: string;
+  autoLinkNewNotesFromProject: boolean;
   excludedFolders: string[];
   excludedTitlePrefixes: string[];
   excludedTags: string[];
@@ -55,6 +71,8 @@ export interface StudyCompilerSettings {
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
   newNoteFolder: "Знания",
+  defaultLinkNoteType: "Термин",
+  autoLinkNewNotesFromProject: false,
   excludedFolders: ["Templates", "Шаблоны", "Знания/Карточки", "Знания/Сборки"],
   excludedTitlePrefixes: ["Учёба — ", "Шаблон", "Template"],
   excludedTags: ["шаблон", "template"],

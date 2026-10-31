@@ -25,14 +25,14 @@ export function byName(a: StudyNoteItem, b: StudyNoteItem): number {
   return a.name.localeCompare(b.name, "ru", { numeric: true });
 }
 
-function stripOuterWikiBrackets(str: string): string {
+export function stripOuterWikiBrackets(str: string): string {
   let s = String(str || "").trim();
   if (s.startsWith("[[")) s = s.slice(2);
   if (s.endsWith("]]")) s = s.slice(0, -2);
   return s;
 }
 
-function flattenFrontmatterValue(val: unknown): string[] {
+export function flattenFrontmatterValue(val: unknown): string[] {
   if (val === null || val === undefined) return [];
   if (Array.isArray(val)) {
     const res: string[] = [];
@@ -46,7 +46,7 @@ function flattenFrontmatterValue(val: unknown): string[] {
   return s ? [s] : [];
 }
 
-function readString(v: unknown): string {
+export function readString(v: unknown): string {
   return v === null || v === undefined ? "" : String(v).trim();
 }
 
@@ -87,9 +87,6 @@ export function todayISO(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-/**
- * Разница в календарных днях по местному времени без смещений из-за времени суток или часовых поясов.
- */
 export function daysUntilISO(iso: string): number {
   const parts = iso.split("-").map(Number);
   const y = parts[0];
@@ -109,7 +106,6 @@ export function daysUntilISO(iso: string): number {
   );
 }
 
-/** Русское склонение числительных: 1 день, 2 дня, 5 дней. */
 export function pluralizeDays(n: number): string {
   const abs = Math.abs(Math.trunc(n));
   const mod100 = abs % 100;
@@ -144,9 +140,9 @@ export function formatFullDateTooltip(iso: string): string {
   return `Дедлайн: ${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
-function isTemplateOrExcludedFile(
+export function isTemplateOrExcludedFile(
   file: TFile,
-  fm: Record<string, unknown>,
+  fm: Record<string, unknown> | undefined,
   tagsLower: string[],
   settings: StudyCompilerSettings
 ): boolean {
@@ -180,12 +176,17 @@ function isTemplateOrExcludedFile(
     return true;
   }
 
-  const noteTypeLower = readString(fm[KEYS.type]).toLowerCase();
-  if (noteTypeLower === "шаблон" || noteTypeLower === "template") {
-    return true;
-  }
-  if (fm[KEYS.templateFlag] === true || String(fm[KEYS.templateFlag]).toLowerCase() === "true") {
-    return true;
+  if (fm) {
+    const noteTypeLower = readString(fm[KEYS.type]).toLowerCase();
+    if (noteTypeLower === "шаблон" || noteTypeLower === "template") {
+      return true;
+    }
+    if (
+      fm[KEYS.templateFlag] === true ||
+      String(fm[KEYS.templateFlag]).toLowerCase() === "true"
+    ) {
+      return true;
+    }
   }
 
   return false;
@@ -329,10 +330,6 @@ function matchesFilter(item: StudyNoteItem, filter: TreeFilterOptions): boolean 
   return tokens.every((tok) => haystack.includes(tok));
 }
 
-/**
- * Строит иерархическое дерево TreeNode[] с вложенными массивами children,
- * чтобы в интерфейсе отрисовывать наглядные контейнеры веток с направляющими линиями.
- */
 export function buildNestedFilteredTree(
   branchRoot: StudyNoteItem,
   scan: ScanResult,
