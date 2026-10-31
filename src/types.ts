@@ -6,6 +6,7 @@ export const KEYS = {
   parent: "родитель",
   status: "статус",
   deadline: "дедлайн",
+  deadlineAlt: "срок",
   discipline: "дисциплина",
   icon: "иконка",
 } as const;
@@ -23,7 +24,7 @@ export const DONE_STATUSES: readonly string[] = [
   "done",
 ];
 
-/** Пассивные материалы: не бывают корнем проекта и не считаются в прогрессе. */
+/** Пассивные материалы: не бывают корнем проекта и не считаются в прогрессе задач. */
 export const MATERIAL_TYPES: readonly string[] = [
   "Источник",
   "Термин",
@@ -43,6 +44,17 @@ export const NEW_NOTE_TYPES: readonly string[] = [
   "Таблица",
 ];
 
+export type QuickFilterMode =
+  | "all"
+  | "active"
+  | "done"
+  | "burning"
+  | "overdue"
+  | "materials"
+  | "orphans";
+
+export type DeadlineTone = "none" | "far" | "soon" | "overdue";
+
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
@@ -50,6 +62,7 @@ export interface StudyCompilerSettings {
   excludedFolders: string[];
   expandedPaths: string[];
   lastWorkPath: string;
+  focusedBranchByWork: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
@@ -59,6 +72,7 @@ export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   excludedFolders: ["Templates", "Шаблоны"],
   expandedPaths: [],
   lastWorkPath: "",
+  focusedBranchByWork: {},
 };
 
 export interface WorkMetaBadge {
@@ -76,6 +90,7 @@ export interface StudyNoteItem {
   discipline: string;
   deadline: string | null;
   icon: string;
+  tags: string[];
   parentPaths: string[];
   isDone: boolean;
 }
@@ -86,4 +101,11 @@ export interface TreeNode {
   hasChildren: boolean;
   done: number;
   total: number;
+  isDirectMatch: boolean;
+}
+
+export interface TreeFilterOptions {
+  query: string;
+  mode: QuickFilterMode;
+  typeFilter: string;
 }

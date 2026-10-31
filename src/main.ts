@@ -7,6 +7,13 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
   const strList = (v: unknown, fallback: string[]): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [...fallback];
 
+  const focusedBranchByWork: Record<string, string> = {};
+  if (s.focusedBranchByWork && typeof s.focusedBranchByWork === "object") {
+    for (const [k, v] of Object.entries(s.focusedBranchByWork as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim()) focusedBranchByWork[k] = v;
+    }
+  }
+
   return {
     studyAreaName:
       typeof s.studyAreaName === "string" && s.studyAreaName.trim()
@@ -23,6 +30,7 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
     excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
     expandedPaths: strList(s.expandedPaths, []),
     lastWorkPath: typeof s.lastWorkPath === "string" ? s.lastWorkPath : "",
+    focusedBranchByWork,
   };
 }
 

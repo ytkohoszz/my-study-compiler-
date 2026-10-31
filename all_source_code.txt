@@ -1,3 +1,73 @@
+=== FILE: ./.github/workflows/lint.yml ===
+name: Node.js build
+
+on:
+    push:
+        branches: ['**']
+    pull_request:
+        branches: ['**']
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                node-version: [20.x, 22.x, 24.x]
+                # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+        steps:
+            - uses: actions/checkout@v6
+            - name: Use Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v6
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: 'npm'
+            - run: npm ci
+            - run: npm run build --if-present
+            - run: npm run lint
+
+
+=== FILE: ./.github/workflows/release.yml ===
+name: Release Obsidian Plugin
+
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci || npm install --legacy-peer-deps
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$TAG" main.js manifest.json styles.css --title "$TAG" --generate-notes
+          fi
+
 === FILE: ./AGENTS.md ===
 # Obsidian community plugin
 
@@ -270,989 +340,6 @@ this.registerInterval(
 - Style guide: https://help.obsidian.md/style-guide
 
 
-=== FILE: ./manifest.json ===
-{
-  "id": "my-study-compiler",
-  "name": "Конструктор учебных работ",
-  "version": "0.1.0",
-  "minAppVersion": "1.5.0",
-  "description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
-  "author": "Mersinho",
-  "isDesktopOnly": false
-}
-
-=== FILE: ./styles.css ===
-.modal.my-sc-modal-container {
-  width: min(900px, 96vw) !important;
-  max-width: 900px !important;
-  max-height: 92vh !important;
-  padding: 18px 22px !important;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal.my-sc-modal-container > .modal-close-button {
-  display: none !important;
-}
-
-.my-sc-modal {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  gap: 12px;
-  box-sizing: border-box;
-}
-
-.my-sc-modal * {
-  box-sizing: border-box;
-}
-
-.my-sc-head-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-head-title {
-  font-size: 1.05rem;
-  font-weight: 750;
-  color: var(--text-normal);
-}
-
-.my-sc-close-btn {
-  width: 38px;
-  min-height: 38px;
-  padding: 0;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.my-sc-project-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.my-sc-project-select-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-  align-items: center;
-}
-
-.my-sc-work-select {
-  flex: 1 1 260px;
-  min-width: 0;
-  min-height: 38px;
-  font-size: 0.86rem;
-  font-weight: 600;
-}
-
-.my-sc-chip-btn {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.my-sc-chip-btn.is-active {
-  border: 1px solid var(--interactive-accent) !important;
-  color: var(--interactive-accent) !important;
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-}
-
-.my-sc-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.my-sc-kpi-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 11px;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--kpi-color, #599ed6) 12%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--kpi-color, #599ed6) 38%, var(--background-modifier-border));
-}
-
-.my-sc-kpi-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.my-sc-kpi-val {
-  font-size: 0.92rem;
-  font-weight: 750;
-  color: var(--kpi-color, var(--text-normal));
-  font-variant-numeric: tabular-nums;
-}
-
-.my-sc-tabs-row {
-  display: flex;
-  gap: 6px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding-bottom: 8px;
-}
-
-.my-sc-tab-btn {
-  flex: 1 1 0;
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 0.82rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.my-sc-tab-btn.is-active {
-  background: var(--interactive-accent) !important;
-  color: var(--text-on-accent) !important;
-}
-
-.my-sc-body {
-  flex: 1 1 auto;
-  min-height: 260px;
-  max-height: 48vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 4px;
-}
-
-.my-sc-struct-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-check-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.82rem;
-  color: var(--text-normal);
-  cursor: pointer;
-}
-
-.my-sc-add-box {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--interactive-accent);
-}
-
-.my-sc-input {
-  flex: 1 1 200px;
-  min-height: 34px;
-  font-size: 0.84rem;
-}
-
-.my-sc-tree-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.my-sc-tree-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-tree-row.is-excluded {
-  opacity: 0.52;
-}
-
-.my-sc-tree-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.my-sc-sec-num {
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: #e5a158;
-  font-variant-numeric: tabular-nums;
-}
-
-.my-sc-node-title {
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--text-normal);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.my-sc-node-title:hover {
-  color: var(--text-accent);
-}
-
-.my-sc-type-badge {
-  font-size: 0.68rem;
-  font-weight: 650;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
-  color: var(--badge-color, #599ed6);
-  white-space: nowrap;
-}
-
-.my-sc-tree-right {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
-
-.my-sc-word-count {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  margin-right: 4px;
-}
-
-.my-sc-move-btn {
-  width: 28px;
-  min-height: 28px;
-  padding: 0;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  cursor: pointer;
-}
-
-.my-sc-audit-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 10px;
-}
-
-.my-sc-audit-box {
-  padding: 12px;
-  border-radius: 9px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.my-sc-audit-title {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--text-normal);
-  margin-bottom: 4px;
-}
-
-.my-sc-audit-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  padding: 3px 0;
-  border-bottom: 1px dashed var(--background-modifier-border);
-}
-
-.my-sc-audit-k {
-  color: var(--text-muted);
-}
-
-.my-sc-audit-v {
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-
-.my-sc-audit-ok {
-  font-size: 0.82rem;
-  color: #4aab80;
-  font-weight: 600;
-}
-
-.my-sc-audit-warn {
-  font-size: 0.8rem;
-  color: #e5a158;
-  font-weight: 650;
-  margin-top: 4px;
-}
-
-.my-sc-audit-link {
-  font-size: 0.8rem;
-  color: var(--text-accent);
-  cursor: pointer;
-  padding: 2px 0;
-}
-
-.my-sc-opts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-  gap: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-preview-textarea {
-  width: 100%;
-  min-height: 220px;
-  font-family: var(--font-monospace);
-  font-size: 0.78rem;
-  line-height: 1.45;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  color: var(--text-normal);
-  resize: vertical;
-}
-
-.my-sc-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-footer-path {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-}
-
-.my-sc-footer-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.my-sc-primary-btn {
-  min-height: 40px;
-  padding: 0 16px;
-  border-radius: 9px;
-  font-size: 0.86rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.my-sc-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.86rem;
-}
-
-@media (max-width: 640px) {
-  .modal.my-sc-modal-container {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
-    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
-    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
-  }
-
-  .my-sc-kpi-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .my-sc-tabs-row {
-    flex-wrap: wrap;
-  }
-
-  .my-sc-body {
-    max-height: none;
-  }
-}
-
-=== FILE: ./package-lock.json ===
-{
-  "name": "my-study-compiler",
-  "version": "0.1.0",
-  "lockfileVersion": 3,
-  "requires": true,
-  "packages": {
-    "": {
-      "name": "my-study-compiler",
-      "version": "0.1.0",
-      "license": "MIT",
-      "devDependencies": {
-        "@types/node": "^16.11.6",
-        "builtin-modules": "3.3.0",
-        "esbuild": "0.17.3",
-        "obsidian": "latest",
-        "tslib": "2.4.0",
-        "typescript": "4.7.4"
-      }
-    },
-    "node_modules/@esbuild/android-arm": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.17.3.tgz",
-      "integrity": "sha512-1Mlz934GvbgdDmt26rTLmf03cAgLg5HyOgJN+ZGCeP3Q9ynYTNMn2/LQxIl7Uy+o4K6Rfi2OuLsr12JQQR8gNg==",
-      "cpu": [
-        "arm"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "android"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/android-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.17.3.tgz",
-      "integrity": "sha512-XvJsYo3dO3Pi4kpalkyMvfQsjxPWHYjoX4MDiB/FUM4YMfWcXa5l4VCwFWVYI1+92yxqjuqrhNg0CZg3gSouyQ==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "android"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/android-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.17.3.tgz",
-      "integrity": "sha512-nuV2CmLS07Gqh5/GrZLuqkU9Bm6H6vcCspM+zjp9TdQlxJtIe+qqEXQChmfc7nWdyr/yz3h45Utk1tUn8Cz5+A==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "android"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/darwin-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.17.3.tgz",
-      "integrity": "sha512-01Hxaaat6m0Xp9AXGM8mjFtqqwDjzlMP0eQq9zll9U85ttVALGCGDuEvra5Feu/NbP5AEP1MaopPwzsTcUq1cw==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "darwin"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/darwin-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.17.3.tgz",
-      "integrity": "sha512-Eo2gq0Q/er2muf8Z83X21UFoB7EU6/m3GNKvrhACJkjVThd0uA+8RfKpfNhuMCl1bKRfBzKOk6xaYKQZ4lZqvA==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "darwin"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/freebsd-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.17.3.tgz",
-      "integrity": "sha512-CN62ESxaquP61n1ZjQP/jZte8CE09M6kNn3baos2SeUfdVBkWN5n6vGp2iKyb/bm/x4JQzEvJgRHLGd5F5b81w==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "freebsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/freebsd-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.17.3.tgz",
-      "integrity": "sha512-feq+K8TxIznZE+zhdVurF3WNJ/Sa35dQNYbaqM/wsCbWdzXr5lyq+AaTUSER2cUR+SXPnd/EY75EPRjf4s1SLg==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "freebsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-arm": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.17.3.tgz",
-      "integrity": "sha512-CLP3EgyNuPcg2cshbwkqYy5bbAgK+VhyfMU7oIYyn+x4Y67xb5C5ylxsNUjRmr8BX+MW3YhVNm6Lq6FKtRTWHQ==",
-      "cpu": [
-        "arm"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.17.3.tgz",
-      "integrity": "sha512-JHeZXD4auLYBnrKn6JYJ0o5nWJI9PhChA/Nt0G4MvLaMrvXuWnY93R3a7PiXeJQphpL1nYsaMcoV2QtuvRnF/g==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-ia32": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.17.3.tgz",
-      "integrity": "sha512-FyXlD2ZjZqTFh0sOQxFDiWG1uQUEOLbEh9gKN/7pFxck5Vw0qjWSDqbn6C10GAa1rXJpwsntHcmLqydY9ST9ZA==",
-      "cpu": [
-        "ia32"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-loong64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.17.3.tgz",
-      "integrity": "sha512-OrDGMvDBI2g7s04J8dh8/I7eSO+/E7nMDT2Z5IruBfUO/RiigF1OF6xoH33Dn4W/OwAWSUf1s2nXamb28ZklTA==",
-      "cpu": [
-        "loong64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-mips64el": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.17.3.tgz",
-      "integrity": "sha512-DcnUpXnVCJvmv0TzuLwKBC2nsQHle8EIiAJiJ+PipEVC16wHXaPEKP0EqN8WnBe0TPvMITOUlP2aiL5YMld+CQ==",
-      "cpu": [
-        "mips64el"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-ppc64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.17.3.tgz",
-      "integrity": "sha512-BDYf/l1WVhWE+FHAW3FzZPtVlk9QsrwsxGzABmN4g8bTjmhazsId3h127pliDRRu5674k1Y2RWejbpN46N9ZhQ==",
-      "cpu": [
-        "ppc64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-riscv64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.17.3.tgz",
-      "integrity": "sha512-WViAxWYMRIi+prTJTyV1wnqd2mS2cPqJlN85oscVhXdb/ZTFJdrpaqm/uDsZPGKHtbg5TuRX/ymKdOSk41YZow==",
-      "cpu": [
-        "riscv64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-s390x": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.17.3.tgz",
-      "integrity": "sha512-Iw8lkNHUC4oGP1O/KhumcVy77u2s6+KUjieUqzEU3XuWJqZ+AY7uVMrrCbAiwWTkpQHkr00BuXH5RpC6Sb/7Ug==",
-      "cpu": [
-        "s390x"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.17.3.tgz",
-      "integrity": "sha512-0AGkWQMzeoeAtXQRNB3s4J1/T2XbigM2/Mn2yU1tQSmQRmHIZdkGbVq2A3aDdNslPyhb9/lH0S5GMTZ4xsjBqg==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/netbsd-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.17.3.tgz",
-      "integrity": "sha512-4+rR/WHOxIVh53UIQIICryjdoKdHsFZFD4zLSonJ9RRw7bhKzVyXbnRPsWSfwybYqw9sB7ots/SYyufL1mBpEg==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "netbsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/openbsd-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.17.3.tgz",
-      "integrity": "sha512-cVpWnkx9IYg99EjGxa5Gc0XmqumtAwK3aoz7O4Dii2vko+qXbkHoujWA68cqXjhh6TsLaQelfDO4MVnyr+ODeA==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "openbsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/sunos-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.17.3.tgz",
-      "integrity": "sha512-RxmhKLbTCDAY2xOfrww6ieIZkZF+KBqG7S2Ako2SljKXRFi+0863PspK74QQ7JpmWwncChY25JTJSbVBYGQk2Q==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "sunos"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/win32-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.17.3.tgz",
-      "integrity": "sha512-0r36VeEJ4efwmofxVJRXDjVRP2jTmv877zc+i+Pc7MNsIr38NfsjkQj23AfF7l0WbB+RQ7VUb+LDiqC/KY/M/A==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "win32"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/win32-ia32": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.17.3.tgz",
-      "integrity": "sha512-wgO6rc7uGStH22nur4aLFcq7Wh86bE9cOFmfTr/yxN3BXvDEdCSXyKkO+U5JIt53eTOgC47v9k/C1bITWL/Teg==",
-      "cpu": [
-        "ia32"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "win32"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/win32-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.17.3.tgz",
-      "integrity": "sha512-FdVl64OIuiKjgXBjwZaJLKp0eaEckifbhn10dXWhysMJkWblg3OEEGKSIyhiD5RSgAya8WzP3DNkngtIg3Nt7g==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "win32"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@types/codemirror": {
-      "version": "5.60.8",
-      "resolved": "https://registry.npmjs.org/@types/codemirror/-/codemirror-5.60.8.tgz",
-      "integrity": "sha512-VjFgDF/eB+Aklcy15TtOTLQeMjTo07k7KAjql8OK5Dirr7a6sJY4T1uVBDuTVG9VEmn1uUsohOpYnVfgC6/jyw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@types/tern": "*"
-      }
-    },
-    "node_modules/@types/estree": {
-      "version": "1.0.9",
-      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
-      "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
-      "dev": true,
-      "license": "MIT"
-    },
-    "node_modules/@types/node": {
-      "version": "16.18.126",
-      "resolved": "https://registry.npmjs.org/@types/node/-/node-16.18.126.tgz",
-      "integrity": "sha512-OTcgaiwfGFBKacvfwuHzzn1KLxH/er8mluiy8/uM3sGXHaRe73RrSIj01jow9t4kJEW633Ov+cOexXeiApTyAw==",
-      "dev": true,
-      "license": "MIT"
-    },
-    "node_modules/@types/tern": {
-      "version": "0.23.9",
-      "resolved": "https://registry.npmjs.org/@types/tern/-/tern-0.23.9.tgz",
-      "integrity": "sha512-ypzHFE/wBzh+BlH6rrBgS5I/Z7RD21pGhZ2rltb/+ZrVM1awdZwjx7hE5XfuYgHWk9uvV5HLZN3SloevCAp3Bw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@types/estree": "*"
-      }
-    },
-    "node_modules/builtin-modules": {
-      "version": "3.3.0",
-      "resolved": "https://registry.npmjs.org/builtin-modules/-/builtin-modules-3.3.0.tgz",
-      "integrity": "sha512-zhaCDicdLuWN5UbN5IMnFqNMhNfo919sH85y2/ea+5Yg9TsTkeZxpL+JLbp6cgYFS4sRLp3YV4S6yDuqVWHYOw==",
-      "dev": true,
-      "license": "MIT",
-      "engines": {
-        "node": ">=6"
-      },
-      "funding": {
-        "url": "https://github.com/sponsors/sindresorhus"
-      }
-    },
-    "node_modules/esbuild": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.17.3.tgz",
-      "integrity": "sha512-9n3AsBRe6sIyOc6kmoXg2ypCLgf3eZSraWFRpnkto+svt8cZNuKTkb1bhQcitBcvIqjNiK7K0J3KPmwGSfkA8g==",
-      "dev": true,
-      "hasInstallScript": true,
-      "license": "MIT",
-      "bin": {
-        "esbuild": "bin/esbuild"
-      },
-      "engines": {
-        "node": ">=12"
-      },
-      "optionalDependencies": {
-        "@esbuild/android-arm": "0.17.3",
-        "@esbuild/android-arm64": "0.17.3",
-        "@esbuild/android-x64": "0.17.3",
-        "@esbuild/darwin-arm64": "0.17.3",
-        "@esbuild/darwin-x64": "0.17.3",
-        "@esbuild/freebsd-arm64": "0.17.3",
-        "@esbuild/freebsd-x64": "0.17.3",
-        "@esbuild/linux-arm": "0.17.3",
-        "@esbuild/linux-arm64": "0.17.3",
-        "@esbuild/linux-ia32": "0.17.3",
-        "@esbuild/linux-loong64": "0.17.3",
-        "@esbuild/linux-mips64el": "0.17.3",
-        "@esbuild/linux-ppc64": "0.17.3",
-        "@esbuild/linux-riscv64": "0.17.3",
-        "@esbuild/linux-s390x": "0.17.3",
-        "@esbuild/linux-x64": "0.17.3",
-        "@esbuild/netbsd-x64": "0.17.3",
-        "@esbuild/openbsd-x64": "0.17.3",
-        "@esbuild/sunos-x64": "0.17.3",
-        "@esbuild/win32-arm64": "0.17.3",
-        "@esbuild/win32-ia32": "0.17.3",
-        "@esbuild/win32-x64": "0.17.3"
-      }
-    },
-    "node_modules/moment": {
-      "version": "2.29.4",
-      "resolved": "https://registry.npmjs.org/moment/-/moment-2.29.4.tgz",
-      "integrity": "sha512-5LC9SOxjSc2HF6vO2CyuTDNivEdoz2IvyJJGj6X8DJ0eFyfszE0QiEd+iXmBvUP3WHxSjFH/vIsA0EN00cgr8w==",
-      "dev": true,
-      "license": "MIT",
-      "engines": {
-        "node": "*"
-      }
-    },
-    "node_modules/obsidian": {
-      "version": "1.12.3",
-      "resolved": "https://registry.npmjs.org/obsidian/-/obsidian-1.12.3.tgz",
-      "integrity": "sha512-HxWqe763dOqzXjnNiHmAJTRERN8KILBSqxDSEqbeSr7W8R8Jxezzbca+nz1LiiqXnMpM8lV2jzAezw3CZ4xNUw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@types/codemirror": "5.60.8",
-        "moment": "2.29.4"
-      },
-      "peerDependencies": {
-        "@codemirror/state": "6.5.0",
-        "@codemirror/view": "6.38.6"
-      }
-    },
-    "node_modules/tslib": {
-      "version": "2.4.0",
-      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.4.0.tgz",
-      "integrity": "sha512-d6xOpEDfsi2CZVlPQzGeux8XMwLT9hssAsaPYExaQMuYskwb+x1x7J371tWlbBdWHroy99KnVB6qIkUbs5X3UQ==",
-      "dev": true,
-      "license": "0BSD"
-    },
-    "node_modules/typescript": {
-      "version": "4.7.4",
-      "resolved": "https://registry.npmjs.org/typescript/-/typescript-4.7.4.tgz",
-      "integrity": "sha512-C0WQT0gezHuw6AdY1M2jxUO83Rjf0HP7Sk1DtXj6j1EwkQNZrHAg2XPWlq62oqEhYvONq5pkC2Y9oPljWToLmQ==",
-      "dev": true,
-      "license": "Apache-2.0",
-      "bin": {
-        "tsc": "bin/tsc",
-        "tsserver": "bin/tsserver"
-      },
-      "engines": {
-        "node": ">=4.2.0"
-      }
-    }
-  }
-}
-
-
-=== FILE: ./tsconfig.json ===
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "module": "ESNext",
-    "target": "ES2018",
-    "allowJs": true,
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "strictNullChecks": true,
-    "noUncheckedIndexedAccess": true,
-    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
-  },
-  "include": ["src/**/*.ts"]
-}
-
 === FILE: ./README.md ===
 # Obsidian Sample Plugin
 
@@ -1348,11 +435,6 @@ If you have multiple URLs, you can also do:
 See https://docs.obsidian.md
 
 
-=== FILE: ./versions.json ===
-{
-  "0.1.0": "1.5.0"
-}
-
 === FILE: ./esbuild.config.mjs ===
 import esbuild from "esbuild";
 import process from "process";
@@ -1395,1189 +477,69 @@ if (prod) {
   await context.watch();
 }
 
-=== FILE: ./src/compiler.ts ===
-import { App, TFile, normalizePath } from "obsidian";
-import {
-  CompilationResult,
-  HierarchyNode,
-  ProjectAuditReport,
-  ProjectCompileConfig,
-  StudyNoteItem,
-} from "./types";
-import { countWordsAndFormulas } from "./scanner";
-
-function removeLeadingHeadingIfMatches(body: string, noteTitle: string): string {
-  const lines = body.split(/\r?\n/);
-  let firstNonEmpty = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if ((lines[i] ?? "").trim().length > 0) {
-      firstNonEmpty = i;
-      break;
-    }
-  }
-  if (firstNonEmpty === -1) return "";
-
-  const firstLine = (lines[firstNonEmpty] ?? "").trim();
-  if (firstLine.startsWith("#")) {
-    const cleanHeading = firstLine.replace(/^#+\s*/, "").trim().toLowerCase();
-    const cleanTitle = noteTitle.trim().toLowerCase();
-    if (cleanHeading === cleanTitle || firstLine.startsWith("# ")) {
-      lines.splice(firstNonEmpty, 1);
-      return lines.join("\n").trim();
-    }
-  }
-  return body.trim();
+=== FILE: ./manifest.json ===
+{
+	"id": "my-study-compiler",
+	"name": "Конструктор учебных проектов",
+	"version": "0.2.0",
+	"minAppVersion": "1.5.0",
+	"description": "Дерево проектов и подпроектов для заметки «Учёба»: быстрое создание, смена родителя, статусы и прогресс",
+	"author": "Mersinho",
+	"isDesktopOnly": false
 }
 
-function adjustInternalHeadings(body: string, baseHashesCount: number): string {
-  const shift = Math.max(0, baseHashesCount - 1);
-  if (shift <= 0) return body;
 
-  let inCodeBlock = false;
-  return body
-    .split(/\r?\n/)
-    .map((line) => {
-      if (line.trimStart().startsWith("```")) {
-        inCodeBlock = !inCodeBlock;
-        return line;
-      }
-      if (inCodeBlock) return line;
-      const m = line.match(/^(#{1,6})(\s+.*)$/);
-      if (!m || !m[1] || !m[2]) return line;
-      const nextCount = Math.min(6, m[1].length + shift);
-      return "#".repeat(nextCount) + m[2];
-    })
-    .join("\n");
+=== FILE: ./package.json ===
+{
+	"name": "my-study-compiler",
+	"version": "0.2.0",
+	"description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"bump": "node version-bump.mjs"
+	},
+	"keywords": [],
+	"author": "Mersinho",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"builtin-modules": "3.3.0",
+		"esbuild": "0.17.3",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "4.7.4"
+	}
 }
 
-function extractWikiLinksFromText(text: string): string[] {
-  const results: string[] = [];
-  const regex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(text)) !== null) {
-    const rawTarget = (m[1] ?? "").trim();
-    if (rawTarget) results.push(rawTarget);
-  }
-  return results;
-}
-
-function formatBibliographyEntry(sourceNote: StudyNoteItem, body: string): string {
-  const firstParagraph = body
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find((l) => l.length > 0 && !l.startsWith("#"));
-
-  if (firstParagraph) {
-    const clean = firstParagraph.replace(/^[-*+]\s+/, "").trim();
-    if (clean.length >= 10) {
-      return clean;
-    }
-  }
-  if (sourceNote.sourceProp) {
-    return `${sourceNote.name} — ${sourceNote.sourceProp}`;
-  }
-  return sourceNote.name;
-}
-
-export function buildAuditAndCompileProject(
-  rootWork: StudyNoteItem,
-  rootBodyText: string,
-  nodes: HierarchyNode[],
-  config: ProjectCompileConfig,
-  outputFolder: string
-): CompilationResult {
-  const includedNodes = nodes.filter((n) => n.included);
-
-  // Собираем весь текст включённых разделов (кроме самих карточек источников) для проверки цитирований
-  const narrativeChunks: string[] = [];
-  if (config.includeRootBody && rootBodyText) {
-    narrativeChunks.push(rootBodyText);
-  }
-  for (const n of includedNodes) {
-    if (n.item.noteType !== "Источник") {
-      narrativeChunks.push(n.bodyText);
-    }
-  }
-  const combinedNarrative = narrativeChunks.join("\n\n");
-  const allLinkedTargetsLower = new Set(
-    extractWikiLinksFromText(combinedNarrative).map((s) =>
-      s.replace(/\.md$/i, "").toLowerCase()
-    )
-  );
-
-  const isNoteReferencedInNarrative = (item: StudyNoteItem): boolean => {
-    const nameLower = item.name.toLowerCase();
-    const pathLower = item.path.replace(/\.md$/i, "").toLowerCase();
-    return (
-      allLinkedTargetsLower.has(nameLower) ||
-      allLinkedTargetsLower.has(pathLower)
-    );
-  };
-
-  const sourcesTotal = includedNodes
-    .filter((n) => n.item.noteType === "Источник")
-    .map((n) => n.item);
-  const sourcesCited = sourcesTotal.filter(isNoteReferencedInNarrative);
-  const sourcesUncited = sourcesTotal.filter(
-    (s) => !isNoteReferencedInNarrative(s)
-  );
-
-  const visualsTotal = includedNodes
-    .filter((n) =>
-      ["Рисунок", "Схема", "Таблица"].includes(n.item.noteType)
-    )
-    .map((n) => n.item);
-  const visualsReferenced = visualsTotal.filter(isNoteReferencedInNarrative);
-  const visualsUnreferenced = visualsTotal.filter(
-    (v) => !isNoteReferencedInNarrative(v)
-  );
-
-  const emptySectionNotes = includedNodes
-    .filter(
-      (n) =>
-        n.item.noteType !== "Источник" &&
-        n.item.noteType !== "Рисунок" &&
-        n.item.noteType !== "Схема" &&
-        n.wordCount < 5
-    )
-    .map((n) => n.item);
-
-  // Сквозная нумерация источников в порядке первого упоминания (затем остальные привязанные источники)
-  const sourceNumberMap = new Map<string, number>();
-  const orderedSourcesForBib: HierarchyNode[] = [];
-  const sourceNodes = includedNodes.filter(
-    (n) => n.item.noteType === "Источник"
-  );
-  const sourceByLowerName = new Map<string, HierarchyNode>();
-  for (const sn of sourceNodes) {
-    sourceByLowerName.set(sn.item.name.toLowerCase(), sn);
-    sourceByLowerName.set(sn.item.path.replace(/\.md$/i, "").toLowerCase(), sn);
-  }
-
-  for (const linkTarget of extractWikiLinksFromText(combinedNarrative)) {
-    const key = linkTarget.replace(/\.md$/i, "").toLowerCase();
-    const matchedSource = sourceByLowerName.get(key);
-    if (matchedSource && !sourceNumberMap.has(matchedSource.item.path)) {
-      const nextNum = orderedSourcesForBib.length + 1;
-      sourceNumberMap.set(matchedSource.item.path, nextNum);
-      orderedSourcesForBib.push(matchedSource);
-    }
-  }
-  for (const sn of sourceNodes) {
-    if (!sourceNumberMap.has(sn.item.path)) {
-      const nextNum = orderedSourcesForBib.length + 1;
-      sourceNumberMap.set(sn.item.path, nextNum);
-      orderedSourcesForBib.push(sn);
-    }
-  }
-
-  const replaceCitationsInText = (text: string): string => {
-    if (!config.replaceSourceLinksWithNumbers || sourceNumberMap.size === 0) {
-      return text;
-    }
-    return text.replace(
-      /(?<!!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g,
-      (fullMatch, rawTarget: string) => {
-        const key = String(rawTarget ?? "")
-          .trim()
-          .replace(/\.md$/i, "")
-          .toLowerCase();
-        const found = sourceByLowerName.get(key);
-        if (!found) return fullMatch;
-        const num = sourceNumberMap.get(found.item.path);
-        return num !== undefined ? `[${num}]` : fullMatch;
-      }
-    );
-  };
-
-  // Сборка итогового Markdown-документа
-  const outLines: string[] = [];
-  const todayISO = new Date().toISOString().slice(0, 10);
-
-  outLines.push("---");
-  outLines.push(`направление: "Учёба"`);
-  outLines.push(`тип: "Сборка"`);
-  outLines.push(`проект: "[[${rootWork.name}]]"`);
-  outLines.push(`дата_сборки: "${todayISO}"`);
-  if (rootWork.discipline) {
-    outLines.push(`дисциплина: ${JSON.stringify(rootWork.discipline)}`);
-  }
-  outLines.push("---");
-  outLines.push("");
-  outLines.push(`# ${rootWork.name}`);
-  outLines.push("");
-
-  if (config.includeRootBody && rootBodyText) {
-    const cleanedRoot = config.stripLeadingH1
-      ? removeLeadingHeadingIfMatches(rootBodyText, rootWork.name)
-      : rootBodyText;
-    if (cleanedRoot) {
-      outLines.push(replaceCitationsInText(cleanedRoot));
-      outLines.push("");
-    }
-  }
-
-  let figureCounter = 0;
-  let tableCounter = 0;
-
-  // 1. Глоссарий терминов (если включён сбор терминов в отдельный раздел)
-  const termNodes = includedNodes.filter((n) => n.item.noteType === "Термин");
-  if (config.groupTermsIntoGlossary && termNodes.length > 0) {
-    outLines.push("## Термины и определения");
-    outLines.push("");
-    for (const tn of termNodes) {
-      const cleanTermBody = removeLeadingHeadingIfMatches(
-        tn.bodyText,
-        tn.item.name
-      )
-        .replace(/\r?\n+/g, " ")
-        .trim();
-      outLines.push(
-        `- **${tn.item.name}** — ${replaceCitationsInText(cleanTermBody || "определение не заполнено")}`
-      );
-    }
-    outLines.push("");
-  }
-
-  // 2. Основные разделы работы по дереву иерархии
-  for (const node of includedNodes) {
-    const t = node.item.noteType;
-    if (config.buildBibliography && t === "Источник") continue;
-    if (config.groupTermsIntoGlossary && t === "Термин") continue;
-
-    const headingLevel = Math.min(6, node.depth + 2);
-    const hashes = "#".repeat(headingLevel);
-    const numPrefix =
-      config.numberSections && node.sectionNumber !== "—"
-        ? `${node.sectionNumber}. `
-        : "";
-
-    let sectionTitle = `${hashes} ${numPrefix}${node.item.name}`;
-    if (config.autoNumberFiguresAndTables) {
-      if (t === "Рисунок" || t === "Схема") {
-        figureCounter++;
-        sectionTitle = `${hashes} Рисунок ${figureCounter} — ${node.item.name}`;
-      } else if (t === "Таблица") {
-        tableCounter++;
-        sectionTitle = `${hashes} Таблица ${tableCounter} — ${node.item.name}`;
-      }
-    }
-
-    outLines.push(sectionTitle);
-    outLines.push("");
-
-    let body = config.stripLeadingH1
-      ? removeLeadingHeadingIfMatches(node.bodyText, node.item.name)
-      : node.bodyText;
-    body = adjustInternalHeadings(body, headingLevel);
-    body = replaceCitationsInText(body);
-
-    if (body) {
-      outLines.push(body);
-      outLines.push("");
-    }
-  }
-
-  // 3. Список использованных источников
-  if (config.buildBibliography && orderedSourcesForBib.length > 0) {
-    outLines.push("## Список использованных источников");
-    outLines.push("");
-    orderedSourcesForBib.forEach((sn, idx) => {
-      const num = idx + 1;
-      const entryText = formatBibliographyEntry(sn.item, sn.bodyText);
-      outLines.push(`${num}. ${entryText}`);
-    });
-    outLines.push("");
-  }
-
-  const finalMarkdown = outLines.join("\n").trim() + "\n";
-  const finalStats = countWordsAndFormulas(finalMarkdown);
-  const markdownTablesCount =
-    visualsTotal.filter((v) => v.noteType === "Таблица").length +
-    (finalMarkdown.match(/\n\|[-:\s|]+\|\r?\n/g) ?? []).length;
-  const embeddedImagesCount =
-    visualsTotal.filter(
-      (v) => v.noteType === "Рисунок" || v.noteType === "Схема"
-    ).length +
-    (finalMarkdown.match(/!\[\[[^\]]+\.(?:png|jpg|jpeg|webp|svg|gif)/gi) ?? [])
-      .length;
-
-  const audit: ProjectAuditReport = {
-    totalNodes: nodes.length,
-    includedNodes: includedNodes.length,
-    totalWords: finalStats.words,
-    totalCharsWithSpaces: finalStats.chars,
-    authorSheets: (finalStats.chars / 40_000).toFixed(2).replace(".", ","),
-    approxPages: Math.max(1, Math.ceil(finalStats.chars / 1800)),
-    totalFormulas: finalStats.formulas,
-    totalTables: markdownTablesCount,
-    totalFigures: embeddedImagesCount,
-    sourcesTotal,
-    sourcesCited,
-    sourcesUncited,
-    visualsTotal,
-    visualsReferenced,
-    visualsUnreferenced,
-    emptySectionNotes,
-  };
-
-  const safeFolder = (outputFolder || "Знания/Сборки").replace(/\/+$/, "");
-  const safeName = rootWork.name.replace(/[\\/:*?"<>|]/g, "").trim();
-  const outputFilePath = normalizePath(
-    `${safeFolder}/Сборка — ${safeName}.md`
-  );
-
-  return {
-    markdown: finalMarkdown,
-    outputFilePath,
-    audit,
-  };
-}
-
-export async function ensureVaultFolderExists(app: App, folderPath: string) {
-  let current = "";
-  for (const part of normalizePath(folderPath).split("/").filter(Boolean)) {
-    current = current ? `${current}/${part}` : part;
-    if (!app.vault.getAbstractFileByPath(current)) {
-      try {
-        await app.vault.createFolder(current);
-      } catch {
-        // Игнорируем, если папка уже создана параллельно
-      }
-    }
-  }
-}
-
-export async function writeCompiledFileToVault(
-  app: App,
-  outputFilePath: string,
-  markdown: string
-): Promise<TFile> {
-  const folder = outputFilePath.includes("/")
-    ? outputFilePath.slice(0, outputFilePath.lastIndexOf("/"))
-    : "";
-  if (folder) {
-    await ensureVaultFolderExists(app, folder);
-  }
-
-  const existing = app.vault.getAbstractFileByPath(outputFilePath);
-  if (existing instanceof TFile) {
-    await app.vault.modify(existing, markdown);
-    return existing;
-  }
-  return await app.vault.create(outputFilePath, markdown);
-}
-
-=== FILE: ./src/modal.ts ===
-import { App, Modal, Notice, normalizePath } from "obsidian";
-import type MyStudyCompilerPlugin from "./main";
-import {
-  CompilationResult,
-  DEFAULT_COMPILE_CONFIG,
-  HierarchyNode,
-  MATERIAL_TYPES,
-  ProjectCompileConfig,
-  StudyNoteItem,
-  TYPE_COLORS,
-} from "./types";
-import {
-  buildProjectHierarchy,
-  getWorkMeta,
-  scanStudyVault,
-} from "./scanner";
-import {
-  buildAuditAndCompileProject,
-  ensureVaultFolderExists,
-  writeCompiledFileToVault,
-} from "./compiler";
-
-type CompilerTab = "structure" | "audit" | "preview";
-
-export class StudyCompilerModal extends Modal {
-  plugin: MyStudyCompilerPlugin;
-  selectedWorkPath = "";
-  activeTab: CompilerTab = "structure";
-
-  works: StudyNoteItem[] = [];
-  byPath = new Map<string, StudyNoteItem>();
-  childrenOf = new Map<string, string[]>();
-
-  rootBodyText = "";
-  rootWords = 0;
-  nodes: HierarchyNode[] = [];
-  compiled: CompilationResult | null = null;
-
-  isAddingSectionOpen = false;
-  newSectionTitle = "";
-  newSectionType = "Конспект";
-  newSectionParentPath = "";
-
-  constructor(app: App, plugin: MyStudyCompilerPlugin, initialWorkPath?: string) {
-    super(app);
-    (
-      this as unknown as { shouldRestoreSelection?: boolean }
-    ).shouldRestoreSelection = false;
-    this.plugin = plugin;
-    if (initialWorkPath) {
-      this.selectedWorkPath = initialWorkPath;
-    }
-  }
-
-  safeClose() {
-    try {
-      (
-        this as unknown as { shouldRestoreSelection?: boolean }
-      ).shouldRestoreSelection = false;
-      this.close();
-    } catch {
-      // Игнорируем
-    }
-  }
-
-  async onOpen() {
-    (
-      this as unknown as { shouldRestoreSelection?: boolean }
-    ).shouldRestoreSelection = false;
-    this.modalEl.addClass("my-sc-modal-container");
-    this.contentEl.addClass("my-sc-modal");
-
-    await this.reloadVaultAndRebuild();
-  }
-
-  onClose() {
-    this.contentEl.empty();
-  }
-
-  private getActiveWork(): StudyNoteItem | null {
-    if (!this.works.length) return null;
-    const found = this.works.find((w) => w.path === this.selectedWorkPath);
-    if (found) return found;
-    const first = this.works[0] ?? null;
-    if (first) this.selectedWorkPath = first.path;
-    return first;
-  }
-
-  private getConfigForWork(workPath: string): ProjectCompileConfig {
-    const existing = this.plugin.settings.projectConfigs[workPath];
-    if (existing) {
-      return {
-        ...DEFAULT_COMPILE_CONFIG,
-        ...existing,
-        orderedPaths: Array.isArray(existing.orderedPaths)
-          ? [...existing.orderedPaths]
-          : [],
-        excludedPaths: Array.isArray(existing.excludedPaths)
-          ? [...existing.excludedPaths]
-          : [],
-      };
-    }
-    const fresh: ProjectCompileConfig = {
-      ...DEFAULT_COMPILE_CONFIG,
-      orderedPaths: [],
-      excludedPaths: [],
-    };
-    this.plugin.settings.projectConfigs[workPath] = fresh;
-    return fresh;
-  }
-
-  private saveConfigForWork(workPath: string, cfg: ProjectCompileConfig) {
-    this.plugin.settings.projectConfigs[workPath] = cfg;
-    this.plugin.requestSaveSettings();
-  }
-
-  async reloadVaultAndRebuild() {
-    const scanned = scanStudyVault(this.app, this.plugin.settings);
-    this.works = scanned.works;
-    this.byPath = scanned.byPath;
-    this.childrenOf = scanned.childrenOf;
-
-    const activeWork = this.getActiveWork();
-    if (!activeWork) {
-      this.nodes = [];
-      this.compiled = null;
-      this.render();
-      return;
-    }
-
-    const cfg = this.getConfigForWork(activeWork.path);
-    const built = await buildProjectHierarchy(
-      this.app,
-      activeWork,
-      this.byPath,
-      this.childrenOf,
-      cfg
-    );
-    this.rootBodyText = built.rootBodyText;
-    this.rootWords = built.rootWords;
-    this.nodes = built.nodes;
-
-    // Синхронизируем массив orderedPaths с текущим деревом
-    const currentOrder = this.nodes.map((n) => n.item.path);
-    cfg.orderedPaths = currentOrder;
-    this.saveConfigForWork(activeWork.path, cfg);
-
-    this.compiled = buildAuditAndCompileProject(
-      activeWork,
-      this.rootBodyText,
-      this.nodes,
-      cfg,
-      this.plugin.settings.outputFolder
-    );
-
-    this.render();
-  }
-
-  private async moveNodeInSiblingGroup(node: HierarchyNode, delta: -1 | 1) {
-    const activeWork = this.getActiveWork();
-    if (!activeWork) return;
-
-    const siblings = this.nodes.filter(
-      (n) => n.parentPath === node.parentPath && n.depth === node.depth
-    );
-    const idxInSiblings = siblings.findIndex(
-      (s) => s.item.path === node.item.path
-    );
-    const targetSibling = siblings[idxInSiblings + delta];
-    if (idxInSiblings === -1 || !targetSibling) return;
-
-    const cfg = this.getConfigForWork(activeWork.path);
-    const list = [...this.nodes.map((n) => n.item.path)];
-    const iA = list.indexOf(node.item.path);
-    const iB = list.indexOf(targetSibling.item.path);
-    if (iA === -1 || iB === -1) return;
-
-    list[iA] = targetSibling.item.path;
-    list[iB] = node.item.path;
-    cfg.orderedPaths = list;
-    this.saveConfigForWork(activeWork.path, cfg);
-    await this.reloadVaultAndRebuild();
-  }
-
-  private async toggleNodeIncluded(node: HierarchyNode) {
-    const activeWork = this.getActiveWork();
-    if (!activeWork) return;
-
-    const cfg = this.getConfigForWork(activeWork.path);
-    const set = new Set(cfg.excludedPaths);
-    if (set.has(node.item.path)) {
-      set.delete(node.item.path);
-    } else {
-      set.add(node.item.path);
-    }
-    cfg.excludedPaths = [...set];
-    this.saveConfigForWork(activeWork.path, cfg);
-    await this.reloadVaultAndRebuild();
-  }
-
-  private async handleCompileAndOpenFile() {
-    const activeWork = this.getActiveWork();
-    if (!activeWork || !this.compiled) return;
-
-    try {
-      const file = await writeCompiledFileToVault(
-        this.app,
-        this.compiled.outputFilePath,
-        this.compiled.markdown
-      );
-      new Notice(`✓ Собрано: «${file.path}»`);
-      this.safeClose();
-      await this.app.workspace.openLinkText(file.path, "", true);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      new Notice("Ошибка сохранения сборки: " + msg);
-    }
-  }
-
-  private async handleCopyMarkdown() {
-    if (!this.compiled) return;
-    try {
-      await navigator.clipboard.writeText(this.compiled.markdown);
-      new Notice("📋 Текст рукописи скопирован в буфер обмена");
-    } catch {
-      new Notice("Не удалось скопировать в буфер обмена");
-    }
-  }
-
-  render() {
-    const { contentEl } = this;
-    contentEl.empty();
-
-    // 1. Шапка окна
-    const headBar = contentEl.createDiv("my-sc-head-bar");
-    const titleWrap = headBar.createDiv("my-sc-head-title");
-    titleWrap.createSpan({ text: "🎓 Конструктор научных работ и проектов" });
-
-    const closeBtn = headBar.createEl("button", {
-      cls: "my-sc-close-btn",
-      text: "✕",
-      attr: {
-        type: "button",
-        title: "Закрыть (Esc)",
-        "aria-label": "Закрыть конструктор",
-      },
-    });
-    closeBtn.onclick = () => this.safeClose();
-
-    const activeWork = this.getActiveWork();
-    if (!activeWork) {
-      const emptyBox = contentEl.createDiv("my-sc-empty");
-      emptyBox.setText(
-        "В хранилище не найдено активных учебных проектов (направление: «Учёба»)."
-      );
-      return;
-    }
-
-    const workMeta = getWorkMeta(activeWork.noteType, activeWork.customIcon);
-    const cfg = this.getConfigForWork(activeWork.path);
-    const audit = this.compiled?.audit;
-
-    // 2. Панель выбора проекта и быстрых показателей
-    const projectBar = contentEl.createDiv("my-sc-project-bar");
-    const selectWrap = projectBar.createDiv("my-sc-project-select-wrap");
-
-    const workSel = selectWrap.createEl("select", {
-      cls: "dropdown my-sc-work-select",
-      attr: { title: "Выбор учебного проекта или работы" },
-    });
-    for (const w of this.works) {
-      const meta = getWorkMeta(w.noteType, w.customIcon);
-      const statusSuffix = !w.isActiveWork ? " [завершён]" : "";
-      const o = workSel.createEl("option", {
-        text: `${meta.icon} ${w.name} (${w.noteType})${statusSuffix}`,
-        value: w.path,
-      });
-      if (w.path === activeWork.path) o.selected = true;
-    }
-    workSel.onchange = () => {
-      this.selectedWorkPath = workSel.value;
-      void this.reloadVaultAndRebuild();
-    };
-
-    const showDoneBtn = selectWrap.createEl("button", {
-      cls:
-        "my-sc-chip-btn" +
-        (this.plugin.settings.showCompletedWorks ? " is-active" : ""),
-      text: this.plugin.settings.showCompletedWorks
-        ? "✓ Все проекты"
-        : "В работе",
-      attr: {
-        type: "button",
-        title: "Показывать также завершённые проекты",
-      },
-    });
-    showDoneBtn.onclick = () => {
-      this.plugin.settings.showCompletedWorks =
-        !this.plugin.settings.showCompletedWorks;
-      this.plugin.requestSaveSettings();
-      void this.reloadVaultAndRebuild();
-    };
-
-    const openWorkBtn = selectWrap.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📄 Открыть корень",
-      attr: { type: "button", title: "Открыть корневую заметку проекта" },
-    });
-    openWorkBtn.onclick = () => {
-      this.safeClose();
-      void this.app.workspace.openLinkText(activeWork.path, "", false);
-    };
-
-    // Сводные плашки объёма
-    if (audit) {
-      const kpiRow = contentEl.createDiv("my-sc-kpi-row");
-      const kpis = [
-        {
-          label: "Разделов",
-          val: `${audit.includedNodes} / ${audit.totalNodes}`,
-          color: workMeta.color,
-        },
-        {
-          label: "Слов / стр.",
-          val: `${audit.totalWords.toLocaleString("ru-RU")} (~${audit.approxPages} стр.)`,
-          color: "#599ed6",
-        },
-        {
-          label: "Авт. листов",
-          val: `${audit.authorSheets} а.л.`,
-          color: "#9c83e8",
-        },
-        {
-          label: "Источники",
-          val: `${audit.sourcesCited.length} / ${audit.sourcesTotal.length} процит.`,
-          color:
-            audit.sourcesUncited.length > 0 ? "#e5a158" : "#4aab80",
-        },
-      ];
-      for (const k of kpis) {
-        const box = kpiRow.createDiv("my-sc-kpi-card");
-        box.style.setProperty("--kpi-color", k.color);
-        box.createSpan({ cls: "my-sc-kpi-label", text: k.label });
-        box.createSpan({ cls: "my-sc-kpi-val", text: k.val });
-      }
-    }
-
-    // 3. Вкладки: Структура | Аудит | Предпросмотр
-    const tabsRow = contentEl.createDiv("my-sc-tabs-row");
-    const uncitedCount =
-      (audit?.sourcesUncited.length ?? 0) +
-      (audit?.visualsUnreferenced.length ?? 0);
-    const tabs: Array<{ id: CompilerTab; label: string }> = [
-      {
-        id: "structure",
-        label: `📐 Структура (${this.nodes.length})`,
-      },
-      {
-        id: "audit",
-        label:
-          uncitedCount > 0
-            ? `🔍 Аудит и источники (⚠️ ${uncitedCount})`
-            : "🔍 Аудит и источники (✓)",
-      },
-      {
-        id: "preview",
-        label: "📄 Настройки и предпросмотр",
-      },
-    ];
-
-    for (const t of tabs) {
-      const b = tabsRow.createEl("button", {
-        cls: "my-sc-tab-btn" + (this.activeTab === t.id ? " is-active" : ""),
-        text: t.label,
-        attr: { type: "button" },
-      });
-      b.onclick = () => {
-        this.activeTab = t.id;
-        this.render();
-      };
-    }
-
-    // 4. Тело активной вкладки
-    const bodyEl = contentEl.createDiv("my-sc-body");
-
-    if (this.activeTab === "structure") {
-      this.renderStructureTab(bodyEl, activeWork, cfg);
-    } else if (this.activeTab === "audit") {
-      this.renderAuditTab(bodyEl, activeWork);
-    } else {
-      this.renderPreviewTab(bodyEl, activeWork, cfg);
-    }
-
-    // 5. Нижняя панель действий
-    const footerEl = contentEl.createDiv("my-sc-footer");
-    const outHint = footerEl.createDiv("my-sc-footer-path");
-    outHint.setText(
-      `Файл сборки: ${this.compiled?.outputFilePath ?? "Знания/Сборки/..."}`
-    );
-
-    const actionsWrap = footerEl.createDiv("my-sc-footer-actions");
-    const copyBtn = actionsWrap.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📋 Скопировать текст",
-      attr: { type: "button" },
-    });
-    copyBtn.onclick = () => void this.handleCopyMarkdown();
-
-    const compileBtn = actionsWrap.createEl("button", {
-      cls: "mod-cta my-sc-primary-btn",
-      text: "📄 Собрать и открыть рукопись",
-      attr: { type: "button" },
-    });
-    compileBtn.onclick = () => void this.handleCompileAndOpenFile();
-  }
-
-  private renderStructureTab(
-    parent: HTMLElement,
-    activeWork: StudyNoteItem,
-    cfg: ProjectCompileConfig
-  ) {
-    const topBar = parent.createDiv("my-sc-struct-topbar");
-
-    const rootChkLabel = topBar.createEl("label", {
-      cls: "my-sc-check-label",
-    });
-    const rootChk = rootChkLabel.createEl("input", {
-      attr: { type: "checkbox" },
-    });
-    rootChk.checked = cfg.includeRootBody;
-    rootChkLabel.createSpan({
-      text: `Включать вступление из корневой заметки (${this.rootWords} сл.)`,
-    });
-    rootChk.onchange = () => {
-      cfg.includeRootBody = rootChk.checked;
-      this.saveConfigForWork(activeWork.path, cfg);
-      void this.reloadVaultAndRebuild();
-    };
-
-    const rightBtns = topBar.createDiv("my-sc-struct-btns");
-    const addSecBtn = rightBtns.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.isAddingSectionOpen ? " is-active" : ""),
-      text: this.isAddingSectionOpen ? "✕ Отмена" : "+ Новый раздел",
-      attr: { type: "button" },
-    });
-    addSecBtn.onclick = () => {
-      this.isAddingSectionOpen = !this.isAddingSectionOpen;
-      if (!this.newSectionParentPath) {
-        this.newSectionParentPath = activeWork.path;
-      }
-      this.render();
-    };
-
-    if (this.isAddingSectionOpen) {
-      const formBox = parent.createDiv("my-sc-add-box");
-      const typeSel = formBox.createEl("select", { cls: "dropdown" });
-      for (const mt of MATERIAL_TYPES) {
-        const o = typeSel.createEl("option", { text: mt, value: mt });
-        if (mt === this.newSectionType) o.selected = true;
-      }
-      typeSel.onchange = () => {
-        this.newSectionType = typeSel.value;
-      };
-
-      const titleInp = formBox.createEl("input", {
-        cls: "my-sc-input",
-        attr: {
-          type: "text",
-          placeholder: "Название нового раздела или материала…",
-          value: this.newSectionTitle,
-        },
-      });
-      titleInp.oninput = () => {
-        this.newSectionTitle = titleInp.value;
-      };
-
-      const parentSel = formBox.createEl("select", { cls: "dropdown" });
-      parentSel.createEl("option", {
-        text: `↳ В корень: ${activeWork.name}`,
-        value: activeWork.path,
-      });
-      for (const n of this.nodes) {
-        const indent = "  ".repeat(n.depth + 1);
-        const o = parentSel.createEl("option", {
-          text: `${indent}↳ Внутрь: ${n.item.name}`,
-          value: n.item.path,
-        });
-        if (this.newSectionParentPath === n.item.path) o.selected = true;
-      }
-      parentSel.onchange = () => {
-        this.newSectionParentPath = parentSel.value;
-      };
-
-      const createBtn = formBox.createEl("button", {
-        cls: "mod-cta my-sc-action-btn",
-        text: "Создать",
-        attr: { type: "button" },
-      });
-
-      const doCreate = async () => {
-        const cleanTitle = this.newSectionTitle
-          .trim()
-          .replace(/[\\/:*?"<>|]/g, "");
-        if (!cleanTitle) {
-          new Notice("Введи название заметки.");
-          return;
-        }
-        const targetPath = normalizePath(`Знания/${cleanTitle}.md`);
-        if (this.app.vault.getAbstractFileByPath(targetPath)) {
-          new Notice("Заметка с таким именем уже существует в папке Знания.");
-          return;
-        }
-        const parentItem =
-          this.byPath.get(this.newSectionParentPath) ?? activeWork;
-        createBtn.disabled = true;
-        try {
-          await ensureVaultFolderExists(this.app, "Знания");
-          const discLine = activeWork.discipline
-            ? `дисциплина: ${JSON.stringify(activeWork.discipline)}\n`
-            : "";
-          const content =
-            `---\n` +
-            `направление: "${this.plugin.settings.studyAreaName}"\n` +
-            `тип: ${JSON.stringify(this.newSectionType)}\n` +
-            `родитель: "[[${parentItem.name}]]"\n` +
-            discLine +
-            `---\n\n# ${cleanTitle}\n\n`;
-          await this.app.vault.create(targetPath, content);
-          this.newSectionTitle = "";
-          this.isAddingSectionOpen = false;
-          new Notice(`Создан раздел «${cleanTitle}»`);
-          setTimeout(() => void this.reloadVaultAndRebuild(), 120);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          new Notice("Ошибка создания: " + msg);
-          createBtn.disabled = false;
-        }
-      };
-      createBtn.onclick = () => void doCreate();
-    }
-
-    if (this.nodes.length === 0) {
-      parent.createDiv({
-        cls: "my-sc-empty",
-        text: "К этому проекту ещё не привязано ни одной заметки через свойство «родитель».",
-      });
-      return;
-    }
-
-    const listEl = parent.createDiv("my-sc-tree-list");
-
-    for (const node of this.nodes) {
-      const row = listEl.createDiv(
-        "my-sc-tree-row" + (!node.included ? " is-excluded" : "")
-      );
-      row.style.paddingLeft = `${10 + node.depth * 20}px`;
-
-      const left = row.createDiv("my-sc-tree-left");
-
-      const chk = left.createEl("input", {
-        attr: {
-          type: "checkbox",
-          title: "Включить или исключить из сборки",
-        },
-      });
-      chk.checked = node.included;
-      chk.onchange = () => void this.toggleNodeIncluded(node);
-
-      if (node.sectionNumber !== "—") {
-        left.createSpan({
-          cls: "my-sc-sec-num",
-          text: node.sectionNumber,
-        });
-      }
-
-      const titleLink = left.createSpan({
-        cls: "my-sc-node-title",
-        text: node.item.name,
-        attr: { title: "Открыть заметку" },
-      });
-      titleLink.onclick = () => {
-        this.safeClose();
-        void this.app.workspace.openLinkText(node.item.path, "", false);
-      };
-
-      const tColor = TYPE_COLORS[node.item.noteType] ?? "#8a8f98";
-      const badge = left.createSpan({
-        cls: "my-sc-type-badge",
-        text: node.item.noteType,
-      });
-      badge.style.setProperty("--badge-color", tColor);
-
-      const right = row.createDiv("my-sc-tree-right");
-      right.createSpan({
-        cls: "my-sc-word-count",
-        text: `${node.wordCount} сл.`,
-      });
-
-      const siblings = this.nodes.filter(
-        (n) => n.parentPath === node.parentPath && n.depth === node.depth
-      );
-      const sibIdx = siblings.findIndex(
-        (s) => s.item.path === node.item.path
-      );
-
-      const upBtn = right.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "▲",
-        attr: { type: "button", title: "Переместить выше" },
-      });
-      upBtn.disabled = sibIdx <= 0;
-      upBtn.onclick = () => void this.moveNodeInSiblingGroup(node, -1);
-
-      const downBtn = right.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "▼",
-        attr: { type: "button", title: "Переместить ниже" },
-      });
-      downBtn.disabled = sibIdx === -1 || sibIdx >= siblings.length - 1;
-      downBtn.onclick = () => void this.moveNodeInSiblingGroup(node, 1);
-    }
-  }
-
-  private renderAuditTab(parent: HTMLElement, _activeWork: StudyNoteItem) {
-    const audit = this.compiled?.audit;
-    if (!audit) return;
-
-    const grid = parent.createDiv("my-sc-audit-grid");
-
-    // 1. Сводка объёма и элементов
-    const statsBox = grid.createDiv("my-sc-audit-box");
-    statsBox.createDiv({
-      cls: "my-sc-audit-title",
-      text: "📊 Метрики рукописи",
-    });
-    const rows: Array<[string, string]> = [
-      ["Печатных знаков (с пробелами)", audit.totalCharsWithSpaces.toLocaleString("ru-RU")],
-      ["Авторских листов (40 000 зн.)", `${audit.authorSheets} а.л.`],
-      ["Расчётных страниц (~1800 зн.)", `${audit.approxPages} стр.`],
-      ["Слов в чистовом тексте", audit.totalWords.toLocaleString("ru-RU")],
-      ["Математических формул", String(audit.totalFormulas)],
-      ["Таблиц / Иллюстраций", `${audit.totalTables} табл. · ${audit.totalFigures} рис.`],
-    ];
-    for (const [k, v] of rows) {
-      const r = statsBox.createDiv("my-sc-audit-row");
-      r.createSpan({ cls: "my-sc-audit-k", text: k });
-      r.createSpan({ cls: "my-sc-audit-v", text: v });
-    }
-
-    // 2. Контроль цитирования источников
-    const srcBox = grid.createDiv("my-sc-audit-box");
-    srcBox.createDiv({
-      cls: "my-sc-audit-title",
-      text: `📚 Цитирование источников (${audit.sourcesCited.length} из ${audit.sourcesTotal.length})`,
-    });
-
-    if (audit.sourcesTotal.length === 0) {
-      srcBox.createDiv({
-        cls: "my-sc-audit-hint",
-        text: "В проекте пока нет заметок с типом «Источник».",
-      });
-    } else if (audit.sourcesUncited.length === 0) {
-      srcBox.createDiv({
-        cls: "my-sc-audit-ok",
-        text: "✓ Все привязанные источники упомянуты в тексте разделов [[...]].",
-      });
-    } else {
-      srcBox.createDiv({
-        cls: "my-sc-audit-warn",
-        text: `⚠️ Не упомянуты в тексте (${audit.sourcesUncited.length}):`,
-      });
-      for (const s of audit.sourcesUncited) {
-        const item = srcBox.createDiv("my-sc-audit-link");
-        item.setText(`• [[${s.name}]]`);
-        item.onclick = () => {
-          this.safeClose();
-          void this.app.workspace.openLinkText(s.path, "", false);
-        };
-      }
-    }
-
-    // 3. Неиспользованные рисунки / таблицы и пустые разделы
-    if (
-      audit.visualsUnreferenced.length > 0 ||
-      audit.emptySectionNotes.length > 0
-    ) {
-      const warnBox = parent.createDiv("my-sc-audit-box");
-      warnBox.createDiv({
-        cls: "my-sc-audit-title",
-        text: "⚠️ Замечания по структуре",
-      });
-
-      if (audit.visualsUnreferenced.length > 0) {
-        warnBox.createDiv({
-          cls: "my-sc-audit-warn",
-          text: `Не вставлены ссылки на рисунки/таблицы (${audit.visualsUnreferenced.length}):`,
-        });
-        for (const v of audit.visualsUnreferenced) {
-          const item = warnBox.createDiv("my-sc-audit-link");
-          item.setText(`• ${v.noteType}: [[${v.name}]]`);
-          item.onclick = () => {
-            this.safeClose();
-            void this.app.workspace.openLinkText(v.path, "", false);
-          };
-        }
-      }
-
-      if (audit.emptySectionNotes.length > 0) {
-        warnBox.createDiv({
-          cls: "my-sc-audit-warn",
-          text: `Почти пустые разделы (< 5 слов):`,
-        });
-        for (const e of audit.emptySectionNotes) {
-          const item = warnBox.createDiv("my-sc-audit-link");
-          item.setText(`• ${e.name} (${e.noteType})`);
-          item.onclick = () => {
-            this.safeClose();
-            void this.app.workspace.openLinkText(e.path, "", false);
-          };
-        }
-      }
-    }
-  }
-
-  private renderPreviewTab(
-    parent: HTMLElement,
-    activeWork: StudyNoteItem,
-    cfg: ProjectCompileConfig
-  ) {
-    const optsGrid = parent.createDiv("my-sc-opts-grid");
-
-    const toggles: Array<{
-      key: keyof Pick<
-        ProjectCompileConfig,
-        | "numberSections"
-        | "stripLeadingH1"
-        | "groupTermsIntoGlossary"
-        | "buildBibliography"
-        | "replaceSourceLinksWithNumbers"
-        | "autoNumberFiguresAndTables"
-      >;
-      label: string;
-    }> = [
-      {
-        key: "numberSections",
-        label: "Нумеровать заголовки разделов (1., 1.1., 1.2.)",
-      },
-      {
-        key: "stripLeadingH1",
-        label: "Убирать дублирующий верхний # Заголовок внутри заметок",
-      },
-      {
-        key: "groupTermsIntoGlossary",
-        label: "Собирать заметки «Термин» в раздел «Термины и определения»",
-      },
-      {
-        key: "buildBibliography",
-        label: "Формировать «Список использованных источников» в конце",
-      },
-      {
-        key: "replaceSourceLinksWithNumbers",
-        label: "Заменять [[Ссылки на источники]] в тексте на сноски [1], [2]",
-      },
-      {
-        key: "autoNumberFiguresAndTables",
-        label: "Автонумерация заголовков «Рисунок N» и «Таблица N»",
-      },
-    ];
-
-    for (const tg of toggles) {
-      const lbl = optsGrid.createEl("label", { cls: "my-sc-check-label" });
-      const inp = lbl.createEl("input", { attr: { type: "checkbox" } });
-      inp.checked = cfg[tg.key];
-      lbl.createSpan({ text: tg.label });
-      inp.onchange = () => {
-        cfg[tg.key] = inp.checked;
-        this.saveConfigForWork(activeWork.path, cfg);
-        void this.reloadVaultAndRebuild();
-      };
-    }
-
-    const previewArea = parent.createEl("textarea", {
-      cls: "my-sc-preview-textarea",
-      attr: { readonly: "true", rows: "14" },
-    });
-    previewArea.value = this.compiled?.markdown ?? "";
-  }
-}
 
 === FILE: ./src/main.ts ===
 import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
-import {
-  DEFAULT_SETTINGS,
-  StudyCompilerSettings,
-} from "./types";
-import { StudyCompilerModal } from "./modal";
+import { DEFAULT_SETTINGS, StudyCompilerSettings } from "./types";
+import { OpenOptions, StudyCompilerModal } from "./modal";
 
 function migrateSettings(raw: unknown): StudyCompilerSettings {
-  const source =
-    raw && typeof raw === "object"
-      ? (raw as Partial<StudyCompilerSettings>)
-      : {};
+  const s = raw && typeof raw === "object" ? (raw as Partial<StudyCompilerSettings>) : {};
+  const strList = (v: unknown, fallback: string[]): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [...fallback];
+
   return {
-    ...DEFAULT_SETTINGS,
-    ...source,
-    projectConfigs:
-      source.projectConfigs && typeof source.projectConfigs === "object"
-        ? source.projectConfigs
-        : {},
+    studyAreaName:
+      typeof s.studyAreaName === "string" && s.studyAreaName.trim()
+        ? s.studyAreaName
+        : DEFAULT_SETTINGS.studyAreaName,
+    newNoteFolder:
+      typeof s.newNoteFolder === "string" && s.newNoteFolder.trim()
+        ? s.newNoteFolder
+        : DEFAULT_SETTINGS.newNoteFolder,
+    showCompletedWorks:
+      typeof s.showCompletedWorks === "boolean"
+        ? s.showCompletedWorks
+        : DEFAULT_SETTINGS.showCompletedWorks,
+    excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
+    expandedPaths: strList(s.expandedPaths, []),
+    lastWorkPath: typeof s.lastWorkPath === "string" ? s.lastWorkPath : "",
   };
 }
 
@@ -2592,34 +554,39 @@ class StudyCompilerSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    containerEl.createEl("h3", {
-      text: "Конструктор и сборщик научных работ",
-    });
+    containerEl.createEl("h3", { text: "Конструктор учебных проектов" });
 
     new Setting(containerEl)
-      .setName("Папка для сохранения сборок")
-      .setDesc("По умолчанию: Знания/Сборки")
+      .setName("Направление в YAML")
+      .setDesc("Значение свойства «направление». По умолчанию: Учёба")
       .addText((text) =>
-        text
-          .setValue(this.plugin.settings.outputFolder)
-          .onChange((val) => {
-            this.plugin.settings.outputFolder =
-              val.trim() || "Знания/Сборки";
-            this.plugin.requestSaveSettings();
-          })
+        text.setValue(this.plugin.settings.studyAreaName).onChange((val) => {
+          this.plugin.settings.studyAreaName = val.trim() || DEFAULT_SETTINGS.studyAreaName;
+          this.plugin.requestSaveSettings();
+        })
       );
 
     new Setting(containerEl)
-      .setName("Название направления учёбы в YAML")
-      .setDesc("По умолчанию: Учёба")
+      .setName("Папка для новых заметок")
+      .setDesc("По умолчанию: Знания")
       .addText((text) =>
-        text
-          .setValue(this.plugin.settings.studyAreaName)
-          .onChange((val) => {
-            this.plugin.settings.studyAreaName = val.trim() || "Учёба";
-            this.plugin.requestSaveSettings();
-          })
+        text.setValue(this.plugin.settings.newNoteFolder).onChange((val) => {
+          this.plugin.settings.newNoteFolder = val.trim() || DEFAULT_SETTINGS.newNoteFolder;
+          this.plugin.requestSaveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Игнорируемые папки")
+      .setDesc("Через запятую. Заметки внутри не попадают в дерево")
+      .addText((text) =>
+        text.setValue(this.plugin.settings.excludedFolders.join(", ")).onChange((val) => {
+          this.plugin.settings.excludedFolders = val
+            .split(",")
+            .map((x) => x.trim())
+            .filter((x) => x.length > 0);
+          this.plugin.requestSaveSettings();
+        })
       );
   }
 }
@@ -2632,29 +599,37 @@ export default class MyStudyCompilerPlugin extends Plugin {
     this.settings = migrateSettings(await this.loadData());
     this.addSettingTab(new StudyCompilerSettingTab(this.app, this));
 
-    this.addRibbonIcon(
-      "book-open-check",
-      "Открыть конструктор научных работ",
-      () => {
-        this.openCompiler();
-      }
-    );
+    this.addRibbonIcon("folder-tree", "Открыть проекты и подпроекты", () => {
+      this.openCompiler();
+    });
 
     this.registerObsidianProtocolHandler("my-compiler", (params) => {
-      this.openCompiler(params.project || undefined);
+      this.openCompiler({
+        rootPath: params.project || undefined,
+        addUnder: params.parent || undefined,
+      });
     });
 
     this.addCommand({
       id: "open-study-compiler",
-      name: "Открыть конструктор и сборщик учебных работ",
-      callback: () => {
-        this.openCompiler();
+      name: "Открыть проекты и подпроекты",
+      callback: () => this.openCompiler(),
+    });
+
+    this.addCommand({
+      id: "new-subproject-here",
+      name: "Новый подпроект в текущей заметке",
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) return false;
+        if (!checking) this.openCompiler({ addUnder: file.path });
+        return true;
       },
     });
   }
 
-  openCompiler(projectPath?: string) {
-    new StudyCompilerModal(this.app, this, projectPath).open();
+  openCompiler(options: OpenOptions = {}) {
+    new StudyCompilerModal(this.app, this, options).open();
   }
 
   requestSaveSettings() {
@@ -2673,19 +648,581 @@ export default class MyStudyCompilerPlugin extends Plugin {
   }
 }
 
-=== FILE: ./src/scanner.ts ===
-import { App, TFile } from "obsidian";
+=== FILE: ./src/modal.ts ===
+import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
+import type MyStudyCompilerPlugin from "./main";
 import {
-  DEFAULT_COMPILE_CONFIG,
-  DONE_STATUSES,
-  HierarchyNode,
+  KEYS,
   MATERIAL_TYPES,
-  PRESET_WORK_TYPES,
-  ProjectCompileConfig,
+  NEW_NOTE_TYPES,
+  STATUS_ACTIVE,
+  STATUS_DONE,
+  StudyNoteItem,
+} from "./types";
+import {
+  ScanResult,
+  buildTree,
+  byName,
+  collectDescendants,
+  emptyScan,
+  ensureFolder,
+  findRootPath,
+  formatDeadline,
+  getWorkMeta,
+  progressOf,
+  scanStudyVault,
+  todayISO,
+} from "./scanner";
+
+export interface OpenOptions {
+  rootPath?: string;
+  addUnder?: string;
+}
+
+class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
+  private items: StudyNoteItem[];
+  private onPick: (item: StudyNoteItem) => void;
+
+  constructor(app: App, items: StudyNoteItem[], onPick: (item: StudyNoteItem) => void) {
+    super(app);
+    this.items = items;
+    this.onPick = onPick;
+    this.setPlaceholder("Новый родитель…");
+  }
+
+  getItems(): StudyNoteItem[] {
+    return this.items;
+  }
+
+  getItemText(item: StudyNoteItem): string {
+    return `${item.name} · ${item.noteType || "без типа"}`;
+  }
+
+  onChooseItem(item: StudyNoteItem): void {
+    this.onPick(item);
+  }
+}
+
+export class StudyCompilerModal extends Modal {
+  private plugin: MyStudyCompilerPlugin;
+  private options: OpenOptions;
+  private scan: ScanResult = emptyScan();
+  private selectedPath: string;
+  private expanded: Set<string>;
+  private cleanups: Array<() => void> = [];
+  private refreshTimer: number | null = null;
+
+  private barEl!: HTMLElement;
+  private formEl!: HTMLElement;
+  private treeEl!: HTMLElement;
+
+  private form = {
+    open: false,
+    title: "",
+    type: "Подпроект",
+    parentPath: "",
+    deadline: "",
+  };
+
+  constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
+    super(app);
+    this.plugin = plugin;
+    this.options = options;
+    this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
+    this.expanded = new Set(plugin.settings.expandedPaths);
+    this.noRestore();
+  }
+
+  private noRestore() {
+    (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
+  }
+
+  safeClose() {
+    try {
+      this.noRestore();
+      this.close();
+    } catch {
+      // игнорируем
+    }
+  }
+
+  onOpen(): void {
+    this.noRestore();
+    this.modalEl.addClass("my-sc-modal-container");
+    this.contentEl.addClass("my-sc-modal");
+
+    const head = this.contentEl.createDiv("my-sc-head-bar");
+    head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и подпроекты" });
+    const closeBtn = head.createEl("button", {
+      cls: "my-sc-close-btn",
+      text: "✕",
+      attr: { type: "button", title: "Закрыть (Esc)", "aria-label": "Закрыть" },
+    });
+    closeBtn.onclick = () => this.safeClose();
+
+    this.barEl = this.contentEl.createDiv("my-sc-project-bar");
+    this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
+    this.treeEl = this.contentEl.createDiv("my-sc-body");
+
+    const onChange = () => this.scheduleRefresh();
+    const r1 = this.app.metadataCache.on("changed", onChange);
+    const r2 = this.app.vault.on("delete", onChange);
+    const r3 = this.app.vault.on("rename", onChange);
+    this.cleanups.push(
+      () => this.app.metadataCache.offref(r1),
+      () => this.app.vault.offref(r2),
+      () => this.app.vault.offref(r3)
+    );
+
+    this.scan = scanStudyVault(this.app, this.plugin.settings);
+    const addUnder = this.options.addUnder;
+    if (addUnder && this.scan.byPath.has(addUnder)) {
+      this.selectedPath = findRootPath(this.scan, addUnder);
+    }
+    this.refresh(false);
+    if (addUnder && this.scan.byPath.has(addUnder)) this.openForm(addUnder);
+  }
+
+  onClose(): void {
+    for (const fn of this.cleanups) fn();
+    this.cleanups = [];
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.contentEl.empty();
+  }
+
+  private scheduleRefresh() {
+    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      this.refresh(true);
+    }, 200);
+  }
+
+  private refresh(rescan: boolean) {
+    if (rescan) this.scan = scanStudyVault(this.app, this.plugin.settings);
+    this.renderBar();
+    this.renderTree();
+  }
+
+  private visibleRoots(): StudyNoteItem[] {
+    return this.scan.roots.filter(
+      (r) => this.plugin.settings.showCompletedWorks || !r.isDone
+    );
+  }
+
+  private getRoot(): StudyNoteItem | null {
+    const direct = this.scan.roots.find((r) => r.path === this.selectedPath);
+    if (direct) return direct;
+    const first = this.visibleRoots()[0] ?? null;
+    if (first) this.selectedPath = first.path;
+    return first;
+  }
+
+  private saveExpanded() {
+    this.plugin.settings.expandedPaths = [...this.expanded];
+    this.plugin.requestSaveSettings();
+  }
+
+  private renderBar() {
+    this.barEl.empty();
+    const root = this.getRoot();
+    if (!root) {
+      this.formEl.empty();
+      this.barEl.createDiv({
+        cls: "my-sc-empty",
+        text: `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`,
+      });
+      return;
+    }
+
+    const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
+    const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
+    let list = this.visibleRoots();
+    if (!list.some((r) => r.path === root.path)) list = [root, ...list];
+    for (const r of list) {
+      const meta = getWorkMeta(r.noteType, r.icon);
+      const o = sel.createEl("option", {
+        text: `${meta.icon} ${r.name}${r.isDone ? " [завершён]" : ""}`,
+        value: r.path,
+      });
+      if (r.path === root.path) o.selected = true;
+    }
+    sel.onchange = () => {
+      this.selectedPath = sel.value;
+      this.plugin.settings.lastWorkPath = sel.value;
+      this.plugin.requestSaveSettings();
+      this.form.open = false;
+      this.formEl.empty();
+      this.refresh(false);
+    };
+
+    const doneBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.plugin.settings.showCompletedWorks ? " is-active" : ""),
+      text: this.plugin.settings.showCompletedWorks ? "✓ Все проекты" : "В работе",
+      attr: { type: "button", title: "Показывать завершённые проекты" },
+    });
+    doneBtn.onclick = () => {
+      this.plugin.settings.showCompletedWorks = !this.plugin.settings.showCompletedWorks;
+      this.plugin.requestSaveSettings();
+      this.refresh(false);
+    };
+
+    const openBtn = row1.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "📄 Открыть",
+      attr: { type: "button", title: "Открыть заметку проекта" },
+    });
+    openBtn.onclick = () => this.openNote(root.path);
+
+    const stats = progressOf(collectDescendants(root.path, this.scan), this.scan);
+    const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
+    const progWrap = this.barEl.createDiv("my-sc-progress-wrap");
+    const progText = progWrap.createDiv("my-sc-progress-text");
+    progText.createSpan({
+      text: stats.total > 0 ? `Выполнено ${stats.done} из ${stats.total} · ${pct}%` : "Подпроектов пока нет",
+    });
+    this.renderDeadline(progText, root);
+    const bar = progWrap.createDiv("my-sc-progress");
+    bar.createDiv("my-sc-progress-fill").style.width = `${pct}%`;
+
+    const tools = this.barEl.createDiv("my-sc-tools");
+    const addBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn" + (this.form.open ? " is-active" : ""),
+      text: this.form.open ? "✕ Закрыть форму" : "＋ Подпроект",
+      attr: { type: "button" },
+    });
+    addBtn.onclick = () => {
+      if (this.form.open) {
+        this.form.open = false;
+        this.formEl.empty();
+        this.renderBar();
+      } else {
+        this.openForm(root.path);
+      }
+    };
+
+    const expandBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⤢ Развернуть всё",
+      attr: { type: "button" },
+    });
+    expandBtn.onclick = () => {
+      for (const p of collectDescendants(root.path, this.scan)) {
+        if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
+      }
+      this.saveExpanded();
+      this.renderTree();
+    };
+
+    const collapseBtn = tools.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⤡ Свернуть всё",
+      attr: { type: "button" },
+    });
+    collapseBtn.onclick = () => {
+      for (const p of collectDescendants(root.path, this.scan)) this.expanded.delete(p);
+      this.saveExpanded();
+      this.renderTree();
+    };
+  }
+
+  private openForm(parentPath: string) {
+    const root = this.getRoot();
+    if (!root) return;
+    this.form.open = true;
+    this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
+    this.renderBar();
+    this.renderForm();
+  }
+
+  private renderForm() {
+    this.formEl.empty();
+    if (!this.form.open) return;
+    const root = this.getRoot();
+    if (!root) return;
+
+    const box = this.formEl.createDiv("my-sc-add-box");
+
+    const typeSel = box.createEl("select", { cls: "dropdown" });
+    for (const t of NEW_NOTE_TYPES) {
+      const o = typeSel.createEl("option", { text: t, value: t });
+      if (t === this.form.type) o.selected = true;
+    }
+    typeSel.onchange = () => {
+      this.form.type = typeSel.value;
+    };
+
+    const titleInp = box.createEl("input", {
+      cls: "my-sc-input",
+      attr: { type: "text", placeholder: "Название…" },
+    });
+    titleInp.value = this.form.title;
+    titleInp.oninput = () => {
+      this.form.title = titleInp.value;
+    };
+
+    const parentSel = box.createEl("select", { cls: "dropdown my-sc-parent-select" });
+    parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
+    for (const n of buildTree(root, this.scan, null)) {
+      parentSel.createEl("option", {
+        text: `${"\u00A0\u00A0".repeat(n.depth + 1)}↳ ${n.item.name}`,
+        value: n.item.path,
+      });
+    }
+    parentSel.value = this.form.parentPath;
+    if (parentSel.value !== this.form.parentPath) {
+      this.form.parentPath = root.path;
+      parentSel.value = root.path;
+    }
+    parentSel.onchange = () => {
+      this.form.parentPath = parentSel.value;
+    };
+
+    const dateInp = box.createEl("input", {
+      cls: "my-sc-date",
+      attr: { type: "date", title: "Дедлайн (необязательно)" },
+    });
+    dateInp.value = this.form.deadline;
+    dateInp.onchange = () => {
+      this.form.deadline = dateInp.value;
+    };
+
+    const createBtn = box.createEl("button", {
+      cls: "mod-cta my-sc-action-btn",
+      text: "Создать",
+      attr: { type: "button" },
+    });
+
+    const submit = async () => {
+      createBtn.disabled = true;
+      const ok = await this.createNote(root);
+      if (ok) {
+        this.form.title = "";
+        this.form.deadline = "";
+        this.renderForm();
+      } else {
+        createBtn.disabled = false;
+      }
+    };
+    createBtn.onclick = () => void submit();
+    titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.isComposing) void submit();
+    });
+    titleInp.focus();
+  }
+
+  private async createNote(root: StudyNoteItem): Promise<boolean> {
+    const cleanTitle = this.form.title.trim().replace(/[\\/:*?"<>|]/g, "");
+    if (!cleanTitle) {
+      new Notice("Введи название.");
+      return false;
+    }
+    const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
+    const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
+    if (this.app.vault.getAbstractFileByPath(targetPath)) {
+      new Notice(`Заметка «${cleanTitle}» уже есть в папке ${folder}.`);
+      return false;
+    }
+    const parent = this.scan.byPath.get(this.form.parentPath) ?? root;
+
+    try {
+      await ensureFolder(this.app, folder);
+      const link = this.app.metadataCache.fileToLinktext(parent.file, targetPath);
+      const lines = [
+        "---",
+        `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
+        `${KEYS.type}: ${JSON.stringify(this.form.type)}`,
+        `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
+      ];
+      if (root.discipline) lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+        lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
+      }
+      lines.push("---", "", `# ${cleanTitle}`, "", "");
+      await this.app.vault.create(targetPath, lines.join("\n"));
+
+      this.expanded.add(parent.path);
+      this.saveExpanded();
+      new Notice(`Создано: «${cleanTitle}»`);
+      return true;
+    } catch (err: unknown) {
+      new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
+      return false;
+    }
+  }
+
+  private renderDeadline(parent: HTMLElement, item: StudyNoteItem) {
+    if (!item.deadline) return;
+    const overdue = !item.isDone && item.deadline < todayISO();
+    parent.createSpan({
+      cls: "my-sc-deadline" + (overdue ? " is-overdue" : ""),
+      text: `⏳ ${formatDeadline(item.deadline)}`,
+      attr: { title: overdue ? "Срок прошёл" : "Дедлайн" },
+    });
+  }
+
+  private openNote(path: string) {
+    this.safeClose();
+    void this.app.workspace.openLinkText(path, "", false);
+  }
+
+  private renderTree() {
+    const scrollTop = this.treeEl.scrollTop;
+    this.treeEl.empty();
+    const root = this.getRoot();
+    if (!root) return;
+
+    const nodes = buildTree(root, this.scan, this.expanded);
+    if (nodes.length === 0) {
+      this.treeEl.createDiv({
+        cls: "my-sc-empty",
+        text: "Подпроектов пока нет. Нажми «＋ Подпроект».",
+      });
+      return;
+    }
+
+    const list = this.treeEl.createDiv("my-sc-tree-list");
+    for (const node of nodes) {
+      const item = node.item;
+      const row = list.createDiv("my-sc-tree-row" + (item.isDone ? " is-done" : ""));
+      row.style.paddingLeft = `${8 + node.depth * 18}px`;
+
+      const left = row.createDiv("my-sc-tree-left");
+
+      if (node.hasChildren) {
+        const open = this.expanded.has(item.path);
+        const arrow = left.createEl("button", {
+          cls: "my-sc-arrow",
+          text: open ? "▾" : "▸",
+          attr: { type: "button", "aria-label": open ? "Свернуть" : "Развернуть" },
+        });
+        arrow.onclick = () => {
+          if (open) this.expanded.delete(item.path);
+          else this.expanded.add(item.path);
+          this.saveExpanded();
+          this.renderTree();
+        };
+      } else {
+        left.createSpan("my-sc-arrow-spacer");
+      }
+
+      const chk = left.createEl("input", {
+        attr: { type: "checkbox", title: "Отметить выполненным" },
+      });
+      chk.checked = item.isDone;
+      chk.onchange = () => void this.setDone(item, chk.checked);
+
+      const title = left.createSpan({
+        cls: "my-sc-node-title",
+        text: item.name,
+        attr: { title: "Открыть заметку" },
+      });
+      title.onclick = () => this.openNote(item.path);
+
+      const meta = getWorkMeta(item.noteType, item.icon);
+      const badge = left.createSpan({
+        cls: "my-sc-type-badge",
+        text: `${meta.icon} ${item.noteType || "без типа"}`,
+      });
+      badge.style.setProperty("--badge-color", meta.color);
+
+      const right = row.createDiv("my-sc-tree-right");
+      this.renderDeadline(right, item);
+      if (node.total > 0) {
+        right.createSpan({
+          cls: "my-sc-branch-count",
+          text: `${node.done}/${node.total}`,
+          attr: { title: "Выполнено в ветке" },
+        });
+      }
+
+      const addBtn = right.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "＋",
+        attr: { type: "button", title: "Добавить подпроект сюда" },
+      });
+      addBtn.onclick = () => this.openForm(item.path);
+
+      const moveBtn = right.createEl("button", {
+        cls: "my-sc-move-btn",
+        text: "⇄",
+        attr: { type: "button", title: "Сменить родителя" },
+      });
+      moveBtn.onclick = () => this.openMovePicker(item);
+    }
+    this.treeEl.scrollTop = scrollTop;
+  }
+
+  private async setDone(item: StudyNoteItem, done: boolean) {
+    try {
+      await this.app.fileManager.processFrontMatter(
+        item.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.status] = done ? STATUS_DONE : STATUS_ACTIVE;
+        }
+      );
+    } catch (err: unknown) {
+      new Notice("Не удалось изменить статус: " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
+  private openMovePicker(item: StudyNoteItem) {
+    const forbidden = collectDescendants(item.path, this.scan);
+    forbidden.add(item.path);
+    const candidates = [...this.scan.byPath.values()]
+      .filter((c) => !forbidden.has(c.path) && !MATERIAL_TYPES.includes(c.noteType))
+      .sort(byName);
+    new ParentPickerModal(this.app, candidates, (target) => {
+      void this.setParent(item, target);
+    }).open();
+  }
+
+  private async setParent(item: StudyNoteItem, target: StudyNoteItem) {
+    try {
+      const link = this.app.metadataCache.fileToLinktext(target.file, item.path);
+      await this.app.fileManager.processFrontMatter(
+        item.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.parent] = `[[${link}]]`;
+        }
+      );
+      this.expanded.add(target.path);
+      this.saveExpanded();
+      new Notice(`«${item.name}» → «${target.name}»`);
+    } catch (err: unknown) {
+      new Notice("Не удалось сменить родителя: " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+}
+
+=== FILE: ./src/scanner.ts ===
+import { App, TFile, normalizePath } from "obsidian";
+import {
+  DONE_STATUSES,
+  KEYS,
+  MATERIAL_TYPES,
   StudyCompilerSettings,
   StudyNoteItem,
+  TreeNode,
   WorkMetaBadge,
 } from "./types";
+
+export interface ScanResult {
+  roots: StudyNoteItem[];
+  byPath: Map<string, StudyNoteItem>;
+  childrenOf: Map<string, string[]>;
+}
+
+export function emptyScan(): ScanResult {
+  return { roots: [], byPath: new Map(), childrenOf: new Map() };
+}
+
+export function byName(a: StudyNoteItem, b: StudyNoteItem): number {
+  return a.name.localeCompare(b.name, "ru", { numeric: true });
+}
 
 function stripOuterWikiBrackets(str: string): string {
   let s = String(str || "").trim();
@@ -2698,9 +1235,7 @@ function flattenFrontmatterValue(val: unknown): string[] {
   if (val === null || val === undefined) return [];
   if (Array.isArray(val)) {
     const res: string[] = [];
-    for (const item of val) {
-      res.push(...flattenFrontmatterValue(item));
-    }
+    for (const item of val) res.push(...flattenFrontmatterValue(item));
     return res;
   }
   if (typeof val === "object" && (val as { path?: unknown }).path) {
@@ -2710,15 +1245,17 @@ function flattenFrontmatterValue(val: unknown): string[] {
   return s ? [s] : [];
 }
 
+function readString(v: unknown): string {
+  return v === null || v === undefined ? "" : String(v).trim();
+}
+
 export function resolveParentPaths(
   app: App,
   file: TFile,
   rawParentProp: unknown
 ): string[] {
-  const rawList = flattenFrontmatterValue(rawParentProp);
   const resolved: string[] = [];
-
-  for (const raw of rawList) {
+  for (const raw of flattenFrontmatterValue(rawParentProp)) {
     const clean = stripOuterWikiBrackets(raw)
       .split("|")[0]
       ?.split("#")[0]
@@ -2730,7 +1267,6 @@ export function resolveParentPaths(
       if (!resolved.includes(direct.path)) resolved.push(direct.path);
       continue;
     }
-
     const withMd = app.vault.getAbstractFileByPath(
       clean.endsWith(".md") ? clean : `${clean}.md`
     );
@@ -2738,14 +1274,151 @@ export function resolveParentPaths(
       if (!resolved.includes(withMd.path)) resolved.push(withMd.path);
       continue;
     }
-
     const dest = app.metadataCache.getFirstLinkpathDest(clean, file.path);
     if (dest instanceof TFile && !resolved.includes(dest.path)) {
       resolved.push(dest.path);
     }
   }
-
   return resolved;
+}
+
+export function todayISO(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+export function formatDeadline(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+}
+
+export function scanStudyVault(
+  app: App,
+  settings: StudyCompilerSettings
+): ScanResult {
+  const byPath = new Map<string, StudyNoteItem>();
+  const excluded = settings.excludedFolders
+    .map((f) => f.trim().replace(/^\/+|\/+$/g, ""))
+    .filter((f) => f.length > 0);
+
+  for (const file of app.vault.getMarkdownFiles()) {
+    if (excluded.some((f) => file.path.startsWith(`${f}/`))) continue;
+    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) continue;
+    if (!flattenFrontmatterValue(fm[KEYS.area]).includes(settings.studyAreaName)) {
+      continue;
+    }
+
+    const status = readString(fm[KEYS.status]);
+    const rawDeadline = readString(fm[KEYS.deadline]).slice(0, 10);
+    byPath.set(file.path, {
+      file,
+      path: file.path,
+      name: file.basename,
+      noteType: readString(fm[KEYS.type]),
+      status,
+      discipline: readString(fm[KEYS.discipline]),
+      deadline: /^\d{4}-\d{2}-\d{2}$/.test(rawDeadline) ? rawDeadline : null,
+      icon: readString(fm[KEYS.icon]),
+      parentPaths: resolveParentPaths(app, file, fm[KEYS.parent]),
+      isDone: DONE_STATUSES.includes(status.toLowerCase()),
+    });
+  }
+
+  const childrenOf = new Map<string, string[]>();
+  const roots: StudyNoteItem[] = [];
+
+  for (const item of byPath.values()) {
+    const parents = item.parentPaths.filter(
+      (p) => p !== item.path && byPath.has(p)
+    );
+    item.parentPaths = parents;
+    for (const p of parents) {
+      const list = childrenOf.get(p) ?? [];
+      if (!list.includes(item.path)) list.push(item.path);
+      childrenOf.set(p, list);
+    }
+    if (parents.length === 0 && !MATERIAL_TYPES.includes(item.noteType)) {
+      roots.push(item);
+    }
+  }
+
+  roots.sort(byName);
+  return { roots, byPath, childrenOf };
+}
+
+export function findRootPath(scan: ScanResult, path: string): string {
+  const seen = new Set<string>();
+  let cur = path;
+  for (;;) {
+    if (seen.has(cur)) return cur;
+    seen.add(cur);
+    const next = scan.byPath.get(cur)?.parentPaths[0];
+    if (!next) return cur;
+    cur = next;
+  }
+}
+
+export function collectDescendants(path: string, scan: ScanResult): Set<string> {
+  const result = new Set<string>();
+  const stack: string[] = [path];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (cur === undefined) break;
+    for (const kid of scan.childrenOf.get(cur) ?? []) {
+      if (kid === path || result.has(kid)) continue;
+      result.add(kid);
+      stack.push(kid);
+    }
+  }
+  return result;
+}
+
+export function progressOf(
+  paths: Iterable<string>,
+  scan: ScanResult
+): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  for (const p of paths) {
+    const it = scan.byPath.get(p);
+    if (!it || MATERIAL_TYPES.includes(it.noteType)) continue;
+    total++;
+    if (it.isDone) done++;
+  }
+  return { done, total };
+}
+
+/** expanded = null — развернуть всё дерево. */
+export function buildTree(
+  root: StudyNoteItem,
+  scan: ScanResult,
+  expanded: Set<string> | null
+): TreeNode[] {
+  const out: TreeNode[] = [];
+
+  const walk = (path: string, depth: number, trail: Set<string>) => {
+    const kids = (scan.childrenOf.get(path) ?? [])
+      .map((p) => scan.byPath.get(p))
+      .filter((x): x is StudyNoteItem => x !== undefined)
+      .sort(byName);
+
+    for (const kid of kids) {
+      if (trail.has(kid.path)) continue;
+      const hasChildren = (scan.childrenOf.get(kid.path)?.length ?? 0) > 0;
+      const stats = progressOf(collectDescendants(kid.path, scan), scan);
+      out.push({ item: kid, depth, hasChildren, done: stats.done, total: stats.total });
+
+      if (hasChildren && (expanded === null || expanded.has(kid.path))) {
+        trail.add(kid.path);
+        walk(kid.path, depth + 1, trail);
+        trail.delete(kid.path);
+      }
+    }
+  };
+
+  walk(root.path, 0, new Set([root.path]));
+  return out;
 }
 
 export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge {
@@ -2755,53 +1428,22 @@ export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge
   let color = "#599ed6";
   const shortLabel = raw === "Лабораторная работа" ? "Лабораторная" : raw;
 
-  if (
-    low.includes("лаб") ||
-    low.includes("лр") ||
-    low.includes("опыт") ||
-    low.includes("эксперим")
-  ) {
+  if (low.includes("лаб") || low.includes("лр") || low.includes("опыт") || low.includes("эксперим")) {
     icon = "🧪";
     color = "#4aab80";
-  } else if (
-    low.includes("конф") ||
-    low.includes("доклад") ||
-    low.includes("выступ") ||
-    low.includes("семинар")
-  ) {
+  } else if (low.includes("конф") || low.includes("доклад") || low.includes("выступ") || low.includes("семинар")) {
     icon = "🎤";
     color = "#e06c75";
-  } else if (
-    low.includes("диплом") ||
-    low.includes("диссер") ||
-    low.includes("магист") ||
-    low.includes("вкр")
-  ) {
+  } else if (low.includes("диплом") || low.includes("диссер") || low.includes("магист") || low.includes("вкр")) {
     icon = "🎓";
     color = "#e5a158";
-  } else if (
-    low.includes("стать") ||
-    low.includes("публик") ||
-    low.includes("тезис") ||
-    low.includes("нир")
-  ) {
+  } else if (low.includes("стать") || low.includes("публик") || low.includes("тезис") || low.includes("нир")) {
     icon = "📄";
     color = "#9c83e8";
-  } else if (
-    low.includes("курс") ||
-    low.includes("рефер") ||
-    low.includes("чертеж") ||
-    low.includes("расчетно")
-  ) {
+  } else if (low.includes("курс") || low.includes("рефер") || low.includes("чертеж") || low.includes("расчетно")) {
     icon = "📐";
     color = "#d69852";
-  } else if (
-    low.includes("экзам") ||
-    low.includes("зачет") ||
-    low.includes("зачёт") ||
-    low.includes("коллок") ||
-    low.includes("тест")
-  ) {
+  } else if (low.includes("экзам") || low.includes("зачет") || low.includes("зачёт") || low.includes("коллок") || low.includes("тест")) {
     icon = "⚡";
     color = "#e5a158";
   } else if (low.includes("практ") || low.includes("стажир")) {
@@ -2809,358 +1451,86 @@ export function getWorkMeta(typeStr: string, customIcon?: string): WorkMetaBadge
     color = "#69b5aa";
   }
 
-  if (customIcon && String(customIcon).trim()) {
-    icon = String(customIcon).trim();
-  }
-
+  if (customIcon && String(customIcon).trim()) icon = String(customIcon).trim();
   return { icon, color, label: `${icon} ${shortLabel}` };
 }
 
-export function stripYamlFrontmatter(rawContent: string): string {
-  const text = String(rawContent ?? "");
-  if (!text.startsWith("---")) return text.trim();
-  const match = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  if (!match || !match[0]) return text.trim();
-  return text.slice(match[0].length).trim();
-}
-
-export function stripDataviewCodeblocks(body: string): string {
-  return body
-    .replace(/```(?:dataviewjs|dataview|my-hub|my-study)[\s\S]*?```/gi, "")
-    .trim();
-}
-
-export function countWordsAndFormulas(cleanBody: string): {
-  words: number;
-  chars: number;
-  formulas: number;
-} {
-  const trimmed = cleanBody.trim();
-  if (!trimmed) return { words: 0, chars: 0, formulas: 0 };
-
-  const blockFormulas = (trimmed.match(/\$\$[\s\S]*?\$\$/g) ?? []).length;
-  const withoutBlock = trimmed.replace(/\$\$[\s\S]*?\$\$/g, " ");
-  const inlineFormulas = (withoutBlock.match(/\$[^\s$][^$\n]*?\$/g) ?? []).length;
-
-  const plain = trimmed
-    .replace(/!\[\[[^\]]+\]\]/g, " ")
-    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
-    .replace(/\[\[([^\]]+)\]\]/g, "$1")
-    .replace(/[#*_`~>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const words = plain ? plain.split(" ").filter(Boolean).length : 0;
-  return {
-    words,
-    chars: plain.length,
-    formulas: blockFormulas + inlineFormulas,
-  };
-}
-
-export function scanStudyVault(
-  app: App,
-  settings: StudyCompilerSettings
-): {
-  works: StudyNoteItem[];
-  byPath: Map<string, StudyNoteItem>;
-  childrenOf: Map<string, string[]>;
-} {
-  const areaTarget = (settings.studyAreaName || "Учёба").trim();
-  const decksPrefix =
-    (settings.decksFolder || "Знания/Карточки").replace(/\/+$/, "") + "/";
-  const outPrefix =
-    (settings.outputFolder || "Знания/Сборки").replace(/\/+$/, "") + "/";
-  const tplPrefix = settings.templatePrefix || "Учёба — ";
-
-  const byPath = new Map<string, StudyNoteItem>();
-  const childrenOf = new Map<string, string[]>();
-
-  for (const file of app.vault.getMarkdownFiles()) {
-    if (
-      file.basename.startsWith(tplPrefix) ||
-      file.path.startsWith("Шаблоны/") ||
-      file.path.startsWith("Templates/") ||
-      file.path.startsWith(decksPrefix) ||
-      file.path.startsWith(outPrefix)
-    ) {
-      continue;
-    }
-
-    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!fm) continue;
-
-    const areaList = flattenFrontmatterValue(fm["направление"]);
-    if (!areaList.includes(areaTarget)) continue;
-
-    const isCardDeck =
-      Boolean(fm["колода_карточек"]) ||
-      String(fm["подтип"] ?? "").trim().toLowerCase() === "карточки";
-    if (isCardDeck) continue;
-
-    const noteType = String(fm["тип"] ?? "").trim();
-    const status = String(fm["статус"] ?? "").trim();
-    const discipline = String(fm["дисциплина"] ?? "").trim();
-    const sourceProp = String(fm["источник"] ?? "").trim();
-    const customIcon = String(fm["иконка"] ?? "").trim();
-    const rawDeadline = fm["срок"] ? String(fm["срок"]).slice(0, 10) : null;
-    const parentPaths = resolveParentPaths(app, file, fm["родитель"]);
-
-    const isWork =
-      Boolean(noteType) &&
-      !MATERIAL_TYPES.includes(noteType) &&
-      parentPaths.length === 0 &&
-      (PRESET_WORK_TYPES.includes(noteType) || fm["статус"] !== undefined);
-
-    const isActiveWork =
-      isWork && !DONE_STATUSES.includes(status.toLowerCase());
-
-    const item: StudyNoteItem = {
-      file,
-      path: file.path,
-      name: file.basename,
-      noteType: noteType || "Заметка",
-      status,
-      discipline,
-      deadlineISO: rawDeadline,
-      sourceProp,
-      customIcon,
-      parentPaths,
-      isWork,
-      isActiveWork,
-    };
-
-    byPath.set(file.path, item);
-
-    for (const pPath of parentPaths) {
-      const list = childrenOf.get(pPath) ?? [];
-      if (!list.includes(file.path)) {
-        list.push(file.path);
-        childrenOf.set(pPath, list);
+export async function ensureFolder(app: App, folderPath: string): Promise<void> {
+  let current = "";
+  for (const part of normalizePath(folderPath).split("/").filter(Boolean)) {
+    current = current ? `${current}/${part}` : part;
+    if (!app.vault.getAbstractFileByPath(current)) {
+      try {
+        await app.vault.createFolder(current);
+      } catch {
+        // папка уже создана параллельно
       }
     }
   }
-
-  const works = [...byPath.values()]
-    .filter((it) =>
-      settings.showCompletedWorks ? it.isWork : it.isActiveWork
-    )
-    .sort((a, b) => {
-      if (a.isActiveWork !== b.isActiveWork) return a.isActiveWork ? -1 : 1;
-      const dA = a.deadlineISO ?? "9999-99-99";
-      const dB = b.deadlineISO ?? "9999-99-99";
-      return dA.localeCompare(dB) || a.name.localeCompare(b.name, "ru");
-    });
-
-  return { works, byPath, childrenOf };
-}
-
-export async function buildProjectHierarchy(
-  app: App,
-  rootWork: StudyNoteItem,
-  byPath: Map<string, StudyNoteItem>,
-  childrenOf: Map<string, string[]>,
-  config: ProjectCompileConfig
-): Promise<{
-  rootBodyText: string;
-  rootWords: number;
-  nodes: HierarchyNode[];
-}> {
-  const cfg = { ...DEFAULT_COMPILE_CONFIG, ...config };
-  const orderIndexMap = new Map<string, number>();
-  cfg.orderedPaths.forEach((p, idx) => orderIndexMap.set(p, idx));
-  const excludedSet = new Set(cfg.excludedPaths);
-
-  const visited = new Set<string>([rootWork.path]);
-  const rawNodes: Array<{
-    item: StudyNoteItem;
-    depth: number;
-    parentPath: string;
-  }> = [];
-
-  const typePriority = (t: string): number => {
-    if (t === "Конспект" || t === "Заметка") return 1;
-    if (t === "Алгоритм" || t === "Расчёт") return 2;
-    if (t === "Таблица" || t === "Рисунок" || t === "Схема") return 3;
-    if (t === "Термин") return 4;
-    if (t === "Источник") return 5;
-    return 2;
-  };
-
-  const walk = (currentPath: string, depth: number) => {
-    const kids = (childrenOf.get(currentPath) ?? [])
-      .map((kPath) => byPath.get(kPath))
-      .filter((k): k is StudyNoteItem => Boolean(k && !k.isWork));
-
-    kids.sort((a, b) => {
-      const idxA = orderIndexMap.get(a.path);
-      const idxB = orderIndexMap.get(b.path);
-      if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
-      if (idxA !== undefined) return -1;
-      if (idxB !== undefined) return 1;
-      const pDiff = typePriority(a.noteType) - typePriority(b.noteType);
-      if (pDiff !== 0) return pDiff;
-      return a.name.localeCompare(b.name, "ru");
-    });
-
-    for (const kid of kids) {
-      if (visited.has(kid.path)) continue;
-      visited.add(kid.path);
-      rawNodes.push({ item: kid, depth, parentPath: currentPath });
-      walk(kid.path, depth + 1);
-    }
-  };
-
-  walk(rootWork.path, 0);
-
-  let rootBodyText = "";
-  try {
-    const rawRoot = await app.vault.cachedRead(rootWork.file);
-    rootBodyText = stripDataviewCodeblocks(stripYamlFrontmatter(rawRoot));
-  } catch {
-    rootBodyText = "";
-  }
-  const rootStats = countWordsAndFormulas(rootBodyText);
-
-  const counters: number[] = [];
-  const nodes: HierarchyNode[] = [];
-
-  for (const rn of rawNodes) {
-    let bodyText = "";
-    try {
-      const raw = await app.vault.cachedRead(rn.item.file);
-      bodyText = stripDataviewCodeblocks(stripYamlFrontmatter(raw));
-    } catch {
-      bodyText = "";
-    }
-
-    const included = !excludedSet.has(rn.item.path);
-    const isSpecialBottom =
-      (cfg.buildBibliography && rn.item.noteType === "Источник") ||
-      (cfg.groupTermsIntoGlossary && rn.item.noteType === "Термин");
-
-    let sectionNumber = "—";
-    if (included && !isSpecialBottom) {
-      const d = rn.depth;
-      while (counters.length <= d) counters.push(0);
-      counters.splice(d + 1);
-      counters[d] = (counters[d] ?? 0) + 1;
-      sectionNumber = counters.join(".");
-    }
-
-    const st = countWordsAndFormulas(bodyText);
-    nodes.push({
-      item: rn.item,
-      depth: rn.depth,
-      parentPath: rn.parentPath,
-      sectionNumber,
-      included,
-      wordCount: st.words,
-      charCount: st.chars,
-      formulaCount: st.formulas,
-      bodyText,
-    });
-  }
-
-  return {
-    rootBodyText,
-    rootWords: rootStats.words,
-    nodes,
-  };
 }
 
 === FILE: ./src/types.ts ===
 import type { TFile } from "obsidian";
 
-export const STUDY_AREA = "Учёба";
+export const KEYS = {
+  area: "направление",
+  type: "тип",
+  parent: "родитель",
+  status: "статус",
+  deadline: "дедлайн",
+  discipline: "дисциплина",
+  icon: "иконка",
+} as const;
 
-export const MATERIAL_TYPES = [
-  "Термин",
-  "Алгоритм",
-  "Заметка",
+export const STATUS_DONE = "выполнено";
+export const STATUS_ACTIVE = "в работе";
+
+export const DONE_STATUSES: readonly string[] = [
+  "выполнено",
+  "выполнен",
+  "завершён",
+  "завершено",
+  "готово",
+  "сдано",
+  "done",
+];
+
+/** Пассивные материалы: не бывают корнем проекта и не считаются в прогрессе. */
+export const MATERIAL_TYPES: readonly string[] = [
   "Источник",
-  "Расчёт",
+  "Термин",
   "Рисунок",
   "Схема",
   "Таблица",
+];
+
+export const NEW_NOTE_TYPES: readonly string[] = [
+  "Подпроект",
+  "Задача",
   "Конспект",
+  "Источник",
+  "Термин",
+  "Рисунок",
+  "Схема",
+  "Таблица",
 ];
-
-export const PRESET_WORK_TYPES = [
-  "Проект",
-  "Лабораторная работа",
-  "Конференция",
-  "Диссертация",
-  "Курсовая работа",
-  "Статья",
-  "Экзамен",
-  "Зачёт",
-  "Практика",
-];
-
-export const DONE_STATUSES = [
-  "завершён",
-  "завершена",
-  "сдана",
-  "сдан",
-  "готово",
-  "архив",
-  "отменён",
-  "отменена",
-];
-
-export const TYPE_COLORS: Record<string, string> = {
-  Термин: "#4fb3d9",
-  Алгоритм: "#9c83e8",
-  Заметка: "#4aab80",
-  Источник: "#d4c05a",
-  Расчёт: "#e06c75",
-  Рисунок: "#69b5aa",
-  Схема: "#d69852",
-  Таблица: "#5c8df6",
-  Конспект: "#8bac5e",
-};
-
-export interface ProjectCompileConfig {
-  includeRootBody: boolean;
-  numberSections: boolean;
-  stripLeadingH1: boolean;
-  groupTermsIntoGlossary: boolean;
-  buildBibliography: boolean;
-  replaceSourceLinksWithNumbers: boolean;
-  autoNumberFiguresAndTables: boolean;
-  orderedPaths: string[];
-  excludedPaths: string[];
-}
-
-export const DEFAULT_COMPILE_CONFIG: ProjectCompileConfig = {
-  includeRootBody: true,
-  numberSections: true,
-  stripLeadingH1: true,
-  groupTermsIntoGlossary: true,
-  buildBibliography: true,
-  replaceSourceLinksWithNumbers: true,
-  autoNumberFiguresAndTables: true,
-  orderedPaths: [],
-  excludedPaths: [],
-};
 
 export interface StudyCompilerSettings {
   studyAreaName: string;
-  outputFolder: string;
-  decksFolder: string;
-  templatePrefix: string;
+  newNoteFolder: string;
   showCompletedWorks: boolean;
-  projectConfigs: Record<string, ProjectCompileConfig>;
+  excludedFolders: string[];
+  expandedPaths: string[];
+  lastWorkPath: string;
 }
 
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
-  outputFolder: "Знания/Сборки",
-  decksFolder: "Знания/Карточки",
-  templatePrefix: "Учёба — ",
+  newNoteFolder: "Знания",
   showCompletedWorks: false,
-  projectConfigs: {},
+  excludedFolders: ["Templates", "Шаблоны"],
+  expandedPaths: [],
+  lastWorkPath: "",
 };
 
 export interface WorkMetaBadge {
@@ -3176,73 +1546,332 @@ export interface StudyNoteItem {
   noteType: string;
   status: string;
   discipline: string;
-  deadlineISO: string | null;
-  sourceProp: string;
-  customIcon: string;
+  deadline: string | null;
+  icon: string;
   parentPaths: string[];
-  isWork: boolean;
-  isActiveWork: boolean;
+  isDone: boolean;
 }
 
-export interface HierarchyNode {
+export interface TreeNode {
   item: StudyNoteItem;
   depth: number;
-  parentPath: string;
-  sectionNumber: string;
-  included: boolean;
-  wordCount: number;
-  charCount: number;
-  formulaCount: number;
-  bodyText: string;
+  hasChildren: boolean;
+  done: number;
+  total: number;
 }
 
-export interface ProjectAuditReport {
-  totalNodes: number;
-  includedNodes: number;
-  totalWords: number;
-  totalCharsWithSpaces: number;
-  authorSheets: string;
-  approxPages: number;
-  totalFormulas: number;
-  totalTables: number;
-  totalFigures: number;
-  sourcesTotal: StudyNoteItem[];
-  sourcesCited: StudyNoteItem[];
-  sourcesUncited: StudyNoteItem[];
-  visualsTotal: StudyNoteItem[];
-  visualsReferenced: StudyNoteItem[];
-  visualsUnreferenced: StudyNoteItem[];
-  emptySectionNotes: StudyNoteItem[];
+=== FILE: ./styles.css ===
+.modal.my-sc-modal-container {
+  width: min(820px, 96vw) !important;
+  max-width: 820px !important;
+  max-height: 92vh !important;
+  padding: 18px 22px !important;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
 }
 
-export interface CompilationResult {
-  markdown: string;
-  outputFilePath: string;
-  audit: ProjectAuditReport;
+.modal.my-sc-modal-container > .modal-close-button {
+  display: none !important;
 }
 
-=== FILE: ./package.json ===
-{
-  "name": "my-study-compiler",
-  "version": "0.1.0",
-  "description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
-  "main": "main.js",
-  "scripts": {
-    "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "bump": "node version-bump.mjs"
-  },
-  "keywords": [],
-  "author": "Mersinho",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^16.11.6",
-    "builtin-modules": "3.3.0",
-    "esbuild": "0.17.3",
-    "obsidian": "latest",
-    "tslib": "2.4.0",
-    "typescript": "4.7.4"
+.my-sc-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 12px;
+}
+
+.my-sc-modal * {
+  box-sizing: border-box;
+}
+
+.my-sc-head-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-head-title {
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: var(--text-normal);
+}
+
+.my-sc-close-btn {
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-project-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.my-sc-project-select-wrap,
+.my-sc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.my-sc-work-select {
+  flex: 1 1 240px;
+  min-width: 0;
+  min-height: 38px;
+  font-weight: 600;
+}
+
+.my-sc-chip-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.my-sc-chip-btn.is-active {
+  border: 1px solid var(--interactive-accent) !important;
+  color: var(--interactive-accent) !important;
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.my-sc-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.my-sc-progress-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.my-sc-progress {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+
+.my-sc-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--color-green, #4aab80);
+  transition: width 0.25s ease;
+}
+
+.my-sc-add-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--interactive-accent);
+}
+
+.my-sc-input {
+  flex: 1 1 200px;
+  min-height: 34px;
+  font-size: 0.86rem;
+}
+
+.my-sc-parent-select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.my-sc-date {
+  min-height: 34px;
+}
+
+.my-sc-body {
+  flex: 1 1 auto;
+  min-height: 220px;
+  max-height: 56vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.my-sc-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.my-sc-tree-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-tree-row.is-done .my-sc-node-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.my-sc-tree-row.is-done {
+  opacity: 0.65;
+}
+
+.my-sc-tree-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.my-sc-arrow,
+.my-sc-arrow-spacer {
+  width: 24px;
+  min-width: 24px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.my-sc-arrow {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-node-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-node-title:hover {
+  color: var(--text-accent);
+}
+
+.my-sc-type-badge {
+  font-size: 0.68rem;
+  font-weight: 650;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
+  color: var(--badge-color, #599ed6);
+  white-space: nowrap;
+}
+
+.my-sc-tree-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.my-sc-branch-count {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-deadline {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.my-sc-deadline.is-overdue {
+  color: var(--text-error, #e06c75);
+  font-weight: 650;
+}
+
+.my-sc-move-btn {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.my-sc-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 640px) {
+  .modal.my-sc-modal-container {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
+    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
+    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
   }
+
+  .my-sc-body {
+    max-height: none;
+  }
+
+  .my-sc-tree-row {
+    flex-wrap: wrap;
+  }
+
+  .my-sc-type-badge {
+    display: none;
+  }
+}
+
+=== FILE: ./tsconfig.json ===
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "module": "ESNext",
+    "target": "ES2018",
+    "allowJs": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "importHelpers": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
+  },
+  "include": ["src/**/*.ts"]
 }
 
 === FILE: ./version-bump.mjs ===
@@ -3270,4 +1899,11 @@ if (existsSync("versions.json")) {
 versions[targetVersion] = minAppVersion;
 writeFileSync("versions.json", JSON.stringify(versions, null, "\t") + "\n");
 console.log(`Версия успешно обновлена до ${targetVersion}`);
+
+=== FILE: ./versions.json ===
+{
+	"0.1.0": "1.5.0",
+	"0.2.0": "1.5.0"
+}
+
 
