@@ -1,5 +1,5 @@
 /* ============================================================
-   Конструктор учебных проектов (v0.3.3)
+   Конструктор учебных проектов (v0.3.4)
    Шкала отступов: 4 / 8 / 12 / 16 px
    Размеры текста: 0.9rem (основной), 0.78rem (вторичный), 0.72rem (третичный)
    Начертания: 400 / 500 / 600
@@ -40,6 +40,12 @@
   flex: 1 1 auto;
   min-height: 0;
   gap: var(--my-sc-s2);
+  outline: none !important;
+}
+
+.my-sc-modal:focus,
+.my-sc-modal:focus-visible {
+  outline: none !important;
 }
 
 .my-sc-modal * {
@@ -528,7 +534,6 @@ button.my-sc-icon-btn.is-primary:hover {
   flex: 1;
 }
 
-/* Кнопка раскрытия ветки — всегда заметна, с подложкой и защитой от .is-mobile button */
 button.my-sc-toggle-btn {
   width: 30px !important;
   min-width: 30px !important;

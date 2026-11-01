@@ -110,6 +110,7 @@ export class StudyCompilerModal extends Modal {
   private graphEl!: HTMLElement;
   private datalistsEl!: HTMLElement;
   private searchInputEl: HTMLInputElement | null = null;
+  private workSelectEl: HTMLSelectElement | null = null;
 
   private form: {
     open: boolean;
@@ -142,12 +143,32 @@ export class StudyCompilerModal extends Modal {
     (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
   }
 
+  /**
+   * Переводит фокус на сам контейнер окна (tabindex="-1"), снимая его с <select>, <input> и <button>.
+   * Благодаря этому на iPad не выскакивает системное меню <select> или экранная клавиатура,
+   * а на десктопе продолжают работать горячие клавиши (Ctrl/Cmd+F и стрелки).
+   */
+  private focusSafeContainer() {
+    if (this.closed) return;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLSelectElement ||
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLButtonElement
+    ) {
+      active.blur();
+    }
+    this.contentEl.focus({ preventScroll: true });
+  }
+
   onOpen(): void {
     this.noRestore();
     this.closed = false;
     this.viewMode = "tree";
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
+    this.contentEl.setAttribute("tabindex", "-1");
 
     this.datalistsEl = this.contentEl.createDiv("my-sc-datalists-host");
     this.barEl = this.contentEl.createDiv("my-sc-project-bar");
@@ -178,7 +199,6 @@ export class StudyCompilerModal extends Modal {
       this.selectedPath = findRootPath(this.scan, addUnder);
     }
 
-    // Если выбранный/запомненный проект находится в другой группе (активные/завершённые), переключаемся туда автоматически
     this.syncGroupTabWithSelectedProject();
 
     const root = this.getRootInCurrentGroup();
@@ -196,10 +216,31 @@ export class StudyCompilerModal extends Modal {
     this.applyViewMode();
     this.renderTree();
 
-    // Проблема 1: при обычном открытии окна не фокусируем поиск, чтобы на iPad не вылезала экранная клавиатура.
-    // Фокус на поле названия ставится только тогда, когда явно запрошено добавление материала (addUnder или нажатие «＋»).
     if (addUnder && this.scan.byPath.has(addUnder)) {
+      // Временно блокируем автофокус на <select>, пока через 20 мс фокус не перейдёт в поле названия формы
+      if (this.workSelectEl) this.workSelectEl.tabIndex = -1;
       this.openForm(addUnder, true);
+      const restoreSelectTabIdx = window.setTimeout(() => {
+        if (this.workSelectEl) this.workSelectEl.removeAttribute("tabindex");
+      }, 60);
+      this.cleanups.push(() => window.clearTimeout(restoreSelectTabIdx));
+    } else {
+      // Блокируем перехват фокуса первым <select> со стороны Modal.open() в Obsidian на iPadOS
+      if (this.workSelectEl) this.workSelectEl.tabIndex = -1;
+      this.focusSafeContainer();
+      const t1 = window.setTimeout(() => {
+        this.focusSafeContainer();
+      }, 0);
+      const t2 = window.setTimeout(() => {
+        if (this.workSelectEl) this.workSelectEl.removeAttribute("tabindex");
+        if (document.activeElement === this.workSelectEl) {
+          this.focusSafeContainer();
+        }
+      }, 60);
+      this.cleanups.push(
+        () => window.clearTimeout(t1),
+        () => window.clearTimeout(t2)
+      );
     }
   }
 
@@ -222,6 +263,8 @@ export class StudyCompilerModal extends Modal {
     }
     this.lastGraphRootPath = "";
     this.expandToggleBtn = null;
+    this.workSelectEl = null;
+    this.searchInputEl = null;
     this.contentEl.empty();
   }
 
@@ -280,6 +323,7 @@ export class StudyCompilerModal extends Modal {
     this.applyViewMode();
     this.renderBar();
     this.renderMain();
+    this.focusSafeContainer();
   }
 
   private renderMain() {
@@ -322,6 +366,11 @@ export class StudyCompilerModal extends Modal {
       this.refreshTimer = null;
       if (this.closed) return;
 
+      const wasSearchFocused = document.activeElement === this.searchInputEl;
+      const inFormOrInlineInput =
+        document.activeElement instanceof HTMLInputElement &&
+        document.activeElement !== this.searchInputEl;
+
       const next = scanStudyVault(this.app, this.plugin.settings);
       const fresh: string[] = [];
       for (const p of next.byPath.keys()) {
@@ -335,8 +384,14 @@ export class StudyCompilerModal extends Modal {
       this.renderBar();
       this.renderSearchPanel();
       this.renderBreadcrumbs();
-      if (this.form.open) this.renderForm(false);
+      if (this.form.open && !inFormOrInlineInput) this.renderForm(false);
       this.renderMain();
+
+      if (wasSearchFocused && this.searchInputEl) {
+        this.searchInputEl.focus({ preventScroll: true });
+      } else if (!inFormOrInlineInput) {
+        this.focusSafeContainer();
+      }
 
       if (this.viewMode === "tree") {
         const firstFresh = fresh
@@ -442,6 +497,7 @@ export class StudyCompilerModal extends Modal {
     this.renderBar();
     this.renderBreadcrumbs();
     this.renderMain();
+    this.focusSafeContainer();
   }
 
   private saveExpanded() {
@@ -576,6 +632,7 @@ export class StudyCompilerModal extends Modal {
   private renderBar() {
     this.barEl.empty();
     this.expandToggleBtn = null;
+    this.workSelectEl = null;
 
     const root = this.resolveRootWithFallback();
     if (!root) {
@@ -589,9 +646,10 @@ export class StudyCompilerModal extends Modal {
 
     const branchRoot = this.getActiveBranchRoot(root);
 
-    // Ряд 1: выбор проекта + кнопка меню проекта (с явным SVG-значком)
+    // Ряд 1: выбор проекта + кнопка меню проекта
     const topRow = this.barEl.createDiv("my-sc-top-row");
     const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
+    this.workSelectEl = sel;
 
     const addGroup = (label: string, list: StudyNoteItem[]) => {
       if (list.length === 0) return;
@@ -627,6 +685,7 @@ export class StudyCompilerModal extends Modal {
       this.renderBar();
       this.renderBreadcrumbs();
       this.renderMain();
+      this.focusSafeContainer();
     };
 
     const moreBtn = topRow.createEl("button", {
@@ -636,7 +695,7 @@ export class StudyCompilerModal extends Modal {
     setIcon(moreBtn, "more-horizontal");
     moreBtn.onclick = (e) => this.openProjectMenu(e, root, branchRoot);
 
-    // Ряд 2: сводка слева · понятный сегмент «Дерево | Граф» и кнопки справа
+    // Ряд 2: сводка слева · сегмент «Дерево | Граф» и кнопки справа
     const descendants = collectDescendants(branchRoot.path, this.scan);
     const metaRow = this.barEl.createDiv("my-sc-meta-row");
     const metaInfo = metaRow.createDiv("my-sc-meta-info");
@@ -651,7 +710,6 @@ export class StudyCompilerModal extends Modal {
 
     const tools = metaRow.createDiv("my-sc-icon-group");
 
-    // Сегментный переключатель «Дерево | Граф» — всегда виден и понятен без подсказок
     const modeSeg = tools.createDiv("my-sc-view-seg");
     const addModeBtn = (mode: ViewMode, icon: string, label: string) => {
       const b = modeSeg.createEl("button", {
@@ -668,7 +726,7 @@ export class StudyCompilerModal extends Modal {
       b.onclick = () => this.setViewMode(mode);
     };
     addModeBtn("tree", "list", "Дерево");
-    addModeBtn("graph", "git-Fork", "Граф");
+    addModeBtn("graph", "network", "Граф");
 
     if (this.viewMode === "tree") {
       this.expandToggleBtn = this.iconBtn(tools, "chevrons-up-down", "Развернуть все ветки", () => {
@@ -679,6 +737,7 @@ export class StudyCompilerModal extends Modal {
         }
         this.saveExpanded();
         this.renderTree();
+        this.focusSafeContainer();
       });
       this.syncExpandToggle();
     }
@@ -692,6 +751,7 @@ export class StudyCompilerModal extends Modal {
           this.form.open = false;
           this.formEl.empty();
           this.renderBar();
+          this.focusSafeContainer();
         } else {
           this.openForm(branchRoot.path, true);
         }
@@ -758,6 +818,7 @@ export class StudyCompilerModal extends Modal {
         this.activeRowIndex = -1;
         this.renderSearchPanel();
         this.renderTree();
+        this.focusSafeContainer();
       };
     }
   }
@@ -822,7 +883,6 @@ export class StudyCompilerModal extends Modal {
     const box = this.formEl.createDiv("my-sc-add-box");
     const topRow = box.createDiv("my-sc-form-row");
 
-    // Свободное поле «Тип» с подсказками из реальных типов хранилища
     const typeWrap = topRow.createDiv("my-sc-type-input-wrap");
     const typeInp = typeWrap.createEl("input", {
       cls: "my-sc-type-input",
@@ -911,7 +971,6 @@ export class StudyCompilerModal extends Modal {
       this.form.deadline = dateInp.value;
     };
 
-    // Быстрые чипы самых частых типов
     if (this.scan.schema.typeCounts.length > 0) {
       const quickTypesRow = box.createDiv("my-sc-quick-types-row");
       quickTypesRow.createSpan({
@@ -936,7 +995,6 @@ export class StudyCompilerModal extends Modal {
       }
     }
 
-    // Произвольные свойства при создании
     const propsSection = box.createDiv("my-sc-props-section");
     for (let i = 0; i < this.form.customProps.length; i++) {
       const draft = this.form.customProps[i];
@@ -1058,7 +1116,6 @@ export class StudyCompilerModal extends Modal {
 
     const normalizedType = normalizeSpaces(this.form.type) || "Материал";
 
-    // Валидация произвольных свойств перед созданием файла
     const seenKeysLower = new Set<string>([
       KEYS.area.toLowerCase(),
       KEYS.type.toLowerCase(),
@@ -1492,6 +1549,7 @@ export class StudyCompilerModal extends Modal {
         this.editingNodePath = null;
         this.editingNodeMode = null;
         this.renderTree();
+        this.focusSafeContainer();
       };
       inp.addEventListener("keydown", (e: KeyboardEvent) => {
         if (e.key === "Enter") void applyType();
@@ -1591,6 +1649,7 @@ export class StudyCompilerModal extends Modal {
       this.editingNodePath = null;
       this.editingNodeMode = null;
       this.renderTree();
+      this.focusSafeContainer();
     };
     window.setTimeout(() => keyInp.focus(), 20);
   }
