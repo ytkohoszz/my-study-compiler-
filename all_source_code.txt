@@ -1,3 +1,115 @@
+=== FILE: ./.editorconfig ===
+# top-most EditorConfig file
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = tab
+indent_size = 4
+quote_type = single
+tab_width = 4
+
+
+=== FILE: ./.github/workflows/lint.yml ===
+name: Node.js build
+
+on:
+    push:
+        branches: ['**']
+    pull_request:
+        branches: ['**']
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                node-version: [20.x, 22.x, 24.x]
+                # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+        steps:
+            - uses: actions/checkout@v6
+            - name: Use Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v6
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: 'npm'
+            - run: npm ci
+            - run: npm run build --if-present
+            - run: npm run lint
+
+
+=== FILE: ./.github/workflows/release.yml ===
+name: Release Obsidian Plugin
+
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci || npm install --legacy-peer-deps
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$TAG" main.js manifest.json styles.css --title "$TAG" --generate-notes
+          fi
+
+=== FILE: ./.gitignore ===
+# vscode
+.vscode 
+
+# Intellij
+*.iml
+.idea
+
+# npm
+node_modules
+
+# Don't include the compiled main.js file in the repo.
+# They should be uploaded to GitHub releases instead.
+main.js
+
+# Exclude sourcemaps
+*.map
+
+# obsidian
+data.json
+
+# Exclude macOS Finder (System Explorer) View States
+.DS_Store
+
+
+=== FILE: ./.npmrc ===
+tag-version-prefix=""
+
 === FILE: ./AGENTS.md ===
 # Obsidian community plugin
 
@@ -270,1278 +382,13 @@ this.registerInterval(
 - Style guide: https://help.obsidian.md/style-guide
 
 
-=== FILE: ./manifest.json ===
-{
-	"id": "my-study-compiler",
-	"name": "Конструктор учебных проектов",
-	"version": "0.2.4",
-	"minAppVersion": "1.5.0",
-	"description": "Рабочее дерево проектов и материалов для заметки «Учёба»: разделение активных и завершённых проектов, свободные типы и свойства",
-	"author": "Mersinho",
-	"isDesktopOnly": false
-}
+=== FILE: ./LICENSE ===
+Copyright (C) 2020-2026 by Dynalist Inc.
 
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
 
-=== FILE: ./styles.css ===
-.modal.my-sc-modal-container {
-  position: relative;
-  width: min(860px, 96vw) !important;
-  max-width: 860px !important;
-  max-height: 92vh !important;
-  padding: 18px 22px !important;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-}
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-/* Родной крестик Obsidian (.modal-close-button) всегда виден и аккуратно выровнен */
-.modal.my-sc-modal-container > .modal-close-button {
-  top: 14px;
-  right: 16px;
-  z-index: 10;
-}
-
-.my-sc-modal {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  gap: 10px;
-}
-
-.my-sc-modal * {
-  box-sizing: border-box;
-}
-
-.my-sc-datalists-host {
-  display: none;
-}
-
-.my-sc-head-bar {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
-  padding-right: 40px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-head-title {
-  font-size: 1.05rem;
-  font-weight: 750;
-  color: var(--text-normal);
-}
-
-.my-sc-project-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Сегмент-переключатель «Активные / Завершённые» */
-.my-sc-segment-bar {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 10px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-segment-btn {
-  min-height: 34px;
-  border-radius: 7px;
-  font-size: 0.82rem;
-  font-weight: 650;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.my-sc-segment-btn.is-active {
-  background: var(--background-primary);
-  color: var(--text-normal);
-  border-color: var(--interactive-accent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-.my-sc-empty-group-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px dashed var(--background-modifier-border);
-  font-size: 0.84rem;
-  color: var(--text-muted);
-}
-
-.my-sc-project-select-wrap,
-.my-sc-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.my-sc-work-select {
-  flex: 1 1 260px;
-  min-width: 0;
-  min-height: 38px;
-  font-weight: 600;
-}
-
-.my-sc-chip-btn {
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.my-sc-chip-btn.is-active {
-  border: 1px solid var(--interactive-accent) !important;
-  color: var(--interactive-accent) !important;
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-}
-
-.my-sc-summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.my-sc-summary-text {
-  font-weight: 500;
-}
-
-.my-sc-search-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-search-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.my-sc-search-input {
-  flex: 1 1 220px;
-  min-height: 34px;
-  font-size: 0.86rem;
-}
-
-.my-sc-type-filter {
-  flex: 0 0 160px;
-  min-height: 34px;
-}
-
-.my-sc-filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.my-sc-filter-chip {
-  min-height: 26px;
-  padding: 0 9px;
-  border-radius: 99px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.my-sc-filter-chip.is-active {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-}
-
-.my-sc-crumbs-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-secondary));
-  border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
-}
-
-.my-sc-crumbs-bar.is-hidden {
-  display: none;
-}
-
-.my-sc-crumbs-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-right: 4px;
-}
-
-.my-sc-crumb-sep {
-  color: var(--text-faint);
-  font-size: 0.8rem;
-}
-
-.my-sc-crumb-btn {
-  min-height: 26px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.my-sc-crumb-btn.is-current {
-  color: var(--interactive-accent);
-  border: 1px solid var(--interactive-accent);
-}
-
-.my-sc-crumb-reset {
-  margin-left: auto;
-  min-height: 26px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-/* Форма создания материала со свободным типом и произвольными свойствами */
-.my-sc-add-box {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--background-secondary);
-  border: 1px solid var(--interactive-accent);
-}
-
-.my-sc-form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.my-sc-type-input-wrap {
-  flex: 0 1 170px;
-  min-width: 140px;
-}
-
-.my-sc-type-input {
-  width: 100%;
-  min-height: 34px;
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-
-.my-sc-input {
-  flex: 1 1 200px;
-  min-height: 34px;
-  font-size: 0.86rem;
-}
-
-.my-sc-parent-select {
-  flex: 1 1 170px;
-  min-width: 0;
-  min-height: 34px;
-}
-
-.my-sc-date {
-  min-height: 34px;
-}
-
-.my-sc-case-hint {
-  font-size: 0.76rem;
-  color: var(--color-orange, #e5a158);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.my-sc-case-hint.is-hidden {
-  display: none;
-}
-
-.my-sc-inline-link-btn {
-  min-height: 24px;
-  padding: 0 8px;
-  font-size: 0.74rem;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.my-sc-quick-types-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.my-sc-quick-types-label {
-  font-size: 0.73rem;
-  color: var(--text-muted);
-  margin-right: 2px;
-}
-
-.my-sc-props-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.my-sc-prop-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.my-sc-prop-key {
-  flex: 0 1 160px;
-  min-width: 120px;
-  min-height: 32px;
-  font-size: 0.82rem;
-}
-
-.my-sc-prop-val {
-  flex: 1 1 180px;
-  min-width: 140px;
-  min-height: 32px;
-  font-size: 0.82rem;
-}
-
-.my-sc-prop-kind {
-  flex: 0 0 115px;
-  min-height: 32px;
-  font-size: 0.78rem;
-}
-
-.my-sc-form-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-.my-sc-body {
-  flex: 1 1 auto;
-  min-height: 240px;
-  max-height: 55vh;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.my-sc-tree-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.my-sc-node-group {
-  --branch-accent: var(--color-blue, #599ed6);
-  display: flex;
-  flex-direction: column;
-  border-radius: 10px;
-}
-
-.my-sc-node-group.is-depth-0 {
-  --branch-accent: var(--color-blue, #599ed6);
-}
-.my-sc-node-group.is-depth-1 {
-  --branch-accent: var(--color-purple, #9c83e8);
-}
-.my-sc-node-group.is-depth-2 {
-  --branch-accent: var(--color-green, #4aab80);
-}
-.my-sc-node-group.is-depth-3 {
-  --branch-accent: var(--color-orange, #e5a158);
-}
-.my-sc-node-group.is-depth-4 {
-  --branch-accent: var(--color-cyan, #4fb3d9);
-}
-
-.my-sc-node-group.is-branch.is-expanded {
-  background: color-mix(in srgb, var(--branch-accent) 5%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--branch-accent) 28%, var(--background-modifier-border));
-  padding-bottom: 6px;
-}
-
-.my-sc-tree-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 5px 10px 5px 8px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-left: 3px solid var(--branch-accent);
-  transition: border-color 0.14s ease, background-color 0.14s ease;
-}
-
-.my-sc-tree-row.is-open-parent {
-  background: color-mix(in srgb, var(--branch-accent) 12%, var(--background-secondary));
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-
-.my-sc-tree-row.is-open-parent .my-sc-node-title {
-  font-weight: 750;
-}
-
-.my-sc-tree-row.is-kb-active {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--interactive-accent);
-}
-
-.my-sc-tree-row.is-match {
-  background: color-mix(in srgb, var(--color-yellow, #e5a158) 12%, var(--background-secondary));
-}
-
-.my-sc-inline-editor {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 8px 0 8px;
-  padding: 6px 10px;
-  border-radius: 7px;
-  background: var(--background-primary);
-  border: 1px solid var(--interactive-accent);
-}
-
-.my-sc-inline-label {
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.my-sc-children-container {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 6px;
-  margin-left: 18px;
-  padding-left: 14px;
-  border-left: 2px solid color-mix(in srgb, var(--branch-accent) 55%, var(--background-modifier-border));
-  animation: my-sc-branch-open 0.16s ease-out;
-}
-
-@keyframes my-sc-branch-open {
-  from {
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.my-sc-tree-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.my-sc-toggle-btn {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 7px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--branch-accent) 14%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--branch-accent) 35%, var(--background-modifier-border));
-  color: var(--branch-accent);
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.16s ease, background-color 0.14s ease;
-}
-
-.my-sc-toggle-btn:hover {
-  background: color-mix(in srgb, var(--branch-accent) 24%, var(--background-primary));
-}
-
-.my-sc-toggle-btn.is-open {
-  transform: rotate(90deg);
-}
-
-.my-sc-leaf-marker {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.my-sc-leaf-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--branch-accent) 65%, var(--text-muted));
-}
-
-.my-sc-node-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-normal);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.my-sc-node-title:hover {
-  color: var(--text-accent);
-}
-
-.my-sc-hl {
-  background: color-mix(in srgb, var(--color-yellow, #e5a158) 35%, transparent);
-  color: inherit;
-  padding: 0 2px;
-  border-radius: 3px;
-}
-
-button.my-sc-type-badge {
-  min-height: 22px;
-  height: auto;
-  font-size: 0.68rem;
-  font-weight: 650;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--badge-color, #599ed6) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color, #599ed6) 35%, transparent);
-  color: var(--badge-color, #599ed6);
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: none;
-}
-
-button.my-sc-type-badge:hover {
-  border-color: var(--badge-color, #599ed6);
-}
-
-.my-sc-multi-parent {
-  font-size: 0.66rem;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  color: var(--text-muted);
-  border: 1px dashed var(--background-modifier-border);
-}
-
-.my-sc-tree-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.my-sc-subcount-pill {
-  min-height: 26px;
-  padding: 0 9px;
-  border-radius: 99px;
-  font-size: 0.73rem;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.my-sc-subcount-pill.is-collapsed {
-  color: var(--branch-accent);
-  background: color-mix(in srgb, var(--branch-accent) 16%, var(--background-primary));
-  border: 1px solid color-mix(in srgb, var(--branch-accent) 42%, var(--background-modifier-border));
-}
-
-.my-sc-subcount-pill.is-expanded {
-  color: var(--text-muted);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-}
-
-.my-sc-deadline {
-  font-size: 0.73rem;
-  padding: 2px 8px;
-  border-radius: 6px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.my-sc-deadline.is-far {
-  color: var(--color-green, #4aab80);
-  background: color-mix(in srgb, var(--color-green, #4aab80) 14%, transparent);
-}
-
-.my-sc-deadline.is-soon {
-  color: var(--color-orange, #e5a158);
-  background: color-mix(in srgb, var(--color-orange, #e5a158) 16%, transparent);
-  font-weight: 650;
-}
-
-.my-sc-deadline.is-overdue {
-  color: var(--text-error, #e06c75);
-  background: color-mix(in srgb, var(--text-error, #e06c75) 16%, transparent);
-  font-weight: 700;
-}
-
-.my-sc-move-btn {
-  width: 32px;
-  min-height: 32px;
-  padding: 0;
-  border-radius: 7px;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-
-.my-sc-move-btn.is-active {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
-}
-
-.my-sc-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.86rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .my-sc-tree-row,
-  .my-sc-toggle-btn,
-  .my-sc-children-container {
-    transition: none !important;
-    animation: none !important;
-  }
-}
-
-@media (max-width: 640px) {
-  .modal.my-sc-modal-container {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    padding-top: max(10px, env(safe-area-inset-top, 10px)) !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
-    padding-left: max(10px, env(safe-area-inset-left, 10px)) !important;
-    padding-right: max(10px, env(safe-area-inset-right, 10px)) !important;
-  }
-
-  .modal.my-sc-modal-container > .modal-close-button {
-    top: max(10px, env(safe-area-inset-top, 10px));
-    right: max(12px, env(safe-area-inset-right, 12px));
-  }
-
-  .my-sc-body {
-    max-height: none;
-  }
-
-  .my-sc-search-row {
-    flex-wrap: wrap;
-  }
-
-  .my-sc-type-filter {
-    flex: 1 1 100%;
-  }
-
-  .my-sc-children-container {
-    margin-left: 10px;
-    padding-left: 10px;
-  }
-
-  .my-sc-tree-row {
-    flex-wrap: wrap;
-  }
-}
-
-=== FILE: ./package-lock.json ===
-{
-  "name": "my-study-compiler",
-  "version": "0.1.0",
-  "lockfileVersion": 3,
-  "requires": true,
-  "packages": {
-    "": {
-      "name": "my-study-compiler",
-      "version": "0.1.0",
-      "license": "MIT",
-      "devDependencies": {
-        "@types/node": "^16.11.6",
-        "builtin-modules": "3.3.0",
-        "esbuild": "0.17.3",
-        "obsidian": "latest",
-        "tslib": "2.4.0",
-        "typescript": "4.7.4"
-      }
-    },
-    "node_modules/@esbuild/android-arm": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.17.3.tgz",
-      "integrity": "sha512-1Mlz934GvbgdDmt26rTLmf03cAgLg5HyOgJN+ZGCeP3Q9ynYTNMn2/LQxIl7Uy+o4K6Rfi2OuLsr12JQQR8gNg==",
-      "cpu": [
-        "arm"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "android"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/android-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.17.3.tgz",
-      "integrity": "sha512-XvJsYo3dO3Pi4kpalkyMvfQsjxPWHYjoX4MDiB/FUM4YMfWcXa5l4VCwFWVYI1+92yxqjuqrhNg0CZg3gSouyQ==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "android"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/android-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.17.3.tgz",
-      "integrity": "sha512-nuV2CmLS07Gqh5/GrZLuqkU9Bm6H6vcCspM+zjp9TdQlxJtIe+qqEXQChmfc7nWdyr/yz3h45Utk1tUn8Cz5+A==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "android"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/darwin-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.17.3.tgz",
-      "integrity": "sha512-01Hxaaat6m0Xp9AXGM8mjFtqqwDjzlMP0eQq9zll9U85ttVALGCGDuEvra5Feu/NbP5AEP1MaopPwzsTcUq1cw==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "darwin"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/darwin-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.17.3.tgz",
-      "integrity": "sha512-Eo2gq0Q/er2muf8Z83X21UFoB7EU6/m3GNKvrhACJkjVThd0uA+8RfKpfNhuMCl1bKRfBzKOk6xaYKQZ4lZqvA==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "darwin"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/freebsd-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.17.3.tgz",
-      "integrity": "sha512-CN62ESxaquP61n1ZjQP/jZte8CE09M6kNn3baos2SeUfdVBkWN5n6vGp2iKyb/bm/x4JQzEvJgRHLGd5F5b81w==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "freebsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/freebsd-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.17.3.tgz",
-      "integrity": "sha512-feq+K8TxIznZE+zhdVurF3WNJ/Sa35dQNYbaqM/wsCbWdzXr5lyq+AaTUSER2cUR+SXPnd/EY75EPRjf4s1SLg==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "freebsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-arm": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.17.3.tgz",
-      "integrity": "sha512-CLP3EgyNuPcg2cshbwkqYy5bbAgK+VhyfMU7oIYyn+x4Y67xb5C5ylxsNUjRmr8BX+MW3YhVNm6Lq6FKtRTWHQ==",
-      "cpu": [
-        "arm"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.17.3.tgz",
-      "integrity": "sha512-JHeZXD4auLYBnrKn6JYJ0o5nWJI9PhChA/Nt0G4MvLaMrvXuWnY93R3a7PiXeJQphpL1nYsaMcoV2QtuvRnF/g==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-ia32": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.17.3.tgz",
-      "integrity": "sha512-FyXlD2ZjZqTFh0sOQxFDiWG1uQUEOLbEh9gKN/7pFxck5Vw0qjWSDqbn6C10GAa1rXJpwsntHcmLqydY9ST9ZA==",
-      "cpu": [
-        "ia32"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-loong64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.17.3.tgz",
-      "integrity": "sha512-OrDGMvDBI2g7s04J8dh8/I7eSO+/E7nMDT2Z5IruBfUO/RiigF1OF6xoH33Dn4W/OwAWSUf1s2nXamb28ZklTA==",
-      "cpu": [
-        "loong64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-mips64el": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.17.3.tgz",
-      "integrity": "sha512-DcnUpXnVCJvmv0TzuLwKBC2nsQHle8EIiAJiJ+PipEVC16wHXaPEKP0EqN8WnBe0TPvMITOUlP2aiL5YMld+CQ==",
-      "cpu": [
-        "mips64el"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-ppc64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.17.3.tgz",
-      "integrity": "sha512-BDYf/l1WVhWE+FHAW3FzZPtVlk9QsrwsxGzABmN4g8bTjmhazsId3h127pliDRRu5674k1Y2RWejbpN46N9ZhQ==",
-      "cpu": [
-        "ppc64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-riscv64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.17.3.tgz",
-      "integrity": "sha512-WViAxWYMRIi+prTJTyV1wnqd2mS2cPqJlN85oscVhXdb/ZTFJdrpaqm/uDsZPGKHtbg5TuRX/ymKdOSk41YZow==",
-      "cpu": [
-        "riscv64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-s390x": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.17.3.tgz",
-      "integrity": "sha512-Iw8lkNHUC4oGP1O/KhumcVy77u2s6+KUjieUqzEU3XuWJqZ+AY7uVMrrCbAiwWTkpQHkr00BuXH5RpC6Sb/7Ug==",
-      "cpu": [
-        "s390x"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/linux-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.17.3.tgz",
-      "integrity": "sha512-0AGkWQMzeoeAtXQRNB3s4J1/T2XbigM2/Mn2yU1tQSmQRmHIZdkGbVq2A3aDdNslPyhb9/lH0S5GMTZ4xsjBqg==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "linux"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/netbsd-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.17.3.tgz",
-      "integrity": "sha512-4+rR/WHOxIVh53UIQIICryjdoKdHsFZFD4zLSonJ9RRw7bhKzVyXbnRPsWSfwybYqw9sB7ots/SYyufL1mBpEg==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "netbsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/openbsd-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.17.3.tgz",
-      "integrity": "sha512-cVpWnkx9IYg99EjGxa5Gc0XmqumtAwK3aoz7O4Dii2vko+qXbkHoujWA68cqXjhh6TsLaQelfDO4MVnyr+ODeA==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "openbsd"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/sunos-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.17.3.tgz",
-      "integrity": "sha512-RxmhKLbTCDAY2xOfrww6ieIZkZF+KBqG7S2Ako2SljKXRFi+0863PspK74QQ7JpmWwncChY25JTJSbVBYGQk2Q==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "sunos"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/win32-arm64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.17.3.tgz",
-      "integrity": "sha512-0r36VeEJ4efwmofxVJRXDjVRP2jTmv877zc+i+Pc7MNsIr38NfsjkQj23AfF7l0WbB+RQ7VUb+LDiqC/KY/M/A==",
-      "cpu": [
-        "arm64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "win32"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/win32-ia32": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.17.3.tgz",
-      "integrity": "sha512-wgO6rc7uGStH22nur4aLFcq7Wh86bE9cOFmfTr/yxN3BXvDEdCSXyKkO+U5JIt53eTOgC47v9k/C1bITWL/Teg==",
-      "cpu": [
-        "ia32"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "win32"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@esbuild/win32-x64": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.17.3.tgz",
-      "integrity": "sha512-FdVl64OIuiKjgXBjwZaJLKp0eaEckifbhn10dXWhysMJkWblg3OEEGKSIyhiD5RSgAya8WzP3DNkngtIg3Nt7g==",
-      "cpu": [
-        "x64"
-      ],
-      "dev": true,
-      "license": "MIT",
-      "optional": true,
-      "os": [
-        "win32"
-      ],
-      "engines": {
-        "node": ">=12"
-      }
-    },
-    "node_modules/@types/codemirror": {
-      "version": "5.60.8",
-      "resolved": "https://registry.npmjs.org/@types/codemirror/-/codemirror-5.60.8.tgz",
-      "integrity": "sha512-VjFgDF/eB+Aklcy15TtOTLQeMjTo07k7KAjql8OK5Dirr7a6sJY4T1uVBDuTVG9VEmn1uUsohOpYnVfgC6/jyw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@types/tern": "*"
-      }
-    },
-    "node_modules/@types/estree": {
-      "version": "1.0.9",
-      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
-      "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
-      "dev": true,
-      "license": "MIT"
-    },
-    "node_modules/@types/node": {
-      "version": "16.18.126",
-      "resolved": "https://registry.npmjs.org/@types/node/-/node-16.18.126.tgz",
-      "integrity": "sha512-OTcgaiwfGFBKacvfwuHzzn1KLxH/er8mluiy8/uM3sGXHaRe73RrSIj01jow9t4kJEW633Ov+cOexXeiApTyAw==",
-      "dev": true,
-      "license": "MIT"
-    },
-    "node_modules/@types/tern": {
-      "version": "0.23.9",
-      "resolved": "https://registry.npmjs.org/@types/tern/-/tern-0.23.9.tgz",
-      "integrity": "sha512-ypzHFE/wBzh+BlH6rrBgS5I/Z7RD21pGhZ2rltb/+ZrVM1awdZwjx7hE5XfuYgHWk9uvV5HLZN3SloevCAp3Bw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@types/estree": "*"
-      }
-    },
-    "node_modules/builtin-modules": {
-      "version": "3.3.0",
-      "resolved": "https://registry.npmjs.org/builtin-modules/-/builtin-modules-3.3.0.tgz",
-      "integrity": "sha512-zhaCDicdLuWN5UbN5IMnFqNMhNfo919sH85y2/ea+5Yg9TsTkeZxpL+JLbp6cgYFS4sRLp3YV4S6yDuqVWHYOw==",
-      "dev": true,
-      "license": "MIT",
-      "engines": {
-        "node": ">=6"
-      },
-      "funding": {
-        "url": "https://github.com/sponsors/sindresorhus"
-      }
-    },
-    "node_modules/esbuild": {
-      "version": "0.17.3",
-      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.17.3.tgz",
-      "integrity": "sha512-9n3AsBRe6sIyOc6kmoXg2ypCLgf3eZSraWFRpnkto+svt8cZNuKTkb1bhQcitBcvIqjNiK7K0J3KPmwGSfkA8g==",
-      "dev": true,
-      "hasInstallScript": true,
-      "license": "MIT",
-      "bin": {
-        "esbuild": "bin/esbuild"
-      },
-      "engines": {
-        "node": ">=12"
-      },
-      "optionalDependencies": {
-        "@esbuild/android-arm": "0.17.3",
-        "@esbuild/android-arm64": "0.17.3",
-        "@esbuild/android-x64": "0.17.3",
-        "@esbuild/darwin-arm64": "0.17.3",
-        "@esbuild/darwin-x64": "0.17.3",
-        "@esbuild/freebsd-arm64": "0.17.3",
-        "@esbuild/freebsd-x64": "0.17.3",
-        "@esbuild/linux-arm": "0.17.3",
-        "@esbuild/linux-arm64": "0.17.3",
-        "@esbuild/linux-ia32": "0.17.3",
-        "@esbuild/linux-loong64": "0.17.3",
-        "@esbuild/linux-mips64el": "0.17.3",
-        "@esbuild/linux-ppc64": "0.17.3",
-        "@esbuild/linux-riscv64": "0.17.3",
-        "@esbuild/linux-s390x": "0.17.3",
-        "@esbuild/linux-x64": "0.17.3",
-        "@esbuild/netbsd-x64": "0.17.3",
-        "@esbuild/openbsd-x64": "0.17.3",
-        "@esbuild/sunos-x64": "0.17.3",
-        "@esbuild/win32-arm64": "0.17.3",
-        "@esbuild/win32-ia32": "0.17.3",
-        "@esbuild/win32-x64": "0.17.3"
-      }
-    },
-    "node_modules/moment": {
-      "version": "2.29.4",
-      "resolved": "https://registry.npmjs.org/moment/-/moment-2.29.4.tgz",
-      "integrity": "sha512-5LC9SOxjSc2HF6vO2CyuTDNivEdoz2IvyJJGj6X8DJ0eFyfszE0QiEd+iXmBvUP3WHxSjFH/vIsA0EN00cgr8w==",
-      "dev": true,
-      "license": "MIT",
-      "engines": {
-        "node": "*"
-      }
-    },
-    "node_modules/obsidian": {
-      "version": "1.12.3",
-      "resolved": "https://registry.npmjs.org/obsidian/-/obsidian-1.12.3.tgz",
-      "integrity": "sha512-HxWqe763dOqzXjnNiHmAJTRERN8KILBSqxDSEqbeSr7W8R8Jxezzbca+nz1LiiqXnMpM8lV2jzAezw3CZ4xNUw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@types/codemirror": "5.60.8",
-        "moment": "2.29.4"
-      },
-      "peerDependencies": {
-        "@codemirror/state": "6.5.0",
-        "@codemirror/view": "6.38.6"
-      }
-    },
-    "node_modules/tslib": {
-      "version": "2.4.0",
-      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.4.0.tgz",
-      "integrity": "sha512-d6xOpEDfsi2CZVlPQzGeux8XMwLT9hssAsaPYExaQMuYskwb+x1x7J371tWlbBdWHroy99KnVB6qIkUbs5X3UQ==",
-      "dev": true,
-      "license": "0BSD"
-    },
-    "node_modules/typescript": {
-      "version": "4.7.4",
-      "resolved": "https://registry.npmjs.org/typescript/-/typescript-4.7.4.tgz",
-      "integrity": "sha512-C0WQT0gezHuw6AdY1M2jxUO83Rjf0HP7Sk1DtXj6j1EwkQNZrHAg2XPWlq62oqEhYvONq5pkC2Y9oPljWToLmQ==",
-      "dev": true,
-      "license": "Apache-2.0",
-      "bin": {
-        "tsc": "bin/tsc",
-        "tsserver": "bin/tsserver"
-      },
-      "engines": {
-        "node": ">=4.2.0"
-      }
-    }
-  }
-}
-
-
-=== FILE: ./tsconfig.json ===
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "module": "ESNext",
-    "target": "ES2018",
-    "allowJs": true,
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "strictNullChecks": true,
-    "noUncheckedIndexedAccess": true,
-    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
-  },
-  "include": ["src/**/*.ts"]
-}
 
 === FILE: ./README.md ===
 # Obsidian Sample Plugin
@@ -1638,17 +485,6 @@ If you have multiple URLs, you can also do:
 See https://docs.obsidian.md
 
 
-=== FILE: ./versions.json ===
-{
-	"0.1.0": "1.5.0",
-	"0.2.0": "1.5.0",
-	"0.2.1": "1.5.0",
-	"0.2.2": "1.5.0",
-	"0.2.3": "1.5.0",
-	"0.2.4": "1.5.0"
-}
-
-
 === FILE: ./esbuild.config.mjs ===
 import esbuild from "esbuild";
 import process from "process";
@@ -1691,1463 +527,773 @@ if (prod) {
   await context.watch();
 }
 
-=== FILE: ./src/modal.ts ===
-import { App, FuzzySuggestModal, Modal, Notice, normalizePath } from "obsidian";
-import type MyStudyCompilerPlugin from "./main";
-import {
-  CustomPropertyDraft,
-  KEYS,
-  ProjectGroupTab,
-  QuickFilterMode,
-  ROOT_STATUS_ACTIVE,
-  ROOT_STATUS_DONE,
-  StudyNoteItem,
-  TreeNode,
-} from "./types";
+=== FILE: ./eslint.config.mts ===
+import obsidianmd from 'eslint-plugin-obsidianmd';
+import globals from 'globals';
+import { globalIgnores, defineConfig } from 'eslint/config';
+
+export default defineConfig(
+	globalIgnores([
+		'node_modules',
+		'dist',
+		'esbuild.config.mjs',
+		'version-bump.mjs',
+		'versions.json',
+		'main.js',
+		'package.json',
+		'package-lock.json',
+		'tsconfig.json',
+	]),
+	{
+		languageOptions: {
+			globals: {
+				...globals.browser,
+			},
+			parserOptions: {
+				projectService: {
+					allowDefaultProject: ['eslint.config.mts', 'manifest.json'],
+				},
+				tsconfigRootDir: import.meta.dirname,
+				extraFileExtensions: ['.json'],
+			},
+		},
+	},
+	...obsidianmd.configs.recommended,
+);
+
+
+=== FILE: ./manifest.json ===
+{
+	"id": "my-study-compiler",
+	"name": "Конструктор учебных проектов",
+	"version": "0.3.2",
+	"minAppVersion": "1.5.0",
+	"description": "Рабочее дерево и граф проектов и материалов для заметки «Учёба»: активные и завершённые проекты, свободные типы и свойства",
+	"author": "Mersinho",
+	"isDesktopOnly": false
+}
+
+
+=== FILE: ./package.json ===
+{
+	"name": "my-study-compiler",
+	"version": "0.3.2",
+	"description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"bump": "node version-bump.mjs"
+	},
+	"keywords": [],
+	"author": "Mersinho",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"builtin-modules": "3.3.0",
+		"esbuild": "0.17.3",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "4.7.4"
+	}
+}
+
+
+=== FILE: ./src/graph.ts ===
+import { setIcon } from "obsidian";
+import type { DeadlineTone, StudyNoteItem } from "./types";
 import {
   ScanResult,
-  buildBreadcrumbChain,
-  buildNestedFilteredTree,
   byName,
   collectDescendants,
-  emptyScan,
-  ensureFolder,
-  findCaseInsensitiveTypeMatch,
-  findRootPath,
-  flattenVisibleTree,
   formatDeadlineBadge,
-  formatFullDateTooltip,
   getDeadlineTone,
   getWorkMeta,
-  isReservedYamlKey,
-  normalizeSpaces,
-  parseCustomPropertyValue,
-  scanStudyVault,
-  serializeYamlScalarOrList,
-  todayISO,
 } from "./scanner";
+import { prefersReducedMotion } from "./motion";
 
-export interface OpenOptions {
-  rootPath?: string;
-  addUnder?: string;
+const SVG_NS = "http://www.w3.org/2000/svg";
+const NODE_W = 176;
+const NODE_H = 34;
+const GAP_X = 64;
+const ROW_H = 46;
+const COL_W = NODE_W + GAP_X;
+const MIN_K = 0.1;
+const MAX_K = 2.5;
+const DOUBLE_TAP_MS = 320;
+const DRAG_THRESHOLD = 4;
+const LABEL_MAX_CHARS = 21;
+
+export interface GraphCallbacks {
+  onOpen: (path: string) => void;
+  onFocus: (path: string) => void;
 }
 
-class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
-  private items: StudyNoteItem[];
-  private onPick: (item: StudyNoteItem) => void;
-
-  constructor(app: App, items: StudyNoteItem[], onPick: (item: StudyNoteItem) => void) {
-    super(app);
-    this.items = items;
-    this.onPick = onPick;
-    this.setPlaceholder("Выбери нового родителя…");
-  }
-
-  getItems(): StudyNoteItem[] {
-    return this.items;
-  }
-
-  getItemText(item: StudyNoteItem): string {
-    return `${item.name} · ${item.noteType || "без типа"}`;
-  }
-
-  onChooseItem(item: StudyNoteItem): void {
-    this.onPick(item);
-  }
+interface LayoutNode {
+  item: StudyNoteItem;
+  depth: number;
+  x: number;
+  y: number;
+  children: LayoutNode[];
+  hiddenCount: number;
+  hasKids: boolean;
 }
 
-export class StudyCompilerModal extends Modal {
-  private plugin: MyStudyCompilerPlugin;
-  private options: OpenOptions;
-  private scan: ScanResult = emptyScan();
-  private groupTab: ProjectGroupTab;
-  private selectedPath: string;
-  private focusBranchPath = "";
-  private expanded: Set<string>;
-  private cleanups: Array<() => void> = [];
-  private refreshTimer: number | null = null;
+interface EdgeRef {
+  from: string;
+  to: string;
+  el: SVGPathElement;
+}
 
-  private searchQuery = "";
-  private filterMode: QuickFilterMode = "all";
-  private typeFilter = "";
-  private activeRowIndex = -1;
-  private currentVisibleFlat: TreeNode[] = [];
-  private rowElementByPath = new Map<string, HTMLElement>();
+interface Point {
+  x: number;
+  y: number;
+}
 
-  // Быстрое редактирование типа или свойств конкретного узла дерева
-  private editingNodePath: string | null = null;
-  private editingNodeMode: "type" | "props" | null = null;
+interface Bounds {
+  minX: number;
+  minY: number;
+  w: number;
+  h: number;
+}
 
-  private barEl!: HTMLElement;
-  private searchWrapEl!: HTMLElement;
-  private crumbsEl!: HTMLElement;
-  private formEl!: HTMLElement;
-  private treeEl!: HTMLElement;
-  private datalistsEl!: HTMLElement;
-  private searchInputEl: HTMLInputElement | null = null;
+function svgEl<K extends keyof SVGElementTagNameMap>(
+  doc: Document,
+  tag: K,
+  cls = ""
+): SVGElementTagNameMap[K] {
+  const el = doc.createElementNS(SVG_NS, tag);
+  if (cls) el.setAttribute("class", cls);
+  return el;
+}
 
-  private form: {
-    open: boolean;
-    title: string;
-    type: string;
-    parentPath: string;
-    deadline: string;
-    customProps: CustomPropertyDraft[];
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v));
+}
+
+export class ProjectGraphView {
+  private container: HTMLElement;
+  private callbacks: GraphCallbacks;
+  private doc: Document;
+  private svg: SVGSVGElement;
+  private viewport: SVGGElement;
+  private edgesLayer: SVGGElement;
+  private nodesLayer: SVGGElement;
+  private statEl: HTMLElement;
+  private infoEl: HTMLElement;
+  private infoTitleEl: HTMLElement;
+  private infoSubEl: HTMLElement;
+  private focusBtn: HTMLButtonElement;
+  private toggleAllBtn: HTMLButtonElement;
+
+  private scan: ScanResult | null = null;
+  private branchRoot: StudyNoteItem | null = null;
+  private fresh: Set<string> = new Set();
+  private collapsed = new Set<string>();
+  private selectedPath: string | null = null;
+
+  private placed: LayoutNode[] = [];
+  private nodeByPath = new Map<string, LayoutNode>();
+  private parentOf = new Map<string, string>();
+  private nodeEls = new Map<string, SVGGElement>();
+  private edgeRefs: EdgeRef[] = [];
+  private bounds: Bounds = { minX: 0, minY: 0, w: 1, h: 1 };
+
+  private tx = 0;
+  private ty = 0;
+  private k = 1;
+  private pendingFit = false;
+  private animTimer: number | null = null;
+
+  private pointers = new Map<number, Point>();
+  private downPos: Point = { x: 0, y: 0 };
+  private downTarget: Element | null = null;
+  private moved = false;
+  private lastTapPath: string | null = null;
+  private lastTapAt = 0;
+  private listening = false;
+
+  constructor(container: HTMLElement, callbacks: GraphCallbacks) {
+    this.container = container;
+    this.callbacks = callbacks;
+    this.doc = container.ownerDocument;
+    container.empty();
+
+    this.svg = svgEl(this.doc, "svg", "my-sc-graph-svg");
+    this.viewport = svgEl(this.doc, "g", "my-sc-graph-viewport");
+    this.edgesLayer = svgEl(this.doc, "g", "my-sc-graph-edges");
+    this.nodesLayer = svgEl(this.doc, "g", "my-sc-graph-nodes");
+    this.viewport.appendChild(this.edgesLayer);
+    this.viewport.appendChild(this.nodesLayer);
+    this.svg.appendChild(this.viewport);
+    container.appendChild(this.svg);
+
+    const controls = container.createDiv("my-sc-graph-controls");
+    const addCtrl = (icon: string, title: string, fn: () => void): HTMLButtonElement => {
+      const b = controls.createEl("button", {
+        cls: "my-sc-graph-ctrl",
+        attr: { type: "button", title, "aria-label": title },
+      });
+      setIcon(b, icon);
+      b.onclick = fn;
+      return b;
+    };
+    addCtrl("plus", "Приблизить", () => this.zoomByCenter(1.3));
+    addCtrl("minus", "Отдалить", () => this.zoomByCenter(1 / 1.3));
+    addCtrl("maximize", "Показать всё", () => this.fit(true));
+    this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", () => {
+      if (this.collapsed.size > 0) this.collapsed.clear();
+      else this.collapseDeep();
+      this.rebuild();
+      this.fit(true);
+    });
+
+    this.infoEl = container.createDiv("my-sc-graph-info is-hidden");
+    const infoText = this.infoEl.createDiv("my-sc-graph-info-text");
+    this.infoTitleEl = infoText.createDiv("my-sc-graph-info-title");
+    this.infoSubEl = infoText.createDiv("my-sc-graph-info-sub");
+    const infoBtns = this.infoEl.createDiv("my-sc-graph-info-btns");
+    const openBtn = infoBtns.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Открыть",
+      attr: { type: "button" },
+    });
+    openBtn.onclick = () => {
+      if (this.selectedPath) this.callbacks.onOpen(this.selectedPath);
+    };
+    this.focusBtn = infoBtns.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Фокус",
+      attr: { type: "button", title: "Показать только эту ветку" },
+    });
+    this.focusBtn.onclick = () => {
+      if (this.selectedPath) this.callbacks.onFocus(this.selectedPath);
+    };
+    const clearBtn = infoBtns.createEl("button", {
+      cls: "my-sc-icon-btn",
+      attr: { type: "button", title: "Снять выделение", "aria-label": "Снять выделение" },
+    });
+    setIcon(clearBtn, "x");
+    clearBtn.onclick = () => this.select(null);
+
+    const footer = container.createDiv("my-sc-graph-footer");
+    this.statEl = footer.createSpan("my-sc-graph-stat");
+
+    this.svg.addEventListener("pointerdown", this.onPointerDown);
+    container.addEventListener("wheel", this.onWheel, { passive: false });
+  }
+
+  update(
+    scan: ScanResult,
+    branchRoot: StudyNoteItem,
+    resetView: boolean,
+    fresh: ReadonlySet<string>
+  ): void {
+    this.scan = scan;
+    this.branchRoot = branchRoot;
+    this.fresh = new Set(fresh);
+    if (resetView) {
+      this.collapsed.clear();
+      this.selectedPath = null;
+      this.pendingFit = true;
+    }
+    this.rebuild();
+    if (this.pendingFit) {
+      window.requestAnimationFrame(() => this.tryFit());
+    }
+  }
+
+  clearFresh(): void {
+    this.fresh.clear();
+    this.nodesLayer
+      .querySelectorAll(".is-new")
+      .forEach((el) => el.classList.remove("is-new"));
+  }
+
+  destroy(): void {
+    this.detachDocListeners();
+    this.pointers.clear();
+    if (this.animTimer !== null) {
+      window.clearTimeout(this.animTimer);
+      this.animTimer = null;
+    }
+    this.svg.removeEventListener("pointerdown", this.onPointerDown);
+    this.container.removeEventListener("wheel", this.onWheel);
+    this.container.empty();
+  }
+
+  // ---------- Построение графа ----------
+
+  private rebuild(): void {
+    const scan = this.scan;
+    const root = this.branchRoot;
+    if (!scan || !root) return;
+
+    const visited = new Set<string>([root.path]);
+    const extra: Array<[string, string]> = [];
+
+    const make = (item: StudyNoteItem, depth: number): LayoutNode => {
+      const kidPaths = scan.childrenOf.get(item.path) ?? [];
+      const node: LayoutNode = {
+        item,
+        depth,
+        x: 0,
+        y: 0,
+        children: [],
+        hiddenCount: 0,
+        hasKids: kidPaths.length > 0,
+      };
+      if (!node.hasKids) return node;
+      if (this.collapsed.has(item.path)) {
+        node.hiddenCount = collectDescendants(item.path, scan).size;
+        return node;
+      }
+      const kids = kidPaths
+        .map((p) => scan.byPath.get(p))
+        .filter((x): x is StudyNoteItem => x !== undefined)
+        .sort(byName);
+      for (const kid of kids) {
+        if (visited.has(kid.path)) {
+          extra.push([item.path, kid.path]);
+          continue;
+        }
+        visited.add(kid.path);
+        node.children.push(make(kid, depth + 1));
+      }
+      return node;
+    };
+
+    const tree = make(root, 0);
+
+    let leafIndex = 0;
+    const place = (n: LayoutNode) => {
+      n.x = n.depth * COL_W;
+      if (n.children.length === 0) {
+        n.y = leafIndex * ROW_H;
+        leafIndex += 1;
+        return;
+      }
+      for (const c of n.children) place(c);
+      const first = n.children[0];
+      const last = n.children[n.children.length - 1];
+      n.y = first && last ? (first.y + last.y) / 2 : 0;
+    };
+    place(tree);
+
+    this.placed = [];
+    this.nodeByPath.clear();
+    this.parentOf.clear();
+    const stack: LayoutNode[] = [tree];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (!n) break;
+      this.placed.push(n);
+      this.nodeByPath.set(n.item.path, n);
+      for (const c of n.children) {
+        this.parentOf.set(c.item.path, n.item.path);
+        stack.push(c);
+      }
+    }
+
+    let maxX = 0;
+    let maxY = 0;
+    for (const n of this.placed) {
+      maxX = Math.max(maxX, n.x + NODE_W + 24);
+      maxY = Math.max(maxY, n.y + NODE_H);
+    }
+    this.bounds = { minX: 0, minY: 0, w: Math.max(maxX, 1), h: Math.max(maxY, 1) };
+
+    this.renderLayers(extra);
+
+    if (this.selectedPath && !this.nodeByPath.has(this.selectedPath)) {
+      this.selectedPath = null;
+    }
+    this.applySelection();
+    this.updateInfo();
+    this.syncToggleAll();
+
+    let hiddenTotal = 0;
+    for (const n of this.placed) hiddenTotal += n.hiddenCount;
+    this.statEl.setText(
+      hiddenTotal > 0
+        ? `Узлов: ${this.placed.length} · скрыто: ${hiddenTotal}`
+        : `Узлов: ${this.placed.length}`
+    );
+  }
+
+  private syncToggleAll(): void {
+    const anyCollapsed = this.collapsed.size > 0;
+    const title = anyCollapsed ? "Развернуть все ветки" : "Свернуть ветки";
+    this.toggleAllBtn.empty();
+    setIcon(this.toggleAllBtn, anyCollapsed ? "chevrons-up-down" : "chevrons-down-up");
+    this.toggleAllBtn.setAttribute("title", title);
+    this.toggleAllBtn.setAttribute("aria-label", title);
+  }
+
+  private renderLayers(extra: Array<[string, string]>): void {
+    this.edgesLayer.replaceChildren();
+    this.nodesLayer.replaceChildren();
+    this.nodeEls.clear();
+    this.edgeRefs = [];
+
+    const addEdge = (fromPath: string, toPath: string, isExtra: boolean) => {
+      const a = this.nodeByPath.get(fromPath);
+      const b = this.nodeByPath.get(toPath);
+      if (!a || !b) return;
+      const x1 = a.x + NODE_W;
+      const y1 = a.y + NODE_H / 2;
+      const x2 = b.x;
+      const y2 = b.y + NODE_H / 2;
+      const mx = (x1 + x2) / 2;
+      const path = svgEl(
+        this.doc,
+        "path",
+        "my-sc-gedge" + (isExtra ? " is-extra" : "")
+      );
+      path.setAttribute("d", `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
+      this.edgesLayer.appendChild(path);
+      this.edgeRefs.push({ from: fromPath, to: toPath, el: path });
+    };
+
+    for (const n of this.placed) {
+      for (const c of n.children) addEdge(n.item.path, c.item.path, false);
+    }
+    for (const [from, to] of extra) addEdge(from, to, true);
+
+    for (const n of this.placed) {
+      const item = n.item;
+      const meta = getWorkMeta(item.noteType, item.icon);
+      const tone: DeadlineTone = getDeadlineTone(item);
+      const cls = [
+        "my-sc-gnode",
+        n.depth === 0 ? "is-root" : "",
+        this.fresh.has(item.path) ? "is-new" : "",
+        tone === "overdue" ? "is-overdue" : tone === "soon" ? "is-soon" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const g = svgEl(this.doc, "g", cls);
+      g.setAttribute("transform", `translate(${n.x} ${n.y})`);
+      g.setAttribute("data-path", item.path);
+      g.style.setProperty("--node-color", meta.color);
+
+      const title = this.doc.createElementNS(SVG_NS, "title");
+      title.textContent =
+        `${item.name} · ${item.noteType || "без типа"}` +
+        (item.deadline ? ` · ${formatDeadlineBadge(item)}` : "");
+      g.appendChild(title);
+
+      const body = svgEl(this.doc, "rect", "my-sc-gnode-body");
+      body.setAttribute("width", String(NODE_W));
+      body.setAttribute("height", String(NODE_H));
+      body.setAttribute("rx", "8");
+      g.appendChild(body);
+
+      const stripe = svgEl(this.doc, "rect", "my-sc-gnode-stripe");
+      stripe.setAttribute("width", "4");
+      stripe.setAttribute("height", String(NODE_H));
+      stripe.setAttribute("rx", "2");
+      g.appendChild(stripe);
+
+      const text = svgEl(this.doc, "text", "my-sc-gnode-label");
+      text.setAttribute("x", "14");
+      text.setAttribute("y", String(NODE_H / 2));
+      text.setAttribute("dominant-baseline", "central");
+      text.textContent = truncate(`${meta.icon} ${item.name}`, LABEL_MAX_CHARS);
+      g.appendChild(text);
+
+      if (tone === "overdue" || tone === "soon") {
+        const dot = svgEl(this.doc, "circle", "my-sc-gnode-dot");
+        dot.setAttribute("cx", String(NODE_W - 10));
+        dot.setAttribute("cy", "9");
+        dot.setAttribute("r", "3.5");
+        g.appendChild(dot);
+      }
+
+      if (n.hasKids) {
+        const isCollapsed = this.collapsed.has(item.path);
+        const label = isCollapsed ? `+${n.hiddenCount}` : "−";
+        const w = isCollapsed ? 14 + label.length * 6 : 20;
+        const tg = svgEl(this.doc, "g", "my-sc-gtoggle" + (isCollapsed ? " is-collapsed" : ""));
+        tg.setAttribute("data-toggle", item.path);
+        const pill = svgEl(this.doc, "rect", "my-sc-gtoggle-pill");
+        pill.setAttribute("x", String(NODE_W - w / 2));
+        pill.setAttribute("y", String(NODE_H / 2 - 9));
+        pill.setAttribute("width", String(w));
+        pill.setAttribute("height", "18");
+        pill.setAttribute("rx", "9");
+        const t = svgEl(this.doc, "text", "my-sc-gtoggle-label");
+        t.setAttribute("x", String(NODE_W));
+        t.setAttribute("y", String(NODE_H / 2));
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("dominant-baseline", "central");
+        t.textContent = label;
+        tg.appendChild(pill);
+        tg.appendChild(t);
+        g.appendChild(tg);
+      }
+
+      this.nodesLayer.appendChild(g);
+      this.nodeEls.set(item.path, g);
+    }
+  }
+
+  private collapseDeep(): void {
+    for (const n of this.placed) {
+      if (n.depth >= 1 && n.hasKids) this.collapsed.add(n.item.path);
+    }
+  }
+
+  private toggleCollapse(path: string): void {
+    if (this.collapsed.has(path)) this.collapsed.delete(path);
+    else this.collapsed.add(path);
+    this.rebuild();
+  }
+
+  // ---------- Выделение ----------
+
+  private select(path: string | null): void {
+    this.selectedPath = path;
+    this.applySelection();
+    this.updateInfo();
+  }
+
+  private lineageOf(path: string): Set<string> {
+    const set = new Set<string>([path]);
+    let cur = this.parentOf.get(path);
+    while (cur !== undefined && !set.has(cur)) {
+      set.add(cur);
+      cur = this.parentOf.get(cur);
+    }
+    const node = this.nodeByPath.get(path);
+    const stack: LayoutNode[] = node ? [...node.children] : [];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (!n) break;
+      set.add(n.item.path);
+      for (const c of n.children) stack.push(c);
+    }
+    return set;
+  }
+
+  private applySelection(): void {
+    const sel = this.selectedPath;
+    const lineage = sel ? this.lineageOf(sel) : null;
+    for (const [path, el] of this.nodeEls) {
+      el.classList.toggle("is-selected", path === sel);
+      el.classList.toggle("is-dim", lineage !== null && !lineage.has(path));
+    }
+    for (const e of this.edgeRefs) {
+      const lit = lineage !== null && lineage.has(e.from) && lineage.has(e.to);
+      e.el.classList.toggle("is-lit", lit);
+      e.el.classList.toggle("is-dim", lineage !== null && !lit);
+    }
+  }
+
+  private updateInfo(): void {
+    const node = this.selectedPath ? this.nodeByPath.get(this.selectedPath) : undefined;
+    if (!node) {
+      this.infoEl.addClass("is-hidden");
+      return;
+    }
+    const it = node.item;
+    const meta = getWorkMeta(it.noteType, it.icon);
+    this.infoEl.removeClass("is-hidden");
+    this.infoTitleEl.setText(`${meta.icon} ${it.name}`);
+    const parts = [it.noteType || "без типа"];
+    if (it.deadline) parts.push(formatDeadlineBadge(it));
+    this.infoSubEl.setText(parts.join(" · "));
+    this.focusBtn.disabled = it.path === this.branchRoot?.path;
+  }
+
+  // ---------- Масштаб и сдвиг ----------
+
+  private tryFit(): void {
+    if (this.svg.clientWidth <= 0 || this.svg.clientHeight <= 0) return;
+    this.pendingFit = false;
+    this.fit(false);
+  }
+
+  fit(animate: boolean): void {
+    const w = this.svg.clientWidth;
+    const h = this.svg.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    const pad = 28;
+    const b = this.bounds;
+    const wFit = (w - pad * 2) / b.w;
+    const hFit = (h - pad * 2) / b.h;
+    let k = Math.min(wFit, hFit, 1.1);
+    k = Math.max(k, Math.min(0.55, wFit));
+    this.k = clamp(k, MIN_K, MAX_K);
+    this.tx =
+      b.w * this.k + pad * 2 <= w
+        ? (w - b.w * this.k) / 2 - b.minX * this.k
+        : pad - b.minX * this.k;
+    this.ty =
+      b.h * this.k + pad * 2 <= h
+        ? (h - b.h * this.k) / 2 - b.minY * this.k
+        : pad - b.minY * this.k;
+    this.applyTransform(animate);
+  }
+
+  private applyTransform(animate = false): void {
+    const vp = this.viewport;
+    if (animate && !prefersReducedMotion()) {
+      vp.classList.add("is-animating");
+      if (this.animTimer !== null) window.clearTimeout(this.animTimer);
+      this.animTimer = window.setTimeout(() => {
+        vp.classList.remove("is-animating");
+        this.animTimer = null;
+      }, 260);
+    }
+    vp.style.transform = `translate(${this.tx}px, ${this.ty}px) scale(${this.k})`;
+  }
+
+  private zoomAt(clientX: number, clientY: number, factor: number, animate = false): void {
+    const rect = this.svg.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const nextK = clamp(this.k * factor, MIN_K, MAX_K);
+    const ratio = nextK / this.k;
+    this.tx = px - (px - this.tx) * ratio;
+    this.ty = py - (py - this.ty) * ratio;
+    this.k = nextK;
+    this.applyTransform(animate);
+  }
+
+  private zoomByCenter(factor: number): void {
+    const rect = this.svg.getBoundingClientRect();
+    this.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor, true);
+  }
+
+  private stopAnimation(): void {
+    this.viewport.classList.remove("is-animating");
+  }
+
+  // ---------- Указатель ----------
+
+  private onWheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    this.stopAnimation();
+    const dy = clamp(e.deltaY, -120, 120);
+    this.zoomAt(e.clientX, e.clientY, Math.exp(-dy * 0.002));
   };
 
-  constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
-    super(app);
-    this.plugin = plugin;
-    this.options = options;
-    this.groupTab = plugin.settings.projectGroupTab || "active";
-    this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
-    this.expanded = new Set(plugin.settings.expandedPaths);
-    this.form = {
-      open: false,
-      title: "",
-      type: plugin.settings.lastUsedMaterialType || "Термин",
-      parentPath: "",
-      deadline: "",
-      customProps: [],
-    };
-    this.noRestore();
-  }
-
-  private noRestore() {
-    (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
-  }
-
-  onOpen(): void {
-    this.noRestore();
-    this.modalEl.addClass("my-sc-modal-container");
-    this.contentEl.addClass("my-sc-modal");
-
-    // Только заголовок с отступом справа под родной крестик Obsidian (.modal-close-button)
-    const head = this.contentEl.createDiv("my-sc-head-bar");
-    head.createDiv({ cls: "my-sc-head-title", text: "🎓 Проекты и рабочее дерево" });
-
-    this.datalistsEl = this.contentEl.createDiv("my-sc-datalists-host");
-    this.barEl = this.contentEl.createDiv("my-sc-project-bar");
-    this.searchWrapEl = this.contentEl.createDiv("my-sc-search-panel");
-    this.crumbsEl = this.contentEl.createDiv("my-sc-crumbs-bar");
-    this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
-    this.treeEl = this.contentEl.createDiv("my-sc-body");
-
-    const onKeyDown = (e: KeyboardEvent) => this.handleKeyboardNav(e);
-    this.modalEl.addEventListener("keydown", onKeyDown);
-    this.cleanups.push(() => this.modalEl.removeEventListener("keydown", onKeyDown));
-
-    const onChange = () => this.scheduleRefresh();
-    const r1 = this.app.metadataCache.on("changed", onChange);
-    const r2 = this.app.vault.on("delete", onChange);
-    const r3 = this.app.vault.on("rename", onChange);
-    this.cleanups.push(
-      () => this.app.metadataCache.offref(r1),
-      () => this.app.vault.offref(r2),
-      () => this.app.vault.offref(r3)
-    );
-
-    this.scan = scanStudyVault(this.app, this.plugin.settings);
-    const addUnder = this.options.addUnder;
-    if (addUnder && this.scan.byPath.has(addUnder)) {
-      this.selectedPath = findRootPath(this.scan, addUnder);
-    }
-
-    // Если выбранный/запомненный проект находится в другой вкладке (Активные/Завершённые), переключаемся туда автоматически
-    this.syncGroupTabWithSelectedProject();
-
-    const root = this.getRootInCurrentGroup();
-    if (root) {
-      const savedFocus = this.plugin.settings.focusedBranchByWork[root.path];
-      if (savedFocus && this.scan.byPath.has(savedFocus)) {
-        this.focusBranchPath = savedFocus;
-      }
-    }
-
-    this.renderDatalists();
-    this.renderBar();
-    this.renderSearchPanel();
-    this.renderBreadcrumbs();
-    this.renderTree();
-
-    if (addUnder && this.scan.byPath.has(addUnder)) {
-      this.openForm(addUnder);
+  private onPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    this.stopAnimation();
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pointers.size === 1) {
+      this.downPos = { x: e.clientX, y: e.clientY };
+      this.downTarget = e.target instanceof Element ? e.target : null;
+      this.moved = false;
+      this.attachDocListeners();
     } else {
-      window.setTimeout(() => this.searchInputEl?.focus(), 40);
+      this.moved = true;
     }
-  }
+  };
 
-  onClose(): void {
-    for (const fn of this.cleanups) fn();
-    this.cleanups = [];
-    if (this.refreshTimer !== null) {
-      window.clearTimeout(this.refreshTimer);
-      this.refreshTimer = null;
-    }
-    this.contentEl.empty();
-  }
+  private onPointerMove = (e: PointerEvent): void => {
+    const prev = this.pointers.get(e.pointerId);
+    if (!prev) return;
+    const cur: Point = { x: e.clientX, y: e.clientY };
 
-  private syncGroupTabWithSelectedProject() {
-    if (!this.selectedPath) return;
-    const found = this.scan.roots.find((r) => r.path === this.selectedPath);
-    if (!found) return;
-    const targetGroup: ProjectGroupTab = found.isCompletedRoot ? "completed" : "active";
-    if (this.groupTab !== targetGroup) {
-      this.groupTab = targetGroup;
-      this.plugin.settings.projectGroupTab = targetGroup;
-      this.plugin.requestSaveSettings();
-    }
-  }
-
-  private getRootsForTab(tab: ProjectGroupTab): StudyNoteItem[] {
-    return tab === "completed" ? this.scan.completedRoots : this.scan.activeRoots;
-  }
-
-  private getRootInCurrentGroup(): StudyNoteItem | null {
-    const groupList = this.getRootsForTab(this.groupTab);
-    const direct = groupList.find((r) => r.path === this.selectedPath);
-    if (direct) return direct;
-    const first = groupList[0] ?? null;
-    if (first) {
-      this.selectedPath = first.path;
-      this.plugin.settings.lastWorkPath = first.path;
-      this.plugin.requestSaveSettings();
-    }
-    return first;
-  }
-
-  private scheduleRefresh() {
-    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-    this.refreshTimer = window.setTimeout(() => {
-      this.refreshTimer = null;
-      this.scan = scanStudyVault(this.app, this.plugin.settings);
-      this.renderDatalists();
-      this.renderBar();
-      this.renderSearchPanel();
-      this.renderBreadcrumbs();
-      if (this.form.open) this.renderForm();
-      this.renderTree();
-    }, 220);
-  }
-
-  private renderDatalists() {
-    this.datalistsEl.empty();
-
-    const typeDl = this.datalistsEl.createEl("datalist", {
-      attr: { id: "my-sc-types-datalist" },
-    });
-    for (const t of this.scan.schema.typeCounts) {
-      typeDl.createEl("option", {
-        attr: { value: t.name, label: `${t.name} (${t.count})` },
-      });
-    }
-
-    const keysDl = this.datalistsEl.createEl("datalist", {
-      attr: { id: "my-sc-prop-keys-datalist" },
-    });
-    for (const k of this.scan.schema.propertyKeys) {
-      keysDl.createEl("option", { attr: { value: k } });
-    }
-  }
-
-  private getActiveBranchRoot(projectRoot: StudyNoteItem): StudyNoteItem {
-    if (this.focusBranchPath) {
-      const target = this.scan.byPath.get(this.focusBranchPath);
-      if (target && findRootPath(this.scan, target.path) === projectRoot.path) {
-        return target;
+    if (this.pointers.size === 1) {
+      if (
+        !this.moved &&
+        Math.hypot(cur.x - this.downPos.x, cur.y - this.downPos.y) > DRAG_THRESHOLD
+      ) {
+        this.moved = true;
       }
-    }
-    this.focusBranchPath = "";
-    return projectRoot;
-  }
-
-  private setFocusBranch(projectRoot: StudyNoteItem, branchPath: string) {
-    this.focusBranchPath = branchPath === projectRoot.path ? "" : branchPath;
-    if (this.focusBranchPath) {
-      this.plugin.settings.focusedBranchByWork[projectRoot.path] = this.focusBranchPath;
-    } else {
-      delete this.plugin.settings.focusedBranchByWork[projectRoot.path];
-    }
-    this.plugin.requestSaveSettings();
-    this.activeRowIndex = -1;
-    this.renderBar();
-    this.renderBreadcrumbs();
-    this.renderTree();
-  }
-
-  private saveExpanded() {
-    this.plugin.settings.expandedPaths = [...this.expanded];
-    this.plugin.requestSaveSettings();
-  }
-
-  private handleKeyboardNav(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
-      e.preventDefault();
-      this.searchInputEl?.focus();
-      this.searchInputEl?.select();
+      if (this.moved) {
+        this.tx += cur.x - prev.x;
+        this.ty += cur.y - prev.y;
+        this.applyTransform();
+      }
+      this.pointers.set(e.pointerId, cur);
       return;
     }
 
-    const activeEl = document.activeElement;
-    const inOtherInput =
-      (activeEl instanceof HTMLInputElement && activeEl !== this.searchInputEl) ||
-      activeEl instanceof HTMLSelectElement ||
-      activeEl instanceof HTMLTextAreaElement;
-    if (inOtherInput) return;
-
-    const len = this.currentVisibleFlat.length;
-    if (len === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      this.activeRowIndex = Math.min(len - 1, this.activeRowIndex + 1);
-      this.highlightActiveRow();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      this.activeRowIndex = Math.max(0, this.activeRowIndex - 1);
-      this.highlightActiveRow();
-    } else if (e.key === "Enter" && this.activeRowIndex >= 0) {
-      const picked = this.currentVisibleFlat[this.activeRowIndex];
-      if (picked) {
-        e.preventDefault();
-        this.openNote(picked.item.path);
-      }
-    } else if (
-      (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
-      activeEl !== this.searchInputEl &&
-      this.activeRowIndex >= 0
-    ) {
-      const picked = this.currentVisibleFlat[this.activeRowIndex];
-      if (!picked || !picked.hasChildren) return;
-      e.preventDefault();
-      if (e.key === "ArrowRight") this.expanded.add(picked.item.path);
-      else this.expanded.delete(picked.item.path);
-      this.saveExpanded();
-      this.renderTree();
+    const before = this.metrics();
+    this.pointers.set(e.pointerId, cur);
+    const after = this.metrics();
+    if (before && after && before.dist > 0) {
+      this.tx += after.cx - before.cx;
+      this.ty += after.cy - before.cy;
+      this.zoomAt(after.cx, after.cy, after.dist / before.dist);
     }
+  };
+
+  private onPointerUp = (e: PointerEvent): void => {
+    if (!this.pointers.has(e.pointerId)) return;
+    this.pointers.delete(e.pointerId);
+    if (this.pointers.size === 0) {
+      this.detachDocListeners();
+      const target = this.downTarget;
+      this.downTarget = null;
+      if (!this.moved && e.type === "pointerup") this.handleTap(target);
+    }
+  };
+
+  private metrics(): { cx: number; cy: number; dist: number } | null {
+    const pts = [...this.pointers.values()];
+    const a = pts[0];
+    const b = pts[1];
+    if (!a || !b) return null;
+    return {
+      cx: (a.x + b.x) / 2,
+      cy: (a.y + b.y) / 2,
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+    };
   }
 
-  private highlightActiveRow() {
-    for (const el of this.rowElementByPath.values()) {
-      el.removeClass("is-kb-active");
-    }
-    const picked = this.currentVisibleFlat[this.activeRowIndex];
-    if (!picked) return;
-    const targetEl = this.rowElementByPath.get(picked.item.path);
-    if (targetEl) {
-      targetEl.addClass("is-kb-active");
-      targetEl.scrollIntoView({ block: "nearest" });
-    }
+  private attachDocListeners(): void {
+    if (this.listening) return;
+    this.listening = true;
+    this.doc.addEventListener("pointermove", this.onPointerMove);
+    this.doc.addEventListener("pointerup", this.onPointerUp);
+    this.doc.addEventListener("pointercancel", this.onPointerUp);
   }
 
-  private renderBar() {
-    this.barEl.empty();
+  private detachDocListeners(): void {
+    if (!this.listening) return;
+    this.listening = false;
+    this.doc.removeEventListener("pointermove", this.onPointerMove);
+    this.doc.removeEventListener("pointerup", this.onPointerUp);
+    this.doc.removeEventListener("pointercancel", this.onPointerUp);
+  }
 
-    // 1. Сегмент-переключатель «Активные · N / Завершённые · M»
-    const segRow = this.barEl.createDiv("my-sc-segment-bar");
-    const activeCount = this.scan.activeRoots.length;
-    const completedCount = this.scan.completedRoots.length;
+  private handleTap(target: Element | null): void {
+    if (!target) return;
 
-    const segments: Array<{ id: ProjectGroupTab; label: string }> = [
-      { id: "active", label: `🔥 Активные · ${activeCount}` },
-      { id: "completed", label: `✓ Завершённые · ${completedCount}` },
-    ];
-
-    for (const seg of segments) {
-      const btn = segRow.createEl("button", {
-        cls: "my-sc-segment-btn" + (this.groupTab === seg.id ? " is-active" : ""),
-        text: seg.label,
-        attr: { type: "button" },
-      });
-      btn.onclick = () => {
-        if (this.groupTab === seg.id) return;
-        this.groupTab = seg.id;
-        this.plugin.settings.projectGroupTab = seg.id;
-        const firstInGroup = this.getRootsForTab(seg.id)[0];
-        this.selectedPath = firstInGroup ? firstInGroup.path : "";
-        if (firstInGroup) {
-          this.plugin.settings.lastWorkPath = firstInGroup.path;
-          this.focusBranchPath =
-            this.plugin.settings.focusedBranchByWork[firstInGroup.path] || "";
-        } else {
-          this.focusBranchPath = "";
-        }
-        this.plugin.requestSaveSettings();
-        this.form.open = false;
-        this.formEl.empty();
-        this.activeRowIndex = -1;
-        this.renderBar();
-        this.renderBreadcrumbs();
-        this.renderTree();
-      };
-    }
-
-    const root = this.getRootInCurrentGroup();
-    if (!root) {
-      this.formEl.empty();
-      const emptyBox = this.barEl.createDiv("my-sc-empty-group-box");
-      if (this.groupTab === "active" && completedCount > 0) {
-        emptyBox.createSpan({
-          text: `Активных проектов сейчас нет (в завершённых: ${completedCount}). `,
-        });
-        const switchBtn = emptyBox.createEl("button", {
-          cls: "my-sc-chip-btn",
-          text: "Показать завершённые",
-          attr: { type: "button" },
-        });
-        switchBtn.onclick = () => {
-          this.groupTab = "completed";
-          this.plugin.settings.projectGroupTab = "completed";
-          this.plugin.requestSaveSettings();
-          this.renderBar();
-          this.renderBreadcrumbs();
-          this.renderTree();
-        };
-      } else if (this.groupTab === "completed" && activeCount > 0) {
-        emptyBox.createSpan({
-          text: `Завершённых проектов пока нет (активных: ${activeCount}).`,
-        });
-      } else {
-        emptyBox.setText(
-          `Не найдено проектов с направлением «${this.plugin.settings.studyAreaName}» и без родителя.`
-        );
-      }
+    const toggle = target.closest("[data-toggle]");
+    if (toggle) {
+      const p = toggle.getAttribute("data-toggle");
+      if (p) this.toggleCollapse(p);
       return;
     }
 
-    const branchRoot = this.getActiveBranchRoot(root);
-    const groupRoots = this.getRootsForTab(this.groupTab);
-
-    const row1 = this.barEl.createDiv("my-sc-project-select-wrap");
-    const sel = row1.createEl("select", { cls: "dropdown my-sc-work-select" });
-    for (const r of groupRoots) {
-      const meta = getWorkMeta(r.noteType, r.icon);
-      const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
-      const o = sel.createEl("option", {
-        text: `${meta.icon} ${r.name} (${r.noteType || "Проект"})${dlText}`,
-        value: r.path,
-      });
-      if (r.path === root.path) o.selected = true;
-    }
-    sel.onchange = () => {
-      this.selectedPath = sel.value;
-      this.plugin.settings.lastWorkPath = sel.value;
-      this.focusBranchPath =
-        this.plugin.settings.focusedBranchByWork[sel.value] || "";
-      this.plugin.requestSaveSettings();
-      this.form.open = false;
-      this.formEl.empty();
-      this.activeRowIndex = -1;
-      this.renderBar();
-      this.renderBreadcrumbs();
-      this.renderTree();
-    };
-
-    const toggleRootStatusBtn = row1.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: root.isCompletedRoot ? "↩ В работу" : "✓ Завершить проект",
-      attr: {
-        type: "button",
-        title: root.isCompletedRoot
-          ? "Вернуть корневой проект в список активных"
-          : "Перевести корневой проект в завершённые",
-      },
-    });
-    toggleRootStatusBtn.onclick = () => void this.toggleRootProjectStatus(root);
-
-    const openBtn = row1.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "📄 Открыть",
-      attr: { type: "button", title: "Открыть заметку текущей ветки или проекта" },
-    });
-    openBtn.onclick = () => this.openNote(branchRoot.path);
-
-    const descendants = collectDescendants(branchRoot.path, this.scan);
-    const directKidsCount = (this.scan.childrenOf.get(branchRoot.path) ?? []).length;
-    const summaryRow = this.barEl.createDiv("my-sc-summary-row");
-    const scopePrefix =
-      branchRoot.path !== root.path ? `Ветка «${branchRoot.name}»: ` : "";
-    summaryRow.createSpan({
-      cls: "my-sc-summary-text",
-      text:
-        descendants.size > 0
-          ? `${scopePrefix}материалов в дереве — ${descendants.size} (разделов 1-го уровня: ${directKidsCount})`
-          : `${scopePrefix}материалов пока нет`,
-    });
-    this.renderDeadline(summaryRow, branchRoot);
-
-    const tools = this.barEl.createDiv("my-sc-tools");
-    const addBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn" + (this.form.open ? " is-active" : ""),
-      text: this.form.open ? "✕ Закрыть форму" : "＋ Добавить материал",
-      attr: { type: "button" },
-    });
-    addBtn.onclick = () => {
-      if (this.form.open) {
-        this.form.open = false;
-        this.formEl.empty();
-        this.renderBar();
-      } else {
-        this.openForm(branchRoot.path);
-      }
-    };
-
-    const expandBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "⤢ Развернуть всё",
-      attr: { type: "button" },
-    });
-    expandBtn.onclick = () => {
-      for (const p of collectDescendants(branchRoot.path, this.scan)) {
-        if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
-      }
-      this.saveExpanded();
-      this.renderTree();
-    };
-
-    const collapseBtn = tools.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "⤡ Свернуть всё",
-      attr: { type: "button" },
-    });
-    collapseBtn.onclick = () => {
-      for (const p of collectDescendants(branchRoot.path, this.scan)) {
-        this.expanded.delete(p);
-      }
-      this.saveExpanded();
-      this.renderTree();
-    };
-  }
-
-  private async toggleRootProjectStatus(root: StudyNoteItem) {
-    const nextDone = !root.isCompletedRoot;
-    try {
-      await this.app.fileManager.processFrontMatter(
-        root.file,
-        (fm: Record<string, unknown>) => {
-          fm[KEYS.status] = nextDone ? ROOT_STATUS_DONE : ROOT_STATUS_ACTIVE;
-          if (nextDone && !fm[KEYS.finishedAt]) {
-            fm[KEYS.finishedAt] = todayISO();
-          }
-        }
-      );
-      this.groupTab = nextDone ? "completed" : "active";
-      this.plugin.settings.projectGroupTab = this.groupTab;
-      this.plugin.requestSaveSettings();
-      new Notice(
-        nextDone
-          ? `Проект «${root.name}» перенесён в завершённые`
-          : `Проект «${root.name}» возвращён в активные`
-      );
-    } catch (err: unknown) {
-      new Notice(
-        "Не удалось изменить статус проекта: " +
-          (err instanceof Error ? err.message : String(err))
-      );
-    }
-  }
-
-  private renderSearchPanel() {
-    this.searchWrapEl.empty();
-    const row = this.searchWrapEl.createDiv("my-sc-search-row");
-
-    const inp = row.createEl("input", {
-      cls: "my-sc-search-input",
-      attr: {
-        type: "search",
-        placeholder: "🔍 Поиск по дереву (название, тип, #тег)… ↑/↓ и Enter",
-      },
-    });
-    inp.value = this.searchQuery;
-    this.searchInputEl = inp;
-    inp.oninput = () => {
-      this.searchQuery = inp.value;
-      this.activeRowIndex = 0;
-      this.renderTree();
-    };
-
-    const typeSel = row.createEl("select", {
-      cls: "dropdown my-sc-type-filter",
-      attr: { title: "Фильтр по типу из хранилища" },
-    });
-    typeSel.createEl("option", { text: "Все типы", value: "" });
-    for (const t of this.scan.schema.typeCounts) {
-      const o = typeSel.createEl("option", {
-        text: `${t.name} (${t.count})`,
-        value: t.name,
-      });
-      if (t.name.toLowerCase() === this.typeFilter.toLowerCase()) {
-        o.selected = true;
-      }
-    }
-    typeSel.onchange = () => {
-      this.typeFilter = typeSel.value;
-      this.activeRowIndex = -1;
-      this.renderTree();
-    };
-
-    if (this.scan.orphans.length > 0 || this.filterMode === "orphans") {
-      const chipsRow = this.searchWrapEl.createDiv("my-sc-filter-chips");
-      const modes: Array<{ id: QuickFilterMode; label: string }> = [
-        { id: "all", label: "🌳 Дерево проекта" },
-        {
-          id: "orphans",
-          label: `🧭 Без родителя (${this.scan.orphans.length})`,
-        },
-      ];
-
-      for (const m of modes) {
-        const chip = chipsRow.createEl("button", {
-          cls: "my-sc-filter-chip" + (this.filterMode === m.id ? " is-active" : ""),
-          text: m.label,
-          attr: { type: "button" },
-        });
-        chip.onclick = () => {
-          this.filterMode =
-            this.filterMode === m.id && m.id !== "all" ? "all" : m.id;
-          this.activeRowIndex = -1;
-          this.renderSearchPanel();
-          this.renderTree();
-        };
-      }
-    }
-  }
-
-  private renderBreadcrumbs() {
-    this.crumbsEl.empty();
-    const root = this.getRootInCurrentGroup();
-    if (!root) {
-      this.crumbsEl.addClass("is-hidden");
-      return;
-    }
-    const branchRoot = this.getActiveBranchRoot(root);
-    if (branchRoot.path === root.path) {
-      this.crumbsEl.addClass("is-hidden");
-      return;
-    }
-    this.crumbsEl.removeClass("is-hidden");
-
-    const chain = buildBreadcrumbChain(this.scan, root.path, branchRoot.path);
-    this.crumbsEl.createSpan({ cls: "my-sc-crumbs-label", text: "Фокус ветки:" });
-
-    chain.forEach((node, idx) => {
-      if (idx > 0) {
-        this.crumbsEl.createSpan({ cls: "my-sc-crumb-sep", text: "›" });
-      }
-      const isLast = idx === chain.length - 1;
-      const btn = this.crumbsEl.createEl("button", {
-        cls: "my-sc-crumb-btn" + (isLast ? " is-current" : ""),
-        text: idx === 0 ? `🏠 ${node.name}` : node.name,
-        attr: { type: "button" },
-      });
-      btn.onclick = () => this.setFocusBranch(root, node.path);
-    });
-
-    const resetBtn = this.crumbsEl.createEl("button", {
-      cls: "my-sc-crumb-reset",
-      text: "✕ Весь проект",
-      attr: { type: "button", title: "Вернуться ко всему дереву проекта" },
-    });
-    resetBtn.onclick = () => this.setFocusBranch(root, root.path);
-  }
-
-  private openForm(parentPath: string) {
-    const root = this.getRootInCurrentGroup();
-    if (!root) return;
-    this.form.open = true;
-    this.form.type =
-      this.plugin.settings.lastUsedMaterialType ||
-      this.scan.schema.typeCounts[0]?.name ||
-      "Термин";
-    this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
-    this.renderBar();
-    this.renderForm();
-  }
-
-  private renderForm() {
-    this.formEl.empty();
-    if (!this.form.open) return;
-    const root = this.getRootInCurrentGroup();
-    if (!root) return;
-
-    const box = this.formEl.createDiv("my-sc-add-box");
-    const topRow = box.createDiv("my-sc-form-row");
-
-    // 3.1. Свободное поле «Тип» с подсказками из реальных типов хранилища
-    const typeWrap = topRow.createDiv("my-sc-type-input-wrap");
-    const typeInp = typeWrap.createEl("input", {
-      cls: "my-sc-type-input",
-      attr: {
-        type: "text",
-        list: "my-sc-types-datalist",
-        placeholder: "Тип (Термин, Расчёт, Схема…)",
-        title: "Впиши любой тип или выбери из подсказок",
-      },
-    });
-    typeInp.value = this.form.type;
-
-    const caseHintEl = box.createDiv("my-sc-case-hint is-hidden");
-
-    const updateCaseHint = () => {
-      const existingCase = findCaseInsensitiveTypeMatch(
-        typeInp.value,
-        this.scan.schema.typeCounts
-      );
-      caseHintEl.empty();
-      if (!existingCase) {
-        caseHintEl.addClass("is-hidden");
-        return;
-      }
-      caseHintEl.removeClass("is-hidden");
-      caseHintEl.createSpan({
-        text: `В базе уже есть тип «${existingCase}». `,
-      });
-      const useExistingBtn = caseHintEl.createEl("button", {
-        cls: "my-sc-inline-link-btn",
-        text: `Использовать «${existingCase}»`,
-        attr: { type: "button" },
-      });
-      useExistingBtn.onclick = () => {
-        this.form.type = existingCase;
-        typeInp.value = existingCase;
-        caseHintEl.addClass("is-hidden");
-      };
-    };
-
-    typeInp.oninput = () => {
-      this.form.type = typeInp.value;
-      updateCaseHint();
-    };
-    updateCaseHint();
-
-    const titleInp = topRow.createEl("input", {
-      cls: "my-sc-input",
-      attr: { type: "text", placeholder: "Название темы или материала…" },
-    });
-    titleInp.value = this.form.title;
-    titleInp.oninput = () => {
-      this.form.title = titleInp.value;
-    };
-
-    const parentSel = topRow.createEl("select", {
-      cls: "dropdown my-sc-parent-select",
-    });
-    parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
-    const allTree = buildNestedFilteredTree(root, this.scan, null, {
-      query: "",
-      mode: "all",
-      typeFilter: "",
-    });
-    for (const n of flattenVisibleTree(allTree)) {
-      parentSel.createEl("option", {
-        text: `${"\u00A0\u00A0".repeat(n.depth + 1)}↳ ${n.item.name}`,
-        value: n.item.path,
-      });
-    }
-    parentSel.value = this.form.parentPath;
-    if (parentSel.value !== this.form.parentPath) {
-      this.form.parentPath = root.path;
-      parentSel.value = root.path;
-    }
-    parentSel.onchange = () => {
-      this.form.parentPath = parentSel.value;
-    };
-
-    const dateInp = topRow.createEl("input", {
-      cls: "my-sc-date",
-      attr: { type: "date", title: "Дедлайн (необязательно)" },
-    });
-    dateInp.value = this.form.deadline;
-    dateInp.onchange = () => {
-      this.form.deadline = dateInp.value;
-    };
-
-    // Быстрые чипы самых частых типов
-    if (this.scan.schema.typeCounts.length > 0) {
-      const quickTypesRow = box.createDiv("my-sc-quick-types-row");
-      quickTypesRow.createSpan({
-        cls: "my-sc-quick-types-label",
-        text: "Частые типы:",
-      });
-      for (const tc of this.scan.schema.typeCounts.slice(0, 7)) {
-        const chip = quickTypesRow.createEl("button", {
-          cls:
-            "my-sc-filter-chip" +
-            (normalizeSpaces(this.form.type).toLowerCase() ===
-            tc.name.toLowerCase()
-              ? " is-active"
-              : ""),
-          text: `${tc.name} (${tc.count})`,
-          attr: { type: "button" },
-        });
-        chip.onclick = () => {
-          this.form.type = tc.name;
-          this.renderForm();
-        };
-      }
-    }
-
-    // 3.2. Произвольные свойства при создании
-    const propsSection = box.createDiv("my-sc-props-section");
-    for (let i = 0; i < this.form.customProps.length; i++) {
-      const draft = this.form.customProps[i];
-      if (!draft) continue;
-      const pRow = propsSection.createDiv("my-sc-prop-row");
-      const valDatalistId = `my-sc-val-dl-${draft.id}`;
-
-      const keyInp = pRow.createEl("input", {
-        cls: "my-sc-prop-key",
-        attr: {
-          type: "text",
-          list: "my-sc-prop-keys-datalist",
-          placeholder: "Ключ (напр. источник, автор)…",
-        },
-      });
-      keyInp.value = draft.key;
-
-      const valDl = pRow.createEl("datalist", { attr: { id: valDatalistId } });
-      const populateValSuggestions = (kName: string) => {
-        valDl.empty();
-        const vals = this.scan.schema.valuesByKey.get(normalizeSpaces(kName)) ?? [];
-        for (const v of vals.slice(0, 25)) {
-          valDl.createEl("option", { attr: { value: v } });
-        }
-      };
-      populateValSuggestions(draft.key);
-
-      keyInp.oninput = () => {
-        draft.key = keyInp.value;
-        populateValSuggestions(draft.key);
-      };
-
-      const valInp = pRow.createEl("input", {
-        cls: "my-sc-prop-val",
-        attr: {
-          type: "text",
-          list: valDatalistId,
-          placeholder:
-            draft.kind === "list"
-              ? "Значения через запятую…"
-              : "Значение (дата ГГГГ-ММ-ДД, число или текст)…",
-        },
-      });
-      valInp.value = draft.value;
-      valInp.oninput = () => {
-        draft.value = valInp.value;
-      };
-
-      const kindSel = pRow.createEl("select", {
-        cls: "dropdown my-sc-prop-kind",
-        attr: { title: "Формат записи в YAML" },
-      });
-      kindSel.createEl("option", { text: "Значение", value: "auto" });
-      kindSel.createEl("option", { text: "Список (,)", value: "list" });
-      kindSel.value = draft.kind;
-      kindSel.onchange = () => {
-        draft.kind = kindSel.value === "list" ? "list" : "auto";
-        valInp.placeholder =
-          draft.kind === "list"
-            ? "Значения через запятую…"
-            : "Значение (дата ГГГГ-ММ-ДД, число или текст)…";
-      };
-
-      const delBtn = pRow.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "✕",
-        attr: { type: "button", title: "Удалить свойство" },
-      });
-      delBtn.onclick = () => {
-        this.form.customProps.splice(i, 1);
-        this.renderForm();
-      };
-    }
-
-    const actionsRow = box.createDiv("my-sc-form-actions");
-    const addPropBtn = actionsRow.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "＋ Свойство",
-      attr: { type: "button" },
-    });
-    addPropBtn.onclick = () => {
-      this.form.customProps.push({
-        id: String(Date.now() + Math.random()),
-        key: "",
-        value: "",
-        kind: "auto",
-      });
-      this.renderForm();
-    };
-
-    const createBtn = actionsRow.createEl("button", {
-      cls: "mod-cta my-sc-action-btn",
-      text: "Создать материал",
-      attr: { type: "button" },
-    });
-
-    const submit = async () => {
-      createBtn.disabled = true;
-      const ok = await this.createNote(root);
-      if (ok) {
-        this.form.title = "";
-        this.form.deadline = "";
-        this.form.customProps = [];
-        this.renderForm();
-      } else {
-        createBtn.disabled = false;
-      }
-    };
-    createBtn.onclick = () => void submit();
-    titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !e.isComposing) void submit();
-    });
-    titleInp.focus();
-  }
-
-  private async createNote(root: StudyNoteItem): Promise<boolean> {
-    const cleanTitle = normalizeSpaces(this.form.title).replace(/[\\/:*?"<>|]/g, "");
-    if (!cleanTitle) {
-      new Notice("Введи название материала.");
-      return false;
-    }
-
-    const normalizedType = normalizeSpaces(this.form.type) || "Материал";
-
-    // Валидация произвольных свойств перед созданием файла
-    const seenKeysLower = new Set<string>([
-      KEYS.area.toLowerCase(),
-      KEYS.type.toLowerCase(),
-      KEYS.parent.toLowerCase(),
-    ]);
-    if (root.discipline) seenKeysLower.add(KEYS.discipline.toLowerCase());
-    if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
-      seenKeysLower.add(KEYS.deadline.toLowerCase());
-    }
-
-    const preparedProps: Array<{ key: string; serialized: string }> = [];
-
-    for (const draft of this.form.customProps) {
-      const k = normalizeSpaces(draft.key);
-      const parsedVal = parseCustomPropertyValue(draft.value, draft.kind);
-      if (!k && parsedVal === undefined) continue;
-      if (!k) {
-        new Notice("Укажи имя ключа для добавленного свойства или удали пустую строку.");
-        return false;
-      }
-      if (isReservedYamlKey(k)) {
-        new Notice(
-          `Ключ «${k}» задаётся основными полями формы. Удали его из дополнительных свойств.`
-        );
-        return false;
-      }
-      const kLow = k.toLowerCase();
-      if (seenKeysLower.has(kLow)) {
-        new Notice(`Дублирующийся ключ свойства «${k}». Оставь только одно поле.`);
-        return false;
-      }
-      if (parsedVal === undefined) continue; // Пустые значения не записываем совсем
-
-      seenKeysLower.add(kLow);
-      preparedProps.push({
-        key: k,
-        serialized: serializeYamlScalarOrList(parsedVal),
-      });
-    }
-
-    const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
-    const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
-    if (this.app.vault.getAbstractFileByPath(targetPath)) {
-      new Notice(`Заметка «${cleanTitle}» уже есть в папке ${folder}.`);
-      return false;
-    }
-    const parent = this.scan.byPath.get(this.form.parentPath) ?? root;
-
-    try {
-      await ensureFolder(this.app, folder);
-      const link = this.app.metadataCache.fileToLinktext(parent.file, targetPath);
-      const lines = [
-        "---",
-        `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
-        `${KEYS.type}: ${JSON.stringify(normalizedType)}`,
-        `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
-      ];
-      if (root.discipline) {
-        lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
-      }
-      if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
-        lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
-      }
-      for (const prop of preparedProps) {
-        lines.push(`${prop.key}: ${prop.serialized}`);
-      }
-      lines.push("---", "", `# ${cleanTitle}`, "", "");
-      await this.app.vault.create(targetPath, lines.join("\n"));
-
-      this.plugin.settings.lastUsedMaterialType = normalizedType;
-      this.expanded.add(parent.path);
-      this.saveExpanded();
-      new Notice(`Создано: «${cleanTitle}» (${normalizedType})`);
-      return true;
-    } catch (err: unknown) {
-      new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
-      return false;
-    }
-  }
-
-  private renderDeadline(parent: HTMLElement, item: StudyNoteItem) {
-    if (!item.deadline) return;
-    const tone = getDeadlineTone(item);
-    const cls =
-      tone === "overdue"
-        ? " is-overdue"
-        : tone === "soon"
-          ? " is-soon"
-          : " is-far";
-    parent.createSpan({
-      cls: "my-sc-deadline" + cls,
-      text: `⏳ ${formatDeadlineBadge(item)}`,
-      attr: {
-        title: formatFullDateTooltip(item.deadline),
-      },
-    });
-  }
-
-  private renderHighlightedTitle(container: HTMLElement, text: string, query: string) {
-    const cleanQ = query
-      .trim()
-      .split(/\s+/)
-      .filter((t) => !t.startsWith("#"))[0];
-    if (!cleanQ) {
-      container.setText(text);
-      return;
-    }
-    const lowerText = text.toLowerCase();
-    const lowerQ = cleanQ.toLowerCase();
-    const idx = lowerText.indexOf(lowerQ);
-    if (idx === -1) {
-      container.setText(text);
-      return;
-    }
-    if (idx > 0) container.appendText(text.slice(0, idx));
-    container.createEl("mark", {
-      cls: "my-sc-hl",
-      text: text.slice(idx, idx + cleanQ.length),
-    });
-    if (idx + cleanQ.length < text.length) {
-      container.appendText(text.slice(idx + cleanQ.length));
-    }
-  }
-
-  private openNote(path: string) {
-    this.noRestore();
-    this.close();
-    void this.app.workspace.openLinkText(path, "", false);
-  }
-
-  private renderTree() {
-    const scrollTop = this.treeEl.scrollTop;
-    this.treeEl.empty();
-    this.rowElementByPath.clear();
-    const root = this.getRootInCurrentGroup();
-    if (!root) return;
-
-    const branchRoot = this.getActiveBranchRoot(root);
-    const nestedNodes = buildNestedFilteredTree(
-      branchRoot,
-      this.scan,
-      this.expanded,
-      {
-        query: this.searchQuery,
-        mode: this.filterMode,
-        typeFilter: this.typeFilter,
-      }
-    );
-    this.currentVisibleFlat = flattenVisibleTree(nestedNodes);
-
-    if (nestedNodes.length === 0) {
-      const hasFilters =
-        this.searchQuery.trim().length > 0 ||
-        this.filterMode !== "all" ||
-        this.typeFilter.length > 0;
-      this.treeEl.createDiv({
-        cls: "my-sc-empty",
-        text: hasFilters
-          ? "По текущему запросу или фильтру ничего не найдено."
-          : "В этой ветке пока нет материалов. Нажми «＋ Добавить материал».",
-      });
+    const nodeEl = target.closest("[data-path]");
+    const path = nodeEl ? nodeEl.getAttribute("data-path") : null;
+    if (!path) {
+      this.select(null);
       return;
     }
 
-    const listEl = this.treeEl.createDiv("my-sc-tree-list");
-    for (const node of nestedNodes) {
-      this.renderNodeGroup(listEl, node, root);
-    }
-
-    if (this.activeRowIndex >= 0) {
-      this.highlightActiveRow();
-    }
-    this.treeEl.scrollTop = scrollTop;
-  }
-
-  private renderNodeGroup(
-    parentContainer: HTMLElement,
-    node: TreeNode,
-    projectRoot: StudyNoteItem
-  ) {
-    const item = node.item;
-    const depthSlot = node.depth % 5;
-
-    const groupEl = parentContainer.createDiv({
-      cls:
-        "my-sc-node-group" +
-        ` is-depth-${depthSlot}` +
-        (node.hasChildren ? " is-branch" : " is-leaf") +
-        (node.isExpanded ? " is-expanded" : " is-collapsed"),
-    });
-
-    const row = groupEl.createDiv({
-      cls:
-        "my-sc-tree-row" +
-        (node.hasChildren ? " is-parent-row" : "") +
-        (node.isExpanded ? " is-open-parent" : "") +
-        (node.isDirectMatch ? " is-match" : ""),
-    });
-    this.rowElementByPath.set(item.path, row);
-
-    const left = row.createDiv("my-sc-tree-left");
-
-    if (node.hasChildren) {
-      const toggleBtn = left.createEl("button", {
-        cls: "my-sc-toggle-btn" + (node.isExpanded ? " is-open" : ""),
-        text: "▸",
-        attr: {
-          type: "button",
-          title: node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
-          "aria-label": node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
-          "aria-expanded": String(node.isExpanded),
-        },
-      });
-      toggleBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (this.expanded.has(item.path)) this.expanded.delete(item.path);
-        else this.expanded.add(item.path);
-        this.saveExpanded();
-        this.renderTree();
-      };
-    } else {
-      const dotWrap = left.createSpan("my-sc-leaf-marker");
-      dotWrap.createSpan("my-sc-leaf-dot");
-    }
-
-    const title = left.createSpan({
-      cls: "my-sc-node-title",
-      attr: { title: `${item.name} (${item.path})` },
-    });
-    this.renderHighlightedTitle(title, item.name, this.searchQuery);
-    title.onclick = () => this.openNote(item.path);
-
-    // Кликабельный бейдж типа: позволяет быстро сменить тип существующей заметки прямо из дерева
-    const meta = getWorkMeta(item.noteType, item.icon);
-    const badge = left.createEl("button", {
-      cls: "my-sc-type-badge",
-      text: `${meta.icon} ${item.noteType || "без типа"}`,
-      attr: {
-        type: "button",
-        title: "Нажми, чтобы изменить тип заметки",
-      },
-    });
-    badge.style.setProperty("--badge-color", meta.color);
-    badge.onclick = (e) => {
-      e.stopPropagation();
-      if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
-        this.editingNodePath = null;
-        this.editingNodeMode = null;
-      } else {
-        this.editingNodePath = item.path;
-        this.editingNodeMode = "type";
-      }
-      this.renderTree();
-    };
-
-    if (item.parentPaths.length > 1) {
-      left.createSpan({
-        cls: "my-sc-multi-parent",
-        text: `×${item.parentPaths.length}`,
-        attr: { title: `Привязана к ${item.parentPaths.length} родителям` },
-      });
-    }
-
-    const right = row.createDiv("my-sc-tree-right");
-    this.renderDeadline(right, item);
-
-    if (node.hasChildren) {
-      const countPill = right.createEl("button", {
-        cls:
-          "my-sc-subcount-pill" +
-          (node.isExpanded ? " is-expanded" : " is-collapsed"),
-        text: node.isExpanded
-          ? `▾ ${node.descendantCount}`
-          : `+${node.descendantCount} внутри`,
-        attr: {
-          type: "button",
-          title: node.isExpanded
-            ? `Вложено элементов в ветке: ${node.descendantCount} (нажми, чтобы свернуть)`
-            : `Скрыто вложенных элементов: ${node.descendantCount} (нажми, чтобы раскрыть)`,
-        },
-      });
-      countPill.onclick = (e) => {
-        e.stopPropagation();
-        if (this.expanded.has(item.path)) this.expanded.delete(item.path);
-        else this.expanded.add(item.path);
-        this.saveExpanded();
-        this.renderTree();
-      };
-
-      const focusBtn = right.createEl("button", {
-        cls: "my-sc-move-btn",
-        text: "🎯",
-        attr: { type: "button", title: "Сфокусироваться только на этой ветке" },
-      });
-      focusBtn.onclick = () => this.setFocusBranch(projectRoot, item.path);
-    }
-
-    const propEditBtn = right.createEl("button", {
-      cls:
-        "my-sc-move-btn" +
-        (this.editingNodePath === item.path && this.editingNodeMode === "props"
-          ? " is-active"
-          : ""),
-      text: "⚙",
-      attr: {
-        type: "button",
-        title: "Изменить тип или добавить/обновить YAML-свойство заметки",
-      },
-    });
-    propEditBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (this.editingNodePath === item.path && this.editingNodeMode === "props") {
-        this.editingNodePath = null;
-        this.editingNodeMode = null;
-      } else {
-        this.editingNodePath = item.path;
-        this.editingNodeMode = "props";
-      }
-      this.renderTree();
-    };
-
-    const addBtn = right.createEl("button", {
-      cls: "my-sc-move-btn",
-      text: "＋",
-      attr: { type: "button", title: "Добавить вложенный материал сюда" },
-    });
-    addBtn.onclick = () => this.openForm(item.path);
-
-    const moveBtn = right.createEl("button", {
-      cls: "my-sc-move-btn",
-      text: "⇄",
-      attr: { type: "button", title: "Сменить родителя" },
-    });
-    moveBtn.onclick = () => this.openMovePicker(item);
-
-    // Компактная панель быстрого изменения типа или свойства у существующей заметки
-    if (this.editingNodePath === item.path && this.editingNodeMode) {
-      this.renderInlineNodeEditor(groupEl, item);
-    }
-
-    if (node.isExpanded && node.children.length > 0) {
-      const childrenWrap = groupEl.createDiv("my-sc-children-container");
-      for (const child of node.children) {
-        this.renderNodeGroup(childrenWrap, child, projectRoot);
-      }
-    }
-  }
-
-  private renderInlineNodeEditor(parentGroup: HTMLElement, item: StudyNoteItem) {
-    const editorBox = parentGroup.createDiv("my-sc-inline-editor");
-
-    if (this.editingNodeMode === "type") {
-      editorBox.createSpan({ cls: "my-sc-inline-label", text: "Тип:" });
-      const inp = editorBox.createEl("input", {
-        cls: "my-sc-type-input",
-        attr: {
-          type: "text",
-          list: "my-sc-types-datalist",
-          value: item.noteType,
-          placeholder: "Новый тип…",
-        },
-      });
-      const saveBtn = editorBox.createEl("button", {
-        cls: "mod-cta my-sc-chip-btn",
-        text: "Сохранить",
-        attr: { type: "button" },
-      });
-      const cancelBtn = editorBox.createEl("button", {
-        cls: "my-sc-chip-btn",
-        text: "Отмена",
-        attr: { type: "button" },
-      });
-
-      const applyType = async () => {
-        const nextType = normalizeSpaces(inp.value);
-        if (!nextType) {
-          new Notice("Введи название типа.");
-          return;
-        }
-        try {
-          await this.app.fileManager.processFrontMatter(
-            item.file,
-            (fm: Record<string, unknown>) => {
-              fm[KEYS.type] = nextType;
-            }
-          );
-          this.plugin.settings.lastUsedMaterialType = nextType;
-          this.plugin.requestSaveSettings();
-          this.editingNodePath = null;
-          this.editingNodeMode = null;
-          new Notice(`Тип «${item.name}» → ${nextType}`);
-        } catch (err: unknown) {
-          new Notice(
-            "Ошибка записи YAML: " +
-              (err instanceof Error ? err.message : String(err))
-          );
-        }
-      };
-
-      saveBtn.onclick = () => void applyType();
-      cancelBtn.onclick = () => {
-        this.editingNodePath = null;
-        this.editingNodeMode = null;
-        this.renderTree();
-      };
-      inp.addEventListener("keydown", (e: KeyboardEvent) => {
-        if (e.key === "Enter") void applyType();
-      });
-      window.setTimeout(() => inp.focus(), 20);
+    const now = Date.now();
+    if (this.lastTapPath === path && now - this.lastTapAt < DOUBLE_TAP_MS) {
+      this.lastTapPath = null;
+      this.callbacks.onOpen(path);
       return;
     }
-
-    // Режим добавления/обновления произвольного свойства у существующей заметки
-    editorBox.createSpan({ cls: "my-sc-inline-label", text: "Свойство YAML:" });
-    const dlId = `my-sc-inline-val-${Date.now()}`;
-    const keyInp = editorBox.createEl("input", {
-      cls: "my-sc-prop-key",
-      attr: {
-        type: "text",
-        list: "my-sc-prop-keys-datalist",
-        placeholder: "Ключ (напр. источник)…",
-      },
-    });
-    const valDl = editorBox.createEl("datalist", { attr: { id: dlId } });
-    keyInp.oninput = () => {
-      valDl.empty();
-      const vals =
-        this.scan.schema.valuesByKey.get(normalizeSpaces(keyInp.value)) ?? [];
-      for (const v of vals.slice(0, 25)) {
-        valDl.createEl("option", { attr: { value: v } });
-      }
-    };
-
-    const valInp = editorBox.createEl("input", {
-      cls: "my-sc-prop-val",
-      attr: {
-        type: "text",
-        list: dlId,
-        placeholder: "Значение (пусто = удалить ключ)…",
-      },
-    });
-
-    const kindSel = editorBox.createEl("select", {
-      cls: "dropdown my-sc-prop-kind",
-    });
-    kindSel.createEl("option", { text: "Значение", value: "auto" });
-    kindSel.createEl("option", { text: "Список (,)", value: "list" });
-
-    const saveBtn = editorBox.createEl("button", {
-      cls: "mod-cta my-sc-chip-btn",
-      text: "Записать",
-      attr: { type: "button" },
-    });
-    const cancelBtn = editorBox.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "Отмена",
-      attr: { type: "button" },
-    });
-
-    const applyProp = async () => {
-      const k = normalizeSpaces(keyInp.value);
-      if (!k) {
-        new Notice("Укажи ключ свойства.");
-        return;
-      }
-      if (isReservedYamlKey(k)) {
-        new Notice(
-          `Служебный ключ «${k}» меняется через кнопку типа или смены родителя.`
-        );
-        return;
-      }
-      const kind = kindSel.value === "list" ? "list" : "auto";
-      const parsedVal = parseCustomPropertyValue(valInp.value, kind);
-
-      try {
-        await this.app.fileManager.processFrontMatter(
-          item.file,
-          (fm: Record<string, unknown>) => {
-            if (parsedVal === undefined) {
-              delete fm[k];
-            } else {
-              fm[k] = parsedVal;
-            }
-          }
-        );
-        this.editingNodePath = null;
-        this.editingNodeMode = null;
-        new Notice(
-          parsedVal === undefined
-            ? `Свойство «${k}» удалено из «${item.name}»`
-            : `Записано «${k}» в «${item.name}»`
-        );
-      } catch (err: unknown) {
-        new Notice(
-          "Ошибка записи YAML: " +
-            (err instanceof Error ? err.message : String(err))
-        );
-      }
-    };
-
-    saveBtn.onclick = () => void applyProp();
-    cancelBtn.onclick = () => {
-      this.editingNodePath = null;
-      this.editingNodeMode = null;
-      this.renderTree();
-    };
-    window.setTimeout(() => keyInp.focus(), 20);
-  }
-
-  private openMovePicker(item: StudyNoteItem) {
-    const forbidden = collectDescendants(item.path, this.scan);
-    forbidden.add(item.path);
-    const candidates = [...this.scan.byPath.values()]
-      .filter((c) => !forbidden.has(c.path))
-      .sort(byName);
-    new ParentPickerModal(this.app, candidates, (target) => {
-      void this.setParent(item, target);
-    }).open();
-  }
-
-  private async setParent(item: StudyNoteItem, target: StudyNoteItem) {
-    try {
-      const link = this.app.metadataCache.fileToLinktext(target.file, item.path);
-      await this.app.fileManager.processFrontMatter(
-        item.file,
-        (fm: Record<string, unknown>) => {
-          fm[KEYS.parent] = `[[${link}]]`;
-        }
-      );
-      this.expanded.add(target.path);
-      this.saveExpanded();
-      new Notice(`«${item.name}» → «${target.name}»`);
-    } catch (err: unknown) {
-      new Notice("Не удалось сменить родителя: " + (err instanceof Error ? err.message : String(err)));
-    }
+    this.lastTapPath = path;
+    this.lastTapAt = now;
+    this.select(path);
   }
 }
 
@@ -3345,6 +1491,1670 @@ export default class MyStudyCompilerPlugin extends Plugin {
       this.saveTimer = null;
     }
   }
+}
+
+=== FILE: ./src/modal.ts ===
+import { App, FuzzySuggestModal, Menu, Modal, Notice, normalizePath, setIcon } from "obsidian";
+import type MyStudyCompilerPlugin from "./main";
+import {
+  CustomPropertyDraft,
+  KEYS,
+  ProjectGroupTab,
+  QuickFilterMode,
+  ROOT_STATUS_ACTIVE,
+  ROOT_STATUS_DONE,
+  StudyNoteItem,
+  TreeNode,
+} from "./types";
+import {
+  ScanResult,
+  buildBreadcrumbChain,
+  buildNestedFilteredTree,
+  byName,
+  collectDescendants,
+  emptyScan,
+  ensureFolder,
+  findCaseInsensitiveTypeMatch,
+  findRootPath,
+  flattenVisibleTree,
+  formatDeadlineBadge,
+  formatFullDateTooltip,
+  getDeadlineTone,
+  getWorkMeta,
+  isReservedYamlKey,
+  normalizeSpaces,
+  parseCustomPropertyValue,
+  scanStudyVault,
+  serializeYamlScalarOrList,
+  todayISO,
+} from "./scanner";
+import { animateClose, animateOpen, prefersReducedMotion } from "./motion";
+import { ProjectGraphView } from "./graph";
+
+export interface OpenOptions {
+  rootPath?: string;
+  addUnder?: string;
+}
+
+type ViewMode = "tree" | "graph";
+
+class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
+  private items: StudyNoteItem[];
+  private onPick: (item: StudyNoteItem) => void;
+
+  constructor(app: App, items: StudyNoteItem[], onPick: (item: StudyNoteItem) => void) {
+    super(app);
+    this.items = items;
+    this.onPick = onPick;
+    this.setPlaceholder("Выбери нового родителя…");
+  }
+
+  getItems(): StudyNoteItem[] {
+    return this.items;
+  }
+
+  getItemText(item: StudyNoteItem): string {
+    return `${item.name} · ${item.noteType || "без типа"}`;
+  }
+
+  onChooseItem(item: StudyNoteItem): void {
+    this.onPick(item);
+  }
+}
+
+export class StudyCompilerModal extends Modal {
+  private plugin: MyStudyCompilerPlugin;
+  private options: OpenOptions;
+  private scan: ScanResult = emptyScan();
+  private groupTab: ProjectGroupTab;
+  private selectedPath: string;
+  private focusBranchPath = "";
+  private expanded: Set<string>;
+  private cleanups: Array<() => void> = [];
+  private refreshTimer: number | null = null;
+
+  private searchQuery = "";
+  private filterMode: QuickFilterMode = "all";
+  private typeFilter = "";
+  private activeRowIndex = -1;
+  private currentVisibleFlat: TreeNode[] = [];
+  private rowElementByPath = new Map<string, HTMLElement>();
+
+  // Стадия 3: микро-анимации
+  private knownPaths: Set<string> = new Set();
+  private freshPaths = new Set<string>();
+  private freshTimer: number | null = null;
+  private pendingOpenPath: string | null = null;
+  private closingBranch = false;
+  private closed = false;
+
+  // Стадия 4: граф проекта
+  private viewMode: ViewMode = "tree";
+  private graphView: ProjectGraphView | null = null;
+  private lastGraphRootPath = "";
+  private expandToggleBtn: HTMLButtonElement | null = null;
+
+  // Быстрое редактирование типа или свойств конкретного узла дерева
+  private editingNodePath: string | null = null;
+  private editingNodeMode: "type" | "props" | null = null;
+
+  private barEl!: HTMLElement;
+  private searchWrapEl!: HTMLElement;
+  private crumbsEl!: HTMLElement;
+  private formEl!: HTMLElement;
+  private treeEl!: HTMLElement;
+  private graphEl!: HTMLElement;
+  private datalistsEl!: HTMLElement;
+  private searchInputEl: HTMLInputElement | null = null;
+
+  private form: {
+    open: boolean;
+    title: string;
+    type: string;
+    parentPath: string;
+    deadline: string;
+    customProps: CustomPropertyDraft[];
+  };
+
+  constructor(app: App, plugin: MyStudyCompilerPlugin, options: OpenOptions = {}) {
+    super(app);
+    this.plugin = plugin;
+    this.options = options;
+    this.groupTab = plugin.settings.projectGroupTab || "active";
+    this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
+    this.expanded = new Set(plugin.settings.expandedPaths);
+    this.form = {
+      open: false,
+      title: "",
+      type: plugin.settings.lastUsedMaterialType || "Термин",
+      parentPath: "",
+      deadline: "",
+      customProps: [],
+    };
+    this.noRestore();
+  }
+
+  private noRestore() {
+    (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
+  }
+
+  onOpen(): void {
+    this.noRestore();
+    this.closed = false;
+    this.viewMode = "tree";
+    this.modalEl.addClass("my-sc-modal-container");
+    this.contentEl.addClass("my-sc-modal");
+
+    this.datalistsEl = this.contentEl.createDiv("my-sc-datalists-host");
+    this.barEl = this.contentEl.createDiv("my-sc-project-bar");
+    this.searchWrapEl = this.contentEl.createDiv("my-sc-search-panel");
+    this.crumbsEl = this.contentEl.createDiv("my-sc-crumbs-bar");
+    this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
+    this.treeEl = this.contentEl.createDiv("my-sc-body");
+    this.graphEl = this.contentEl.createDiv("my-sc-graph-wrap is-hidden");
+
+    const onKeyDown = (e: KeyboardEvent) => this.handleKeyboardNav(e);
+    this.modalEl.addEventListener("keydown", onKeyDown);
+    this.cleanups.push(() => this.modalEl.removeEventListener("keydown", onKeyDown));
+
+    const onChange = () => this.scheduleRefresh();
+    const r1 = this.app.metadataCache.on("changed", onChange);
+    const r2 = this.app.vault.on("delete", onChange);
+    const r3 = this.app.vault.on("rename", onChange);
+    this.cleanups.push(
+      () => this.app.metadataCache.offref(r1),
+      () => this.app.vault.offref(r2),
+      () => this.app.vault.offref(r3)
+    );
+
+    this.scan = scanStudyVault(this.app, this.plugin.settings);
+    this.knownPaths = new Set(this.scan.byPath.keys());
+    const addUnder = this.options.addUnder;
+    if (addUnder && this.scan.byPath.has(addUnder)) {
+      this.selectedPath = findRootPath(this.scan, addUnder);
+    }
+
+    // Если выбранный/запомненный проект находится в другой группе (активные/завершённые), переключаемся туда автоматически
+    this.syncGroupTabWithSelectedProject();
+
+    const root = this.getRootInCurrentGroup();
+    if (root) {
+      const savedFocus = this.plugin.settings.focusedBranchByWork[root.path];
+      if (savedFocus && this.scan.byPath.has(savedFocus)) {
+        this.focusBranchPath = savedFocus;
+      }
+    }
+
+    this.renderDatalists();
+    this.renderBar();
+    this.renderSearchPanel();
+    this.renderBreadcrumbs();
+    this.applyViewMode();
+    this.renderTree();
+
+    if (addUnder && this.scan.byPath.has(addUnder)) {
+      this.openForm(addUnder);
+    } else {
+      window.setTimeout(() => this.searchInputEl?.focus(), 40);
+    }
+  }
+
+  onClose(): void {
+    this.closed = true;
+    for (const fn of this.cleanups) fn();
+    this.cleanups = [];
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    if (this.freshTimer !== null) {
+      window.clearTimeout(this.freshTimer);
+      this.freshTimer = null;
+    }
+    this.freshPaths.clear();
+    if (this.graphView) {
+      this.graphView.destroy();
+      this.graphView = null;
+    }
+    this.lastGraphRootPath = "";
+    this.expandToggleBtn = null;
+    this.contentEl.empty();
+  }
+
+  private syncGroupTabWithSelectedProject() {
+    if (!this.selectedPath) return;
+    const found = this.scan.roots.find((r) => r.path === this.selectedPath);
+    if (!found) return;
+    const targetGroup: ProjectGroupTab = found.isCompletedRoot ? "completed" : "active";
+    if (this.groupTab !== targetGroup) {
+      this.groupTab = targetGroup;
+      this.plugin.settings.projectGroupTab = targetGroup;
+      this.plugin.requestSaveSettings();
+    }
+  }
+
+  private getRootsForTab(tab: ProjectGroupTab): StudyNoteItem[] {
+    return tab === "completed" ? this.scan.completedRoots : this.scan.activeRoots;
+  }
+
+  private getRootInCurrentGroup(): StudyNoteItem | null {
+    const groupList = this.getRootsForTab(this.groupTab);
+    const direct = groupList.find((r) => r.path === this.selectedPath);
+    if (direct) return direct;
+    const first = groupList[0] ?? null;
+    if (first) {
+      this.selectedPath = first.path;
+      this.plugin.settings.lastWorkPath = first.path;
+      this.plugin.requestSaveSettings();
+    }
+    return first;
+  }
+
+  // Если в текущей группе проектов нет, переключаемся на непустую
+  private resolveRootWithFallback(): StudyNoteItem | null {
+    const root = this.getRootInCurrentGroup();
+    if (root) return root;
+    const other: ProjectGroupTab = this.groupTab === "active" ? "completed" : "active";
+    if (this.getRootsForTab(other).length === 0) return null;
+    this.groupTab = other;
+    this.plugin.settings.projectGroupTab = other;
+    this.plugin.requestSaveSettings();
+    return this.getRootInCurrentGroup();
+  }
+
+  // ---------- Режимы «Дерево / Граф» ----------
+
+  private applyViewMode() {
+    const graph = this.viewMode === "graph";
+    this.searchWrapEl.toggleClass("is-hidden", graph);
+    this.treeEl.toggleClass("is-hidden", graph);
+    this.graphEl.toggleClass("is-hidden", !graph);
+  }
+
+  private setViewMode(mode: ViewMode) {
+    if (this.viewMode === mode) return;
+    this.viewMode = mode;
+    this.applyViewMode();
+    this.renderBar();
+    this.renderMain();
+  }
+
+  private renderMain() {
+    if (this.viewMode === "graph") this.renderGraph();
+    else this.renderTree();
+  }
+
+  private renderGraph() {
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      if (this.graphView) {
+        this.graphView.destroy();
+        this.graphView = null;
+      }
+      this.lastGraphRootPath = "";
+      this.graphEl.empty();
+      return;
+    }
+    const branchRoot = this.getActiveBranchRoot(root);
+
+    if (!this.graphView) {
+      this.graphView = new ProjectGraphView(this.graphEl, {
+        onOpen: (p) => this.openNote(p),
+        onFocus: (p) => {
+          const r = this.getRootInCurrentGroup();
+          if (r) this.setFocusBranch(r, p);
+        },
+      });
+      this.lastGraphRootPath = "";
+    }
+
+    const reset = this.lastGraphRootPath !== branchRoot.path;
+    this.lastGraphRootPath = branchRoot.path;
+    this.graphView.update(this.scan, branchRoot, reset, this.freshPaths);
+  }
+
+  private scheduleRefresh() {
+    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      if (this.closed) return;
+
+      const next = scanStudyVault(this.app, this.plugin.settings);
+      const fresh: string[] = [];
+      for (const p of next.byPath.keys()) {
+        if (!this.knownPaths.has(p)) fresh.push(p);
+      }
+      this.knownPaths = new Set(next.byPath.keys());
+      this.scan = next;
+      if (fresh.length > 0 && fresh.length <= 20) this.markFresh(fresh);
+
+      this.renderDatalists();
+      this.renderBar();
+      this.renderSearchPanel();
+      this.renderBreadcrumbs();
+      if (this.form.open) this.renderForm();
+      this.renderMain();
+
+      if (this.viewMode === "tree") {
+        const firstFresh = fresh
+          .map((p) => this.rowElementByPath.get(p))
+          .find((el): el is HTMLElement => el !== undefined);
+        if (firstFresh) {
+          firstFresh.scrollIntoView({
+            block: "nearest",
+            behavior: prefersReducedMotion() ? "auto" : "smooth",
+          });
+        }
+      }
+    }, 220);
+  }
+
+  private markFresh(paths: string[]) {
+    for (const p of paths) this.freshPaths.add(p);
+    if (this.freshTimer !== null) window.clearTimeout(this.freshTimer);
+    this.freshTimer = window.setTimeout(() => {
+      this.freshTimer = null;
+      for (const p of this.freshPaths) {
+        this.rowElementByPath.get(p)?.removeClass("is-new");
+      }
+      this.freshPaths.clear();
+      this.graphView?.clearFresh();
+    }, 2400);
+  }
+
+  private getChildrenContainer(path: string): HTMLElement | null {
+    const group = this.rowElementByPath.get(path)?.parentElement;
+    return group?.querySelector<HTMLElement>(".my-sc-children-container") ?? null;
+  }
+
+  private toggleBranch(path: string) {
+    if (this.closingBranch) return;
+
+    if (!this.expanded.has(path)) {
+      this.expanded.add(path);
+      this.saveExpanded();
+      this.pendingOpenPath = path;
+      this.renderTree();
+      return;
+    }
+
+    this.expanded.delete(path);
+    this.saveExpanded();
+    const kids = this.getChildrenContainer(path);
+    if (!kids || prefersReducedMotion()) {
+      this.renderTree();
+      return;
+    }
+    this.rowElementByPath
+      .get(path)
+      ?.querySelector(".my-sc-toggle-btn")
+      ?.removeClass("is-open");
+    this.closingBranch = true;
+    void animateClose(kids).then(() => {
+      this.closingBranch = false;
+      if (!this.closed) this.renderTree();
+    });
+  }
+
+  private renderDatalists() {
+    this.datalistsEl.empty();
+
+    const typeDl = this.datalistsEl.createEl("datalist", {
+      attr: { id: "my-sc-types-datalist" },
+    });
+    for (const t of this.scan.schema.typeCounts) {
+      typeDl.createEl("option", {
+        attr: { value: t.name, label: `${t.name} (${t.count})` },
+      });
+    }
+
+    const keysDl = this.datalistsEl.createEl("datalist", {
+      attr: { id: "my-sc-prop-keys-datalist" },
+    });
+    for (const k of this.scan.schema.propertyKeys) {
+      keysDl.createEl("option", { attr: { value: k } });
+    }
+  }
+
+  private getActiveBranchRoot(projectRoot: StudyNoteItem): StudyNoteItem {
+    if (this.focusBranchPath) {
+      const target = this.scan.byPath.get(this.focusBranchPath);
+      if (target && findRootPath(this.scan, target.path) === projectRoot.path) {
+        return target;
+      }
+    }
+    this.focusBranchPath = "";
+    return projectRoot;
+  }
+
+  private setFocusBranch(projectRoot: StudyNoteItem, branchPath: string) {
+    this.focusBranchPath = branchPath === projectRoot.path ? "" : branchPath;
+    if (this.focusBranchPath) {
+      this.plugin.settings.focusedBranchByWork[projectRoot.path] = this.focusBranchPath;
+    } else {
+      delete this.plugin.settings.focusedBranchByWork[projectRoot.path];
+    }
+    this.plugin.requestSaveSettings();
+    this.activeRowIndex = -1;
+    this.renderBar();
+    this.renderBreadcrumbs();
+    this.renderMain();
+  }
+
+  private saveExpanded() {
+    this.plugin.settings.expandedPaths = [...this.expanded];
+    this.plugin.requestSaveSettings();
+  }
+
+  private handleKeyboardNav(e: KeyboardEvent) {
+    if (this.viewMode === "graph") return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      this.searchInputEl?.focus();
+      this.searchInputEl?.select();
+      return;
+    }
+
+    const activeEl = document.activeElement;
+    const inOtherInput =
+      (activeEl instanceof HTMLInputElement && activeEl !== this.searchInputEl) ||
+      activeEl instanceof HTMLSelectElement ||
+      activeEl instanceof HTMLTextAreaElement;
+    if (inOtherInput) return;
+
+    const len = this.currentVisibleFlat.length;
+    if (len === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      this.activeRowIndex = Math.min(len - 1, this.activeRowIndex + 1);
+      this.highlightActiveRow();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      this.activeRowIndex = Math.max(0, this.activeRowIndex - 1);
+      this.highlightActiveRow();
+    } else if (e.key === "Enter" && this.activeRowIndex >= 0) {
+      const picked = this.currentVisibleFlat[this.activeRowIndex];
+      if (picked) {
+        e.preventDefault();
+        this.openNote(picked.item.path);
+      }
+    } else if (
+      (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
+      activeEl !== this.searchInputEl &&
+      this.activeRowIndex >= 0
+    ) {
+      const picked = this.currentVisibleFlat[this.activeRowIndex];
+      if (!picked || !picked.hasChildren) return;
+      const isOpen = this.expanded.has(picked.item.path);
+      if (e.key === "ArrowRight" && isOpen) return;
+      if (e.key === "ArrowLeft" && !isOpen) return;
+      e.preventDefault();
+      this.toggleBranch(picked.item.path);
+    }
+  }
+
+  private highlightActiveRow() {
+    for (const el of this.rowElementByPath.values()) {
+      el.removeClass("is-kb-active");
+    }
+    const picked = this.currentVisibleFlat[this.activeRowIndex];
+    if (!picked) return;
+    const targetEl = this.rowElementByPath.get(picked.item.path);
+    if (targetEl) {
+      targetEl.addClass("is-kb-active");
+      targetEl.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  private iconBtn(
+    parent: HTMLElement,
+    icon: string,
+    title: string,
+    onClick: () => void,
+    opts: { active?: boolean; primary?: boolean } = {}
+  ): HTMLButtonElement {
+    const btn = parent.createEl("button", {
+      cls:
+        "my-sc-icon-btn" +
+        (opts.active ? " is-active" : "") +
+        (opts.primary ? " is-primary" : ""),
+      attr: { type: "button", title, "aria-label": title },
+    });
+    setIcon(btn, icon);
+    btn.onclick = onClick;
+    return btn;
+  }
+
+  private hasOpenBranches(branchPath: string): boolean {
+    for (const p of collectDescendants(branchPath, this.scan)) {
+      if (this.expanded.has(p) && (this.scan.childrenOf.get(p)?.length ?? 0) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private syncExpandToggle() {
+    const btn = this.expandToggleBtn;
+    if (!btn || !btn.isConnected) return;
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+    const branch = this.getActiveBranchRoot(root);
+    const open = this.hasOpenBranches(branch.path);
+    const title = open ? "Свернуть все ветки" : "Развернуть все ветки";
+    btn.empty();
+    setIcon(btn, open ? "chevrons-down-up" : "chevrons-up-down");
+    btn.setAttribute("title", title);
+    btn.setAttribute("aria-label", title);
+  }
+
+  private openProjectMenu(e: MouseEvent, root: StudyNoteItem, branchRoot: StudyNoteItem) {
+    const menu = new Menu();
+    menu.addItem((mi) =>
+      mi
+        .setTitle(
+          branchRoot.path === root.path ? "Открыть заметку проекта" : "Открыть заметку ветки"
+        )
+        .setIcon("file-text")
+        .onClick(() => this.openNote(branchRoot.path))
+    );
+    menu.addSeparator();
+    menu.addItem((mi) =>
+      mi
+        .setTitle(root.isCompletedRoot ? "Вернуть проект в работу" : "Завершить проект")
+        .setIcon(root.isCompletedRoot ? "rotate-ccw" : "check")
+        .onClick(() => void this.toggleRootProjectStatus(root))
+    );
+    menu.showAtMouseEvent(e);
+  }
+
+  private renderBar() {
+    this.barEl.empty();
+    this.expandToggleBtn = null;
+
+    const root = this.resolveRootWithFallback();
+    if (!root) {
+      this.formEl.empty();
+      this.barEl.createDiv({
+        cls: "my-sc-empty-group-box",
+        text: `Проектов пока нет. Создай заметку с направлением «${this.plugin.settings.studyAreaName}» без родителя.`,
+      });
+      return;
+    }
+
+    const branchRoot = this.getActiveBranchRoot(root);
+
+    // Ряд 1: проект · меню проекта
+    const topRow = this.barEl.createDiv("my-sc-top-row");
+    const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
+
+    const addGroup = (label: string, list: StudyNoteItem[]) => {
+      if (list.length === 0) return;
+      const group = sel.createEl("optgroup", {
+        attr: { label: `${label} · ${list.length}` },
+      });
+      for (const r of list) {
+        const meta = getWorkMeta(r.noteType, r.icon);
+        const dlText = r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
+        const o = group.createEl("option", {
+          text: `${meta.icon} ${r.name}${dlText}`,
+          value: r.path,
+        });
+        if (r.path === root.path) o.selected = true;
+      }
+    };
+    addGroup("Активные", this.scan.activeRoots);
+    addGroup("Завершённые", this.scan.completedRoots);
+
+    sel.onchange = () => {
+      const picked = this.scan.roots.find((r) => r.path === sel.value);
+      if (!picked) return;
+      this.groupTab = picked.isCompletedRoot ? "completed" : "active";
+      this.plugin.settings.projectGroupTab = this.groupTab;
+      this.selectedPath = picked.path;
+      this.plugin.settings.lastWorkPath = picked.path;
+      this.focusBranchPath =
+        this.plugin.settings.focusedBranchByWork[picked.path] || "";
+      this.plugin.requestSaveSettings();
+      this.form.open = false;
+      this.formEl.empty();
+      this.activeRowIndex = -1;
+      this.renderBar();
+      this.renderBreadcrumbs();
+      this.renderMain();
+    };
+
+    const moreBtn = topRow.createEl("button", {
+      cls: "my-sc-icon-btn",
+      text: "⋯",
+      attr: { type: "button", title: "Действия с проектом", "aria-label": "Действия с проектом" },
+    });
+    moreBtn.onclick = (e) => this.openProjectMenu(e, root, branchRoot);
+
+    // Ряд 2: сводка · инструменты
+    const descendants = collectDescendants(branchRoot.path, this.scan);
+    const metaRow = this.barEl.createDiv("my-sc-meta-row");
+    const metaInfo = metaRow.createDiv("my-sc-meta-info");
+    metaInfo.createSpan({
+      cls: "my-sc-summary-text",
+      text:
+        descendants.size > 0
+          ? `Материалов: ${descendants.size}`
+          : "Материалов пока нет",
+    });
+    this.renderDeadline(metaInfo, branchRoot);
+
+    const tools = metaRow.createDiv("my-sc-icon-group");
+
+    if (this.viewMode === "tree") {
+      this.expandToggleBtn = this.iconBtn(tools, "chevrons-up-down", "Развернуть все ветки", () => {
+        const open = this.hasOpenBranches(branchRoot.path);
+        for (const p of collectDescendants(branchRoot.path, this.scan)) {
+          if (open) this.expanded.delete(p);
+          else if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0) this.expanded.add(p);
+        }
+        this.saveExpanded();
+        this.renderTree();
+      });
+      this.syncExpandToggle();
+    }
+
+    this.iconBtn(
+      tools,
+      this.viewMode === "graph" ? "list" : "network",
+      this.viewMode === "graph" ? "Показать списком" : "Показать графом",
+      () => this.setViewMode(this.viewMode === "graph" ? "tree" : "graph")
+    );
+
+    this.iconBtn(
+      tools,
+      this.form.open ? "x" : "plus",
+      this.form.open ? "Закрыть форму" : "Добавить материал",
+      () => {
+        if (this.form.open) {
+          this.form.open = false;
+          this.formEl.empty();
+          this.renderBar();
+        } else {
+          this.openForm(branchRoot.path);
+        }
+      },
+      { primary: true, active: this.form.open }
+    );
+  }
+
+  private async toggleRootProjectStatus(root: StudyNoteItem) {
+    const nextDone = !root.isCompletedRoot;
+    try {
+      await this.app.fileManager.processFrontMatter(
+        root.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.status] = nextDone ? ROOT_STATUS_DONE : ROOT_STATUS_ACTIVE;
+          if (nextDone && !fm[KEYS.finishedAt]) {
+            fm[KEYS.finishedAt] = todayISO();
+          }
+        }
+      );
+      this.groupTab = nextDone ? "completed" : "active";
+      this.plugin.settings.projectGroupTab = this.groupTab;
+      this.plugin.requestSaveSettings();
+      new Notice(
+        nextDone
+          ? `Проект «${root.name}» перенесён в завершённые`
+          : `Проект «${root.name}» возвращён в активные`
+      );
+    } catch (err: unknown) {
+      new Notice(
+        "Не удалось изменить статус проекта: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+    }
+  }
+
+  private renderSearchPanel() {
+    this.searchWrapEl.empty();
+
+    const inp = this.searchWrapEl.createEl("input", {
+      cls: "my-sc-search-input",
+      attr: {
+        type: "search",
+        placeholder: "Название, тип или #тег",
+      },
+    });
+    inp.value = this.searchQuery;
+    this.searchInputEl = inp;
+    inp.oninput = () => {
+      this.searchQuery = inp.value;
+      this.activeRowIndex = 0;
+      this.renderTree();
+    };
+
+    const orphanCount = this.scan.orphans.length;
+    if (orphanCount > 0 || this.filterMode === "orphans") {
+      const chip = this.searchWrapEl.createEl("button", {
+        cls: "my-sc-filter-chip" + (this.filterMode === "orphans" ? " is-active" : ""),
+        text: `Без родителя · ${orphanCount}`,
+        attr: { type: "button", title: "Показать материалы, не привязанные к дереву" },
+      });
+      chip.onclick = () => {
+        this.filterMode = this.filterMode === "orphans" ? "all" : "orphans";
+        this.activeRowIndex = -1;
+        this.renderSearchPanel();
+        this.renderTree();
+      };
+    }
+  }
+
+  private renderBreadcrumbs() {
+    this.crumbsEl.empty();
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      this.crumbsEl.addClass("is-hidden");
+      return;
+    }
+    const branchRoot = this.getActiveBranchRoot(root);
+    if (branchRoot.path === root.path) {
+      this.crumbsEl.addClass("is-hidden");
+      return;
+    }
+    this.crumbsEl.removeClass("is-hidden");
+
+    const chain = buildBreadcrumbChain(this.scan, root.path, branchRoot.path);
+
+    chain.forEach((node, idx) => {
+      if (idx > 0) {
+        this.crumbsEl.createSpan({ cls: "my-sc-crumb-sep", text: "›" });
+      }
+      const isLast = idx === chain.length - 1;
+      const btn = this.crumbsEl.createEl("button", {
+        cls: "my-sc-crumb-btn" + (isLast ? " is-current" : ""),
+        text: node.name,
+        attr: { type: "button" },
+      });
+      btn.onclick = () => this.setFocusBranch(root, node.path);
+    });
+
+    const resetBtn = this.crumbsEl.createEl("button", {
+      cls: "my-sc-crumb-reset",
+      text: "Весь проект",
+      attr: { type: "button", title: "Вернуться ко всему дереву проекта" },
+    });
+    resetBtn.onclick = () => this.setFocusBranch(root, root.path);
+  }
+
+  private openForm(parentPath: string) {
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+    this.form.open = true;
+    this.form.type =
+      this.plugin.settings.lastUsedMaterialType ||
+      this.scan.schema.typeCounts[0]?.name ||
+      "Термин";
+    this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
+    this.renderBar();
+    this.renderForm();
+    this.formEl.querySelector(".my-sc-add-box")?.addClass("is-entering");
+  }
+
+  private renderForm() {
+    this.formEl.empty();
+    if (!this.form.open) return;
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+
+    const box = this.formEl.createDiv("my-sc-add-box");
+    const topRow = box.createDiv("my-sc-form-row");
+
+    // Свободное поле «Тип» с подсказками из реальных типов хранилища
+    const typeWrap = topRow.createDiv("my-sc-type-input-wrap");
+    const typeInp = typeWrap.createEl("input", {
+      cls: "my-sc-type-input",
+      attr: {
+        type: "text",
+        list: "my-sc-types-datalist",
+        placeholder: "Тип (Термин, Расчёт, Схема…)",
+        title: "Впиши любой тип или выбери из подсказок",
+      },
+    });
+    typeInp.value = this.form.type;
+
+    const caseHintEl = box.createDiv("my-sc-case-hint is-hidden");
+
+    const updateCaseHint = () => {
+      const existingCase = findCaseInsensitiveTypeMatch(
+        typeInp.value,
+        this.scan.schema.typeCounts
+      );
+      caseHintEl.empty();
+      if (!existingCase) {
+        caseHintEl.addClass("is-hidden");
+        return;
+      }
+      caseHintEl.removeClass("is-hidden");
+      caseHintEl.createSpan({
+        text: `В базе уже есть тип «${existingCase}». `,
+      });
+      const useExistingBtn = caseHintEl.createEl("button", {
+        cls: "my-sc-inline-link-btn",
+        text: `Использовать «${existingCase}»`,
+        attr: { type: "button" },
+      });
+      useExistingBtn.onclick = () => {
+        this.form.type = existingCase;
+        typeInp.value = existingCase;
+        caseHintEl.addClass("is-hidden");
+      };
+    };
+
+    typeInp.oninput = () => {
+      this.form.type = typeInp.value;
+      updateCaseHint();
+    };
+    updateCaseHint();
+
+    const titleInp = topRow.createEl("input", {
+      cls: "my-sc-input",
+      attr: { type: "text", placeholder: "Название темы или материала…" },
+    });
+    titleInp.value = this.form.title;
+    titleInp.oninput = () => {
+      this.form.title = titleInp.value;
+    };
+
+    const parentSel = topRow.createEl("select", {
+      cls: "dropdown my-sc-parent-select",
+    });
+    parentSel.createEl("option", { text: `↳ ${root.name}`, value: root.path });
+    const allTree = buildNestedFilteredTree(root, this.scan, null, {
+      query: "",
+      mode: "all",
+      typeFilter: "",
+    });
+    for (const n of flattenVisibleTree(allTree)) {
+      parentSel.createEl("option", {
+        text: `${"\u00A0\u00A0".repeat(n.depth + 1)}↳ ${n.item.name}`,
+        value: n.item.path,
+      });
+    }
+    parentSel.value = this.form.parentPath;
+    if (parentSel.value !== this.form.parentPath) {
+      this.form.parentPath = root.path;
+      parentSel.value = root.path;
+    }
+    parentSel.onchange = () => {
+      this.form.parentPath = parentSel.value;
+    };
+
+    const dateInp = topRow.createEl("input", {
+      cls: "my-sc-date",
+      attr: { type: "date", title: "Дедлайн (необязательно)" },
+    });
+    dateInp.value = this.form.deadline;
+    dateInp.onchange = () => {
+      this.form.deadline = dateInp.value;
+    };
+
+    // Быстрые чипы самых частых типов
+    if (this.scan.schema.typeCounts.length > 0) {
+      const quickTypesRow = box.createDiv("my-sc-quick-types-row");
+      quickTypesRow.createSpan({
+        cls: "my-sc-quick-types-label",
+        text: "Частые типы:",
+      });
+      for (const tc of this.scan.schema.typeCounts.slice(0, 7)) {
+        const chip = quickTypesRow.createEl("button", {
+          cls:
+            "my-sc-filter-chip" +
+            (normalizeSpaces(this.form.type).toLowerCase() ===
+            tc.name.toLowerCase()
+              ? " is-active"
+              : ""),
+          text: `${tc.name} (${tc.count})`,
+          attr: { type: "button" },
+        });
+        chip.onclick = () => {
+          this.form.type = tc.name;
+          this.renderForm();
+        };
+      }
+    }
+
+    // Произвольные свойства при создании
+    const propsSection = box.createDiv("my-sc-props-section");
+    for (let i = 0; i < this.form.customProps.length; i++) {
+      const draft = this.form.customProps[i];
+      if (!draft) continue;
+      const pRow = propsSection.createDiv("my-sc-prop-row");
+      const valDatalistId = `my-sc-val-dl-${draft.id}`;
+
+      const keyInp = pRow.createEl("input", {
+        cls: "my-sc-prop-key",
+        attr: {
+          type: "text",
+          list: "my-sc-prop-keys-datalist",
+          placeholder: "Ключ (напр. источник, автор)…",
+        },
+      });
+      keyInp.value = draft.key;
+
+      const valDl = pRow.createEl("datalist", { attr: { id: valDatalistId } });
+      const populateValSuggestions = (kName: string) => {
+        valDl.empty();
+        const vals = this.scan.schema.valuesByKey.get(normalizeSpaces(kName)) ?? [];
+        for (const v of vals.slice(0, 25)) {
+          valDl.createEl("option", { attr: { value: v } });
+        }
+      };
+      populateValSuggestions(draft.key);
+
+      keyInp.oninput = () => {
+        draft.key = keyInp.value;
+        populateValSuggestions(draft.key);
+      };
+
+      const valInp = pRow.createEl("input", {
+        cls: "my-sc-prop-val",
+        attr: {
+          type: "text",
+          list: valDatalistId,
+          placeholder:
+            draft.kind === "list"
+              ? "Значения через запятую…"
+              : "Значение (дата ГГГГ-ММ-ДД, число или текст)…",
+        },
+      });
+      valInp.value = draft.value;
+      valInp.oninput = () => {
+        draft.value = valInp.value;
+      };
+
+      const kindSel = pRow.createEl("select", {
+        cls: "dropdown my-sc-prop-kind",
+        attr: { title: "Формат записи в YAML" },
+      });
+      kindSel.createEl("option", { text: "Значение", value: "auto" });
+      kindSel.createEl("option", { text: "Список (,)", value: "list" });
+      kindSel.value = draft.kind;
+      kindSel.onchange = () => {
+        draft.kind = kindSel.value === "list" ? "list" : "auto";
+        valInp.placeholder =
+          draft.kind === "list"
+            ? "Значения через запятую…"
+            : "Значение (дата ГГГГ-ММ-ДД, число или текст)…";
+      };
+
+      this.iconBtn(pRow, "x", "Удалить свойство", () => {
+        this.form.customProps.splice(i, 1);
+        this.renderForm();
+      });
+    }
+
+    const actionsRow = box.createDiv("my-sc-form-actions");
+    const addPropBtn = actionsRow.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Добавить свойство",
+      attr: { type: "button" },
+    });
+    addPropBtn.onclick = () => {
+      this.form.customProps.push({
+        id: String(Date.now() + Math.random()),
+        key: "",
+        value: "",
+        kind: "auto",
+      });
+      this.renderForm();
+    };
+
+    const createBtn = actionsRow.createEl("button", {
+      cls: "mod-cta my-sc-action-btn",
+      text: "Создать материал",
+      attr: { type: "button" },
+    });
+
+    const submit = async () => {
+      createBtn.disabled = true;
+      const ok = await this.createNote(root);
+      if (ok) {
+        this.form.title = "";
+        this.form.deadline = "";
+        this.form.customProps = [];
+        this.renderForm();
+      } else {
+        createBtn.disabled = false;
+      }
+    };
+    createBtn.onclick = () => void submit();
+    titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.isComposing) void submit();
+    });
+    titleInp.focus();
+  }
+
+  private async createNote(root: StudyNoteItem): Promise<boolean> {
+    const cleanTitle = normalizeSpaces(this.form.title).replace(/[\\/:*?"<>|]/g, "");
+    if (!cleanTitle) {
+      new Notice("Введи название материала.");
+      return false;
+    }
+
+    const normalizedType = normalizeSpaces(this.form.type) || "Материал";
+
+    // Валидация произвольных свойств перед созданием файла
+    const seenKeysLower = new Set<string>([
+      KEYS.area.toLowerCase(),
+      KEYS.type.toLowerCase(),
+      KEYS.parent.toLowerCase(),
+    ]);
+    if (root.discipline) seenKeysLower.add(KEYS.discipline.toLowerCase());
+    if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+      seenKeysLower.add(KEYS.deadline.toLowerCase());
+    }
+
+    const preparedProps: Array<{ key: string; serialized: string }> = [];
+
+    for (const draft of this.form.customProps) {
+      const k = normalizeSpaces(draft.key);
+      const parsedVal = parseCustomPropertyValue(draft.value, draft.kind);
+      if (!k && parsedVal === undefined) continue;
+      if (!k) {
+        new Notice("Укажи имя ключа для добавленного свойства или удали пустую строку.");
+        return false;
+      }
+      if (isReservedYamlKey(k)) {
+        new Notice(
+          `Ключ «${k}» задаётся основными полями формы. Удали его из дополнительных свойств.`
+        );
+        return false;
+      }
+      const kLow = k.toLowerCase();
+      if (seenKeysLower.has(kLow)) {
+        new Notice(`Дублирующийся ключ свойства «${k}». Оставь только одно поле.`);
+        return false;
+      }
+      if (parsedVal === undefined) continue; // Пустые значения не записываем совсем
+
+      seenKeysLower.add(kLow);
+      preparedProps.push({
+        key: k,
+        serialized: serializeYamlScalarOrList(parsedVal),
+      });
+    }
+
+    const folder = normalizePath(this.plugin.settings.newNoteFolder || "Знания");
+    const targetPath = normalizePath(`${folder}/${cleanTitle}.md`);
+    if (this.app.vault.getAbstractFileByPath(targetPath)) {
+      new Notice(`Заметка «${cleanTitle}» уже есть в папке ${folder}.`);
+      return false;
+    }
+    const parent = this.scan.byPath.get(this.form.parentPath) ?? root;
+
+    try {
+      await ensureFolder(this.app, folder);
+      const link = this.app.metadataCache.fileToLinktext(parent.file, targetPath);
+      const lines = [
+        "---",
+        `${KEYS.area}: ${JSON.stringify(this.plugin.settings.studyAreaName)}`,
+        `${KEYS.type}: ${JSON.stringify(normalizedType)}`,
+        `${KEYS.parent}: ${JSON.stringify(`[[${link}]]`)}`,
+      ];
+      if (root.discipline) {
+        lines.push(`${KEYS.discipline}: ${JSON.stringify(root.discipline)}`);
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(this.form.deadline)) {
+        lines.push(`${KEYS.deadline}: ${JSON.stringify(this.form.deadline)}`);
+      }
+      for (const prop of preparedProps) {
+        lines.push(`${prop.key}: ${prop.serialized}`);
+      }
+      lines.push("---", "", `# ${cleanTitle}`, "", "");
+      await this.app.vault.create(targetPath, lines.join("\n"));
+
+      this.plugin.settings.lastUsedMaterialType = normalizedType;
+      this.expanded.add(parent.path);
+      this.saveExpanded();
+      new Notice(`Создано: «${cleanTitle}» (${normalizedType})`);
+      return true;
+    } catch (err: unknown) {
+      new Notice("Ошибка создания: " + (err instanceof Error ? err.message : String(err)));
+      return false;
+    }
+  }
+
+  private renderDeadline(parent: HTMLElement, item: StudyNoteItem) {
+    if (!item.deadline) return;
+    const tone = getDeadlineTone(item);
+    const cls =
+      tone === "overdue"
+        ? " is-overdue"
+        : tone === "soon"
+          ? " is-soon"
+          : " is-far";
+    parent.createSpan({
+      cls: "my-sc-deadline" + cls,
+      text: formatDeadlineBadge(item),
+      attr: {
+        title: formatFullDateTooltip(item.deadline),
+      },
+    });
+  }
+
+  private renderHighlightedTitle(container: HTMLElement, text: string, query: string) {
+    const cleanQ = query
+      .trim()
+      .split(/\s+/)
+      .filter((t) => !t.startsWith("#"))[0];
+    if (!cleanQ) {
+      container.setText(text);
+      return;
+    }
+    const lowerText = text.toLowerCase();
+    const lowerQ = cleanQ.toLowerCase();
+    const idx = lowerText.indexOf(lowerQ);
+    if (idx === -1) {
+      container.setText(text);
+      return;
+    }
+    if (idx > 0) container.appendText(text.slice(0, idx));
+    container.createEl("mark", {
+      cls: "my-sc-hl",
+      text: text.slice(idx, idx + cleanQ.length),
+    });
+    if (idx + cleanQ.length < text.length) {
+      container.appendText(text.slice(idx + cleanQ.length));
+    }
+  }
+
+  private openNote(path: string) {
+    this.noRestore();
+    this.close();
+    void this.app.workspace.openLinkText(path, "", false);
+  }
+
+  private startNodeEditing(path: string, mode: "type" | "props") {
+    this.editingNodePath = path;
+    this.editingNodeMode = mode;
+    this.renderTree();
+  }
+
+  private openRowMenu(e: MouseEvent, item: StudyNoteItem, projectRoot: StudyNoteItem) {
+    const menu = new Menu();
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Открыть заметку")
+        .setIcon("file-text")
+        .onClick(() => this.openNote(item.path))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Фокус на этой ветке")
+        .setIcon("crosshair")
+        .onClick(() => this.setFocusBranch(projectRoot, item.path))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Добавить материал внутрь")
+        .setIcon("plus")
+        .onClick(() => this.openForm(item.path))
+    );
+    menu.addSeparator();
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Изменить тип")
+        .setIcon("tag")
+        .onClick(() => this.startNodeEditing(item.path, "type"))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Свойство YAML…")
+        .setIcon("settings")
+        .onClick(() => this.startNodeEditing(item.path, "props"))
+    );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Сменить родителя…")
+        .setIcon("arrow-left-right")
+        .onClick(() => this.openMovePicker(item))
+    );
+    menu.showAtMouseEvent(e);
+  }
+
+  private renderTree() {
+    const scrollTop = this.treeEl.scrollTop;
+    this.treeEl.empty();
+    this.rowElementByPath.clear();
+    const root = this.getRootInCurrentGroup();
+    if (!root) return;
+
+    const branchRoot = this.getActiveBranchRoot(root);
+    const nestedNodes = buildNestedFilteredTree(
+      branchRoot,
+      this.scan,
+      this.expanded,
+      {
+        query: this.searchQuery,
+        mode: this.filterMode,
+        typeFilter: this.typeFilter,
+      }
+    );
+    this.currentVisibleFlat = flattenVisibleTree(nestedNodes);
+
+    if (nestedNodes.length === 0) {
+      const hasFilters =
+        this.searchQuery.trim().length > 0 ||
+        this.filterMode !== "all" ||
+        this.typeFilter.length > 0;
+      this.treeEl.createDiv({
+        cls: "my-sc-empty",
+        text: hasFilters
+          ? "Ничего не найдено."
+          : "Здесь пока пусто. Добавь материал кнопкой «+».",
+      });
+      this.pendingOpenPath = null;
+      this.syncExpandToggle();
+      return;
+    }
+
+    const listEl = this.treeEl.createDiv("my-sc-tree-list");
+    for (const node of nestedNodes) {
+      this.renderNodeGroup(listEl, node, root);
+    }
+
+    if (this.activeRowIndex >= 0) {
+      this.highlightActiveRow();
+    }
+    this.treeEl.scrollTop = scrollTop;
+
+    // Плавное раскрытие только той ветки, которую открыл пользователь
+    if (this.pendingOpenPath) {
+      const openPath = this.pendingOpenPath;
+      this.pendingOpenPath = null;
+      const kids = this.getChildrenContainer(openPath);
+      if (kids) animateOpen(kids);
+      if (!prefersReducedMotion()) {
+        const btn = this.rowElementByPath
+          .get(openPath)
+          ?.querySelector<HTMLElement>(".my-sc-toggle-btn");
+        if (btn) {
+          btn.removeClass("is-open");
+          void btn.offsetWidth;
+          btn.addClass("is-open");
+        }
+      }
+    }
+
+    this.syncExpandToggle();
+  }
+
+  private renderNodeGroup(
+    parentContainer: HTMLElement,
+    node: TreeNode,
+    projectRoot: StudyNoteItem
+  ) {
+    const item = node.item;
+    const depthSlot = node.depth % 5;
+
+    const groupEl = parentContainer.createDiv({
+      cls:
+        "my-sc-node-group" +
+        ` is-depth-${depthSlot}` +
+        (node.hasChildren ? " is-branch" : " is-leaf") +
+        (node.isExpanded ? " is-expanded" : " is-collapsed"),
+    });
+
+    const row = groupEl.createDiv({
+      cls:
+        "my-sc-tree-row" +
+        (node.hasChildren ? " is-parent-row" : "") +
+        (node.isExpanded ? " is-open-parent" : "") +
+        (node.isDirectMatch ? " is-match" : "") +
+        (this.freshPaths.has(item.path) ? " is-new" : ""),
+    });
+    this.rowElementByPath.set(item.path, row);
+    row.oncontextmenu = (e) => {
+      e.preventDefault();
+      this.openRowMenu(e, item, projectRoot);
+    };
+
+    const left = row.createDiv("my-sc-tree-left");
+
+    if (node.hasChildren) {
+      const toggleBtn = left.createEl("button", {
+        cls: "my-sc-toggle-btn" + (node.isExpanded ? " is-open" : ""),
+        attr: {
+          type: "button",
+          title: node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
+          "aria-label": node.isExpanded ? "Свернуть ветку" : "Развернуть ветку",
+          "aria-expanded": String(node.isExpanded),
+        },
+      });
+      setIcon(toggleBtn, "chevron-right");
+      toggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleBranch(item.path);
+      };
+    } else {
+      const dotWrap = left.createSpan("my-sc-leaf-marker");
+      dotWrap.createSpan("my-sc-leaf-dot");
+    }
+
+    const title = left.createSpan({
+      cls: "my-sc-node-title",
+      attr: { title: `${item.name} (${item.path})` },
+    });
+    this.renderHighlightedTitle(title, item.name, this.searchQuery);
+    title.onclick = () => this.openNote(item.path);
+
+    if (item.parentPaths.length > 1) {
+      left.createSpan({
+        cls: "my-sc-multi-parent",
+        text: `×${item.parentPaths.length}`,
+        attr: { title: `Привязана к ${item.parentPaths.length} родителям` },
+      });
+    }
+
+    const right = row.createDiv("my-sc-tree-right");
+    this.renderDeadline(right, item);
+
+    // Тип материала: тихая колонка справа; клик меняет тип
+    const meta = getWorkMeta(item.noteType, item.icon);
+    const kind = right.createEl("button", {
+      cls: "my-sc-type-badge",
+      attr: {
+        type: "button",
+        title: `${item.noteType || "Без типа"} · нажми, чтобы изменить`,
+      },
+    });
+    kind.createSpan({ cls: "my-sc-type-icon", text: meta.icon });
+    kind.createSpan({ cls: "my-sc-type-name", text: item.noteType || "без типа" });
+    kind.style.setProperty("--badge-color", meta.color);
+    kind.onclick = (e) => {
+      e.stopPropagation();
+      if (this.editingNodePath === item.path && this.editingNodeMode === "type") {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        this.renderTree();
+      } else {
+        this.startNodeEditing(item.path, "type");
+      }
+    };
+
+    if (node.hasChildren) {
+      const countPill = right.createEl("button", {
+        cls:
+          "my-sc-subcount-pill" +
+          (node.isExpanded ? " is-expanded" : " is-collapsed"),
+        text: `${node.descendantCount}`,
+        attr: {
+          type: "button",
+          title: node.isExpanded
+            ? `Вложено: ${node.descendantCount} (нажми, чтобы свернуть)`
+            : `Скрыто вложенных: ${node.descendantCount} (нажми, чтобы раскрыть)`,
+        },
+      });
+      countPill.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleBranch(item.path);
+      };
+    }
+
+    const moreBtn = right.createEl("button", {
+      cls: "my-sc-row-more",
+      text: "⋯",
+      attr: { type: "button", title: "Действия", "aria-label": "Действия с материалом" },
+    });
+    moreBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.openRowMenu(e, item, projectRoot);
+    };
+
+    // Компактная панель быстрого изменения типа или свойства у существующей заметки
+    if (this.editingNodePath === item.path && this.editingNodeMode) {
+      this.renderInlineNodeEditor(groupEl, item);
+    }
+
+    if (node.isExpanded && node.children.length > 0) {
+      const childrenWrap = groupEl.createDiv("my-sc-children-container");
+      for (const child of node.children) {
+        this.renderNodeGroup(childrenWrap, child, projectRoot);
+      }
+    }
+  }
+
+  private renderInlineNodeEditor(parentGroup: HTMLElement, item: StudyNoteItem) {
+    const editorBox = parentGroup.createDiv("my-sc-inline-editor");
+
+    if (this.editingNodeMode === "type") {
+      editorBox.createSpan({ cls: "my-sc-inline-label", text: "Тип:" });
+      const inp = editorBox.createEl("input", {
+        cls: "my-sc-type-input",
+        attr: {
+          type: "text",
+          list: "my-sc-types-datalist",
+          value: item.noteType,
+          placeholder: "Новый тип…",
+        },
+      });
+      const saveBtn = editorBox.createEl("button", {
+        cls: "mod-cta my-sc-chip-btn",
+        text: "Сохранить",
+        attr: { type: "button" },
+      });
+      const cancelBtn = editorBox.createEl("button", {
+        cls: "my-sc-chip-btn",
+        text: "Отмена",
+        attr: { type: "button" },
+      });
+
+      const applyType = async () => {
+        const nextType = normalizeSpaces(inp.value);
+        if (!nextType) {
+          new Notice("Введи название типа.");
+          return;
+        }
+        try {
+          await this.app.fileManager.processFrontMatter(
+            item.file,
+            (fm: Record<string, unknown>) => {
+              fm[KEYS.type] = nextType;
+            }
+          );
+          this.plugin.settings.lastUsedMaterialType = nextType;
+          this.plugin.requestSaveSettings();
+          this.editingNodePath = null;
+          this.editingNodeMode = null;
+          new Notice(`Тип «${item.name}» → ${nextType}`);
+        } catch (err: unknown) {
+          new Notice(
+            "Ошибка записи YAML: " +
+              (err instanceof Error ? err.message : String(err))
+          );
+        }
+      };
+
+      saveBtn.onclick = () => void applyType();
+      cancelBtn.onclick = () => {
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        this.renderTree();
+      };
+      inp.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter") void applyType();
+      });
+      window.setTimeout(() => inp.focus(), 20);
+      return;
+    }
+
+    // Режим добавления/обновления произвольного свойства у существующей заметки
+    editorBox.createSpan({ cls: "my-sc-inline-label", text: "Свойство YAML:" });
+    const dlId = `my-sc-inline-val-${Date.now()}`;
+    const keyInp = editorBox.createEl("input", {
+      cls: "my-sc-prop-key",
+      attr: {
+        type: "text",
+        list: "my-sc-prop-keys-datalist",
+        placeholder: "Ключ (напр. источник)…",
+      },
+    });
+    const valDl = editorBox.createEl("datalist", { attr: { id: dlId } });
+    keyInp.oninput = () => {
+      valDl.empty();
+      const vals =
+        this.scan.schema.valuesByKey.get(normalizeSpaces(keyInp.value)) ?? [];
+      for (const v of vals.slice(0, 25)) {
+        valDl.createEl("option", { attr: { value: v } });
+      }
+    };
+
+    const valInp = editorBox.createEl("input", {
+      cls: "my-sc-prop-val",
+      attr: {
+        type: "text",
+        list: dlId,
+        placeholder: "Значение (пусто = удалить ключ)…",
+      },
+    });
+
+    const kindSel = editorBox.createEl("select", {
+      cls: "dropdown my-sc-prop-kind",
+    });
+    kindSel.createEl("option", { text: "Значение", value: "auto" });
+    kindSel.createEl("option", { text: "Список (,)", value: "list" });
+
+    const saveBtn = editorBox.createEl("button", {
+      cls: "mod-cta my-sc-chip-btn",
+      text: "Записать",
+      attr: { type: "button" },
+    });
+    const cancelBtn = editorBox.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Отмена",
+      attr: { type: "button" },
+    });
+
+    const applyProp = async () => {
+      const k = normalizeSpaces(keyInp.value);
+      if (!k) {
+        new Notice("Укажи ключ свойства.");
+        return;
+      }
+      if (isReservedYamlKey(k)) {
+        new Notice(
+          `Служебный ключ «${k}» меняется через кнопку типа или смены родителя.`
+        );
+        return;
+      }
+      const kind = kindSel.value === "list" ? "list" : "auto";
+      const parsedVal = parseCustomPropertyValue(valInp.value, kind);
+      try {
+        await this.app.fileManager.processFrontMatter(
+          item.file,
+          (fm: Record<string, unknown>) => {
+            if (parsedVal === undefined) {
+              delete fm[k];
+            } else {
+              fm[k] = parsedVal;
+            }
+          }
+        );
+        this.editingNodePath = null;
+        this.editingNodeMode = null;
+        new Notice(
+          parsedVal === undefined
+            ? `Свойство «${k}» удалено из «${item.name}»`
+            : `Записано «${k}» в «${item.name}»`
+        );
+      } catch (err: unknown) {
+        new Notice(
+          "Ошибка записи YAML: " +
+            (err instanceof Error ? err.message : String(err))
+        );
+      }
+    };
+
+    saveBtn.onclick = () => void applyProp();
+    cancelBtn.onclick = () => {
+      this.editingNodePath = null;
+      this.editingNodeMode = null;
+      this.renderTree();
+    };
+    window.setTimeout(() => keyInp.focus(), 20);
+  }
+
+  private openMovePicker(item: StudyNoteItem) {
+    const forbidden = collectDescendants(item.path, this.scan);
+    forbidden.add(item.path);
+    const candidates = [...this.scan.byPath.values()]
+      .filter((c) => !forbidden.has(c.path))
+      .sort(byName);
+    new ParentPickerModal(this.app, candidates, (target) => {
+      void this.setParent(item, target);
+    }).open();
+  }
+
+  private async setParent(item: StudyNoteItem, target: StudyNoteItem) {
+    try {
+      const link = this.app.metadataCache.fileToLinktext(target.file, item.path);
+      await this.app.fileManager.processFrontMatter(
+        item.file,
+        (fm: Record<string, unknown>) => {
+          fm[KEYS.parent] = `[[${link}]]`;
+        }
+      );
+      this.expanded.add(target.path);
+      this.saveExpanded();
+      new Notice(`«${item.name}» → «${target.name}»`);
+    } catch (err: unknown) {
+      new Notice(
+        "Не удалось сменить родителя: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+    }
+  }
+}
+
+=== FILE: ./src/motion.ts ===
+const DURATION_MS = 180;
+
+export function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+export function animateOpen(el: HTMLElement): void {
+  if (prefersReducedMotion()) return;
+  const height = el.offsetHeight;
+  if (height <= 0) return;
+  el.style.overflow = "hidden";
+  const anim = el.animate(
+    [
+      { height: "0px", opacity: 0 },
+      { height: `${height}px`, opacity: 1 },
+    ],
+    { duration: DURATION_MS, easing: "ease-out" }
+  );
+  const done = () => {
+    el.style.overflow = "";
+  };
+  anim.onfinish = done;
+  anim.oncancel = done;
+}
+
+export function animateClose(el: HTMLElement): Promise<void> {
+  if (prefersReducedMotion()) return Promise.resolve();
+  const height = el.offsetHeight;
+  el.style.overflow = "hidden";
+  const anim = el.animate(
+    [
+      { height: `${height}px`, opacity: 1 },
+      { height: "0px", opacity: 0 },
+    ],
+    { duration: DURATION_MS, easing: "ease-in", fill: "forwards" }
+  );
+  return anim.finished.then(
+    () => undefined,
+    () => undefined
+  );
 }
 
 === FILE: ./src/scanner.ts ===
@@ -4243,30 +4053,1096 @@ export interface TreeFilterOptions {
   typeFilter: string;
 }
 
-=== FILE: ./package.json ===
-{
-	"name": "my-study-compiler",
-	"version": "0.2.4",
-	"description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
-	"main": "main.js",
-	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"bump": "node version-bump.mjs"
-	},
-	"keywords": [],
-	"author": "Mersinho",
-	"license": "MIT",
-	"devDependencies": {
-		"@types/node": "^16.11.6",
-		"builtin-modules": "3.3.0",
-		"esbuild": "0.17.3",
-		"obsidian": "latest",
-		"tslib": "2.4.0",
-		"typescript": "4.7.4"
-	}
+=== FILE: ./styles.css ===
+/* ============================================================
+   Конструктор учебных проектов
+   Шкала отступов: 4 / 8 / 12 / 16 px
+   Размеры текста: 0.9rem (основной), 0.78rem (вторичный), 0.72rem (третичный)
+   Начертания: 400 / 500 / 600
+   Цвет: нейтральная основа, акцент Obsidian для главного и выбранного,
+   смысловой цвет только у типа материала и сроков
+   ============================================================ */
+
+.modal.my-sc-modal-container {
+  --my-sc-s1: 4px;
+  --my-sc-s2: 8px;
+  --my-sc-s3: 12px;
+  --my-sc-s4: 16px;
+  --my-sc-fs: 0.9rem;
+  --my-sc-fs-sm: 0.78rem;
+  --my-sc-fs-xs: 0.72rem;
+  --my-sc-hit: 32px;
+  --my-sc-row-h: 36px;
+  --my-sc-rail: var(--background-modifier-border);
+
+  position: relative;
+  width: min(860px, 96vw) !important;
+  max-width: 860px !important;
+  max-height: 92vh !important;
+  padding: var(--my-sc-s4) !important;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
 }
 
+.modal.my-sc-modal-container > .modal-close-button {
+  top: var(--my-sc-s4);
+  right: var(--my-sc-s3);
+  z-index: 10;
+}
+
+.my-sc-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--my-sc-s2);
+}
+
+.my-sc-modal * {
+  box-sizing: border-box;
+}
+
+.my-sc-modal button:focus-visible,
+.my-sc-modal select:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+.my-sc-modal .svg-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75px;
+}
+
+.my-sc-datalists-host {
+  display: none;
+}
+
+/* ---------- Верхняя панель ---------- */
+.my-sc-project-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-sc-s1);
+}
+
+.my-sc-top-row {
+  display: flex;
+  align-items: center;
+  gap: var(--my-sc-s2);
+  padding-right: 36px;
+}
+
+.my-sc-work-select {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: var(--my-sc-hit);
+  font-weight: 500;
+}
+
+.my-sc-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-sc-s2);
+  min-height: var(--my-sc-hit);
+}
+
+.my-sc-meta-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s1) var(--my-sc-s2);
+  min-width: 0;
+  font-size: var(--my-sc-fs-sm);
+  color: var(--text-muted);
+}
+
+.my-sc-icon-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--my-sc-s1);
+}
+
+button.my-sc-icon-btn {
+  width: var(--my-sc-hit);
+  height: var(--my-sc-hit);
+  min-height: var(--my-sc-hit);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.my-sc-icon-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.my-sc-icon-btn.is-primary {
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+button.my-sc-icon-btn.is-primary:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+}
+
+.my-sc-empty-group-box {
+  padding: var(--my-sc-s3);
+  border-radius: 8px;
+  border: 1px dashed var(--background-modifier-border);
+  font-size: var(--my-sc-fs-sm);
+  color: var(--text-muted);
+}
+
+.my-sc-chip-btn {
+  min-height: var(--my-sc-hit);
+  padding: 0 var(--my-sc-s3);
+  border-radius: 8px;
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ---------- Поиск ---------- */
+.my-sc-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-sc-s2);
+}
+
+.my-sc-search-panel.is-hidden {
+  display: none;
+}
+
+.my-sc-search-input {
+  width: 100%;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs);
+}
+
+.my-sc-filter-chip {
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
+  border-radius: 99px;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-search-panel .my-sc-filter-chip {
+  align-self: flex-start;
+}
+
+.my-sc-filter-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
+.my-sc-filter-chip.is-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+/* ---------- Фокус ветки (хлебные крошки) ---------- */
+.my-sc-crumbs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-sc-s1);
+  min-height: 28px;
+  font-size: var(--my-sc-fs-sm);
+  color: var(--text-muted);
+}
+
+.my-sc-crumbs-bar.is-hidden {
+  display: none;
+}
+
+.my-sc-crumb-sep {
+  color: var(--text-faint);
+}
+
+.my-sc-crumb-btn,
+.my-sc-crumb-reset {
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
+  border-radius: 6px;
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 400;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-crumb-btn:hover,
+.my-sc-crumb-reset:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.my-sc-crumb-btn.is-current {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.my-sc-crumb-reset {
+  margin-left: auto;
+}
+
+/* ---------- Форма создания материала ---------- */
+.my-sc-add-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-sc-s2);
+  padding: var(--my-sc-s3);
+  border-radius: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s2);
+  align-items: center;
+}
+
+.my-sc-type-input-wrap {
+  flex: 0 1 170px;
+  min-width: 140px;
+}
+
+.my-sc-type-input {
+  width: 100%;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 500;
+}
+
+.my-sc-input {
+  flex: 1 1 200px;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs);
+}
+
+.my-sc-parent-select {
+  flex: 1 1 170px;
+  min-width: 0;
+  min-height: var(--my-sc-hit);
+}
+
+.my-sc-date {
+  min-height: var(--my-sc-hit);
+}
+
+.my-sc-case-hint {
+  font-size: var(--my-sc-fs-sm);
+  color: var(--color-orange, #e5a158);
+  display: flex;
+  align-items: center;
+  gap: var(--my-sc-s2);
+  flex-wrap: wrap;
+}
+
+.my-sc-case-hint.is-hidden {
+  display: none;
+}
+
+.my-sc-inline-link-btn {
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
+  font-size: var(--my-sc-fs-xs);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.my-sc-quick-types-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s1);
+}
+
+.my-sc-quick-types-label {
+  font-size: var(--my-sc-fs-xs);
+  color: var(--text-muted);
+  margin-right: var(--my-sc-s1);
+}
+
+.my-sc-props-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--my-sc-s2);
+}
+
+.my-sc-prop-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s2);
+  align-items: center;
+}
+
+.my-sc-prop-key {
+  flex: 0 1 160px;
+  min-width: 120px;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
+}
+
+.my-sc-prop-val {
+  flex: 1 1 180px;
+  min-width: 140px;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
+}
+
+.my-sc-prop-kind {
+  flex: 0 0 120px;
+  min-height: var(--my-sc-hit);
+  font-size: var(--my-sc-fs-sm);
+}
+
+.my-sc-form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--my-sc-s2);
+  padding-top: var(--my-sc-s1);
+}
+
+/* ---------- Дерево материалов ---------- */
+.my-sc-body {
+  flex: 1 1 auto;
+  min-height: 240px;
+  max-height: 64vh;
+  overflow-y: auto;
+  padding-right: var(--my-sc-s1);
+}
+
+.my-sc-body.is-hidden {
+  display: none;
+}
+
+.my-sc-tree-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.my-sc-node-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.my-sc-tree-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--my-sc-s2);
+  min-height: var(--my-sc-row-h);
+  padding: 0 var(--my-sc-s2) 0 var(--my-sc-s1);
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.my-sc-tree-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.my-sc-tree-row.is-kb-active {
+  background: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.my-sc-tree-row.is-match {
+  background: color-mix(in srgb, var(--color-yellow, #e5a158) 14%, transparent);
+}
+
+.my-sc-tree-row.is-new {
+  animation: my-sc-row-fresh 2.2s ease-out;
+}
+
+@keyframes my-sc-row-fresh {
+  from {
+    background: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
+  }
+}
+
+.my-sc-inline-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--my-sc-s2);
+  margin: var(--my-sc-s1) var(--my-sc-s2) var(--my-sc-s2) 36px;
+  padding: var(--my-sc-s2) var(--my-sc-s3);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-inline-label {
+  font-size: var(--my-sc-fs-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Раскрытие и сворачивание анимируются из modal.ts (motion.ts) */
+.my-sc-children-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-left: 17px;
+  padding-left: var(--my-sc-s2);
+  border-left: 1px solid var(--my-sc-rail);
+}
+
+.my-sc-tree-left {
+  display: flex;
+  align-items: center;
+  gap: var(--my-sc-s1);
+  min-width: 0;
+  flex: 1;
+}
+
+button.my-sc-toggle-btn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.15s ease;
+}
+
+button.my-sc-toggle-btn .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+button.my-sc-toggle-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.my-sc-toggle-btn.is-open {
+  transform: rotate(90deg);
+}
+
+.my-sc-leaf-marker {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.my-sc-leaf-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.my-sc-node-title {
+  font-size: var(--my-sc-fs);
+  font-weight: 500;
+  color: var(--text-normal);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.my-sc-tree-row.is-parent-row .my-sc-node-title {
+  font-weight: 600;
+}
+
+.my-sc-node-title:hover {
+  color: var(--text-accent);
+}
+
+.my-sc-hl {
+  background: color-mix(in srgb, var(--color-yellow, #e5a158) 35%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.my-sc-multi-parent {
+  flex-shrink: 0;
+  font-size: var(--my-sc-fs-xs);
+  color: var(--text-faint);
+}
+
+/* Правая колонка: количество · срок · тип · действия (справа налево стабильна) */
+.my-sc-tree-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--my-sc-s1);
+  flex-shrink: 0;
+}
+
+.my-sc-tree-right .my-sc-subcount-pill {
+  order: 1;
+}
+.my-sc-tree-right .my-sc-deadline {
+  order: 2;
+}
+.my-sc-tree-right .my-sc-type-badge {
+  order: 3;
+}
+.my-sc-tree-right .my-sc-row-more {
+  order: 4;
+}
+
+button.my-sc-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--my-sc-s1);
+  min-width: 96px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
+  border-radius: 6px;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 400;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.my-sc-type-badge:hover {
+  background: var(--background-modifier-hover);
+}
+
+.my-sc-type-icon {
+  font-size: var(--my-sc-fs-sm);
+  line-height: 1;
+}
+
+.my-sc-type-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--badge-color, #599ed6) 70%, var(--text-muted));
+}
+
+button.my-sc-subcount-pill {
+  min-width: 28px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 var(--my-sc-s2);
+  border-radius: 99px;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.my-sc-subcount-pill.is-collapsed {
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+
+button.my-sc-subcount-pill:hover {
+  color: var(--text-normal);
+}
+
+.my-sc-deadline {
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 500;
+  padding: 2px var(--my-sc-s2);
+  border-radius: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-deadline.is-far {
+  color: var(--color-green, #4aab80);
+  background: color-mix(in srgb, var(--color-green, #4aab80) 14%, transparent);
+}
+
+.my-sc-deadline.is-soon {
+  color: var(--color-orange, #e5a158);
+  background: color-mix(in srgb, var(--color-orange, #e5a158) 16%, transparent);
+}
+
+.my-sc-deadline.is-overdue {
+  color: var(--text-error, #e06c75);
+  background: color-mix(in srgb, var(--text-error, #e06c75) 16%, transparent);
+}
+
+button.my-sc-row-more {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.my-sc-tree-row:hover button.my-sc-row-more,
+.my-sc-tree-row.is-kb-active button.my-sc-row-more,
+button.my-sc-row-more:focus-visible {
+  opacity: 1;
+}
+
+button.my-sc-row-more:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+@media (hover: none) {
+  button.my-sc-row-more {
+    opacity: 0.6;
+  }
+}
+
+.my-sc-empty {
+  padding: var(--my-sc-s4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--my-sc-fs-sm);
+}
+
+/* ---------- Обратная связь ---------- */
+.my-sc-chip-btn,
+.my-sc-filter-chip,
+.my-sc-crumb-btn,
+.my-sc-crumb-reset,
+button.my-sc-icon-btn,
+button.my-sc-type-badge,
+button.my-sc-subcount-pill {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.my-sc-chip-btn:active,
+.my-sc-filter-chip:active,
+button.my-sc-icon-btn:active {
+  transform: scale(0.95);
+}
+
+button.my-sc-toggle-btn:active {
+  transform: scale(0.9);
+}
+
+button.my-sc-toggle-btn.is-open:active {
+  transform: rotate(90deg) scale(0.9);
+}
+
+.my-sc-add-box.is-entering {
+  animation: my-sc-form-in 0.16s ease-out;
+}
+
+@keyframes my-sc-form-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ---------- Граф проекта ---------- */
+.my-sc-graph-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 300px;
+  height: min(60vh, 660px);
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--text-faint) 30%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+
+.my-sc-graph-wrap.is-hidden {
+  display: none;
+}
+
+.my-sc-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.my-sc-graph-svg:active {
+  cursor: grabbing;
+}
+
+.my-sc-graph-viewport {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.my-sc-graph-viewport.is-animating {
+  transition: transform 0.24s ease-out;
+}
+
+.my-sc-gedge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-faint) 75%, transparent);
+  stroke-width: 1.5;
+  transition: opacity 0.15s ease, stroke 0.15s ease;
+}
+
+.my-sc-gedge.is-extra {
+  stroke-dasharray: 5 4;
+  stroke-width: 1.2;
+}
+
+.my-sc-gedge.is-lit {
+  stroke: var(--interactive-accent);
+  stroke-width: 2;
+}
+
+.my-sc-gedge.is-dim {
+  opacity: 0.15;
+}
+
+.my-sc-gnode {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.my-sc-gnode.is-dim {
+  opacity: 0.22;
+}
+
+.my-sc-gnode-body {
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 10%, var(--background-primary));
+  stroke: color-mix(in srgb, var(--node-color, #599ed6) 40%, var(--background-modifier-border));
+  stroke-width: 1.2;
+  transition: stroke 0.15s ease, fill 0.15s ease;
+}
+
+.my-sc-gnode:hover .my-sc-gnode-body {
+  stroke: var(--node-color, #599ed6);
+}
+
+.my-sc-gnode.is-root .my-sc-gnode-body {
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 18%, var(--background-primary));
+}
+
+.my-sc-gnode.is-selected .my-sc-gnode-body {
+  stroke: var(--interactive-accent);
+  stroke-width: 2.4;
+}
+
+.my-sc-gnode-stripe {
+  fill: var(--node-color, #599ed6);
+}
+
+.my-sc-gnode-label {
+  fill: var(--text-normal);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-interface);
+  pointer-events: none;
+}
+
+.my-sc-gnode.is-root .my-sc-gnode-label {
+  font-weight: 600;
+}
+
+.my-sc-gnode-dot {
+  fill: var(--color-orange, #e5a158);
+}
+
+.my-sc-gnode.is-overdue .my-sc-gnode-dot {
+  fill: var(--text-error, #e06c75);
+}
+
+.my-sc-gnode.is-new .my-sc-gnode-body {
+  animation: my-sc-gnode-fresh 2.2s ease-out;
+}
+
+@keyframes my-sc-gnode-fresh {
+  from {
+    fill: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary));
+    stroke: var(--interactive-accent);
+    stroke-width: 2.4;
+  }
+}
+
+.my-sc-gtoggle {
+  cursor: pointer;
+}
+
+.my-sc-gtoggle-pill {
+  fill: var(--background-primary);
+  stroke: color-mix(in srgb, var(--text-faint) 80%, transparent);
+  stroke-width: 1.2;
+  transition: stroke 0.15s ease;
+}
+
+.my-sc-gtoggle:hover .my-sc-gtoggle-pill {
+  stroke: var(--interactive-accent);
+}
+
+.my-sc-gtoggle.is-collapsed .my-sc-gtoggle-pill {
+  stroke: var(--interactive-accent);
+  fill: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
+}
+
+.my-sc-gtoggle-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-interface);
+  pointer-events: none;
+}
+
+.my-sc-gtoggle.is-collapsed .my-sc-gtoggle-label {
+  fill: var(--interactive-accent);
+}
+
+.my-sc-graph-controls {
+  position: absolute;
+  top: var(--my-sc-s2);
+  right: var(--my-sc-s2);
+  display: flex;
+  gap: var(--my-sc-s1);
+}
+
+button.my-sc-graph-ctrl {
+  width: var(--my-sc-hit);
+  height: var(--my-sc-hit);
+  min-height: var(--my-sc-hit);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    transform 0.1s ease;
+}
+
+button.my-sc-graph-ctrl:hover {
+  color: var(--text-normal);
+  border-color: var(--text-faint);
+}
+
+button.my-sc-graph-ctrl:active {
+  transform: scale(0.95);
+}
+
+.my-sc-graph-info {
+  position: absolute;
+  top: var(--my-sc-s2);
+  left: var(--my-sc-s2);
+  right: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--my-sc-s2);
+  padding: var(--my-sc-s1) var(--my-sc-s2) var(--my-sc-s1) var(--my-sc-s3);
+  border-radius: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--interactive-accent);
+  animation: my-sc-form-in 0.16s ease-out;
+}
+
+.my-sc-graph-info.is-hidden {
+  display: none;
+}
+
+.my-sc-graph-info-text {
+  min-width: 0;
+}
+
+.my-sc-graph-info-title {
+  font-size: var(--my-sc-fs);
+  font-weight: 600;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-graph-info-sub {
+  font-size: var(--my-sc-fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-sc-graph-info-btns {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--my-sc-s1);
+}
+
+.my-sc-graph-footer {
+  position: absolute;
+  left: var(--my-sc-s3);
+  bottom: var(--my-sc-s2);
+  font-size: var(--my-sc-fs-xs);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-sc-tree-row,
+  button.my-sc-toggle-btn,
+  button.my-sc-row-more,
+  .my-sc-chip-btn,
+  .my-sc-filter-chip,
+  .my-sc-crumb-btn,
+  .my-sc-crumb-reset,
+  button.my-sc-icon-btn,
+  button.my-sc-type-badge,
+  button.my-sc-subcount-pill,
+  .my-sc-add-box,
+  .my-sc-graph-viewport,
+  button.my-sc-graph-ctrl,
+  .my-sc-graph-info,
+  .my-sc-gnode,
+  .my-sc-gnode-body,
+  .my-sc-gedge,
+  .my-sc-gtoggle-pill {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal.my-sc-modal-container {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
+    padding-left: max(12px, env(safe-area-inset-left, 12px)) !important;
+    padding-right: max(12px, env(safe-area-inset-right, 12px)) !important;
+  }
+
+  .modal.my-sc-modal-container > .modal-close-button {
+    top: max(12px, env(safe-area-inset-top, 12px));
+    right: max(12px, env(safe-area-inset-right, 12px));
+  }
+
+  .my-sc-body {
+    max-height: none;
+  }
+
+  .my-sc-children-container {
+    margin-left: 13px;
+    padding-left: var(--my-sc-s1);
+  }
+
+  .my-sc-inline-editor {
+    margin-left: var(--my-sc-s1);
+  }
+
+  button.my-sc-type-badge {
+    min-width: 0;
+    padding: 0 var(--my-sc-s1);
+  }
+
+  .my-sc-type-name {
+    display: none;
+  }
+
+  .my-sc-graph-wrap {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 280px;
+  }
+
+  .my-sc-graph-info {
+    top: 48px;
+    right: var(--my-sc-s2);
+  }
+}
+
+=== FILE: ./tsconfig.json ===
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "module": "ESNext",
+    "target": "ES2018",
+    "allowJs": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "importHelpers": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "lib": ["DOM", "ES5", "ES6", "ES7", "ES2018", "ES2020"]
+  },
+  "include": ["src/**/*.ts"]
+}
 
 === FILE: ./version-bump.mjs ===
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -4293,4 +5169,19 @@ if (existsSync("versions.json")) {
 versions[targetVersion] = minAppVersion;
 writeFileSync("versions.json", JSON.stringify(versions, null, "\t") + "\n");
 console.log(`Версия успешно обновлена до ${targetVersion}`);
+
+=== FILE: ./versions.json ===
+{
+	"0.1.0": "1.5.0",
+	"0.2.0": "1.5.0",
+	"0.2.1": "1.5.0",
+	"0.2.2": "1.5.0",
+	"0.2.3": "1.5.0",
+	"0.2.4": "1.5.0",
+	"0.2.5": "1.5.0",
+	"0.3.0": "1.5.0",
+	"0.3.1": "1.5.0",
+	"0.3.2": "1.5.0"
+}
+
 

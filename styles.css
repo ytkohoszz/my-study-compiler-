@@ -1,10 +1,9 @@
 /* ============================================================
-   Конструктор учебных проектов
+   Конструктор учебных проектов (v0.3.3)
    Шкала отступов: 4 / 8 / 12 / 16 px
    Размеры текста: 0.9rem (основной), 0.78rem (вторичный), 0.72rem (третичный)
    Начертания: 400 / 500 / 600
-   Цвет: нейтральная основа, акцент Obsidian для главного и выбранного,
-   смысловой цвет только у типа материала и сроков
+   Защита от переопределений .is-mobile button на iPadOS/iOS
    ============================================================ */
 
 .modal.my-sc-modal-container {
@@ -53,10 +52,18 @@
   outline-offset: 1px;
 }
 
-.my-sc-modal .svg-icon {
-  width: 18px;
-  height: 18px;
-  stroke-width: 1.75px;
+/* Жёсткая защита SVG-значков от сжатия мобильными стилями Obsidian (.is-mobile button) */
+.my-sc-modal svg.svg-icon {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  flex-shrink: 0 !important;
+  stroke: currentColor !important;
+  stroke-width: 2px !important;
+  fill: none !important;
+  display: block !important;
+  pointer-events: none;
 }
 
 .my-sc-datalists-host {
@@ -67,14 +74,14 @@
 .my-sc-project-bar {
   display: flex;
   flex-direction: column;
-  gap: var(--my-sc-s1);
+  gap: var(--my-sc-s2);
 }
 
 .my-sc-top-row {
   display: flex;
   align-items: center;
   gap: var(--my-sc-s2);
-  padding-right: 36px;
+  padding-right: 40px;
 }
 
 .my-sc-work-select {
@@ -88,6 +95,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--my-sc-s2);
   min-height: var(--my-sc-hit);
 }
@@ -106,40 +114,93 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: var(--my-sc-s1);
+  gap: var(--my-sc-s2);
 }
 
-button.my-sc-icon-btn {
-  width: var(--my-sc-hit);
-  height: var(--my-sc-hit);
-  min-height: var(--my-sc-hit);
-  padding: 0;
+/* Сегментный переключатель «Дерево | Граф» */
+.my-sc-view-seg {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  gap: 2px;
+}
+
+button.my-sc-view-seg-btn {
+  height: calc(var(--my-sc-hit) - 4px) !important;
+  min-height: calc(var(--my-sc-hit) - 4px) !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
+  font-size: var(--my-sc-fs-sm) !important;
+  font-weight: 500 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.my-sc-view-seg-btn:hover {
+  color: var(--text-normal) !important;
+}
+
+button.my-sc-view-seg-btn.is-active {
+  background: var(--background-primary) !important;
+  color: var(--text-normal) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16) !important;
+}
+
+.my-sc-view-seg-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.my-sc-view-seg-icon svg.svg-icon {
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px !important;
+  min-height: 15px !important;
+}
+
+button.my-sc-icon-btn {
+  width: var(--my-sc-hit) !important;
+  min-width: var(--my-sc-hit) !important;
+  height: var(--my-sc-hit) !important;
+  min-height: var(--my-sc-hit) !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   flex-shrink: 0;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  line-height: 1;
-  background: transparent;
-  border: 1px solid transparent;
-  box-shadow: none;
-  color: var(--text-muted);
+  border-radius: 8px !important;
+  background: var(--background-secondary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  box-shadow: none !important;
+  color: var(--text-normal) !important;
   cursor: pointer;
 }
 
 button.my-sc-icon-btn:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+  border-color: var(--text-faint) !important;
 }
 
 button.my-sc-icon-btn.is-primary {
-  color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  color: var(--interactive-accent) !important;
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary)) !important;
+  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border)) !important;
 }
 
 button.my-sc-icon-btn.is-primary:hover {
-  background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--interactive-accent) 22%, var(--background-secondary)) !important;
 }
 
 .my-sc-empty-group-box {
@@ -178,7 +239,7 @@ button.my-sc-icon-btn.is-primary:hover {
 }
 
 .my-sc-filter-chip {
-  min-height: 24px;
+  min-height: 26px;
   padding: 0 var(--my-sc-s2);
   border-radius: 99px;
   font-size: var(--my-sc-fs-xs);
@@ -225,7 +286,7 @@ button.my-sc-icon-btn.is-primary:hover {
 
 .my-sc-crumb-btn,
 .my-sc-crumb-reset {
-  min-height: 24px;
+  min-height: 26px;
   padding: 0 var(--my-sc-s2);
   border-radius: 6px;
   font-size: var(--my-sc-fs-sm);
@@ -402,7 +463,7 @@ button.my-sc-icon-btn.is-primary:hover {
   align-items: center;
   gap: var(--my-sc-s2);
   min-height: var(--my-sc-row-h);
-  padding: 0 var(--my-sc-s2) 0 var(--my-sc-s1);
+  padding: 2px var(--my-sc-s2) 2px var(--my-sc-s1);
   border-radius: 8px;
   background: transparent;
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
@@ -450,70 +511,78 @@ button.my-sc-icon-btn.is-primary:hover {
   color: var(--text-muted);
 }
 
-/* Раскрытие и сворачивание анимируются из modal.ts (motion.ts) */
 .my-sc-children-container {
   position: relative;
   display: flex;
   flex-direction: column;
-  margin-left: 17px;
-  padding-left: var(--my-sc-s2);
-  border-left: 1px solid var(--my-sc-rail);
+  margin-left: 15px;
+  padding-left: var(--my-sc-s3);
+  border-left: 1.5px solid var(--my-sc-rail);
 }
 
 .my-sc-tree-left {
   display: flex;
   align-items: center;
-  gap: var(--my-sc-s1);
+  gap: var(--my-sc-s2);
   min-width: 0;
   flex: 1;
 }
 
+/* Кнопка раскрытия ветки — всегда заметна, с подложкой и защитой от .is-mobile button */
 button.my-sc-toggle-btn {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  color: var(--text-muted);
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--background-secondary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  box-shadow: none !important;
+  color: var(--text-normal) !important;
   cursor: pointer;
-  transition: transform 0.16s ease, background-color 0.15s ease;
+  flex-shrink: 0;
+  transition: transform 0.16s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 
-button.my-sc-toggle-btn .svg-icon {
-  width: 16px;
-  height: 16px;
+button.my-sc-toggle-btn svg.svg-icon {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
 }
 
 button.my-sc-toggle-btn:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+  border-color: var(--interactive-accent) !important;
+  color: var(--interactive-accent) !important;
 }
 
 button.my-sc-toggle-btn.is-open {
   transform: rotate(90deg);
+  color: var(--interactive-accent) !important;
+  border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border)) !important;
 }
 
 .my-sc-leaf-marker {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .my-sc-leaf-dot {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--text-faint);
+  background: var(--text-muted);
+  opacity: 0.6;
 }
 
 .my-sc-node-title {
@@ -548,7 +617,7 @@ button.my-sc-toggle-btn.is-open {
   color: var(--text-faint);
 }
 
-/* Правая колонка: количество · срок · тип · действия (справа налево стабильна) */
+/* Правая колонка: количество · срок · тип · действия */
 .my-sc-tree-right {
   display: flex;
   align-items: center;
@@ -571,27 +640,27 @@ button.my-sc-toggle-btn.is-open {
 }
 
 button.my-sc-type-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--my-sc-s1);
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: var(--my-sc-s1) !important;
   min-width: 96px;
-  height: 24px;
-  min-height: 24px;
-  padding: 0 var(--my-sc-s2);
-  border-radius: 6px;
-  font-size: var(--my-sc-fs-xs);
-  font-weight: 400;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  color: var(--text-muted);
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 var(--my-sc-s2) !important;
+  border-radius: 6px !important;
+  font-size: var(--my-sc-fs-xs) !important;
+  font-weight: 400 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
   white-space: nowrap;
   cursor: pointer;
 }
 
 button.my-sc-type-badge:hover {
-  background: var(--background-modifier-hover);
+  background: var(--background-modifier-hover) !important;
 }
 
 .my-sc-type-icon {
@@ -602,32 +671,33 @@ button.my-sc-type-badge:hover {
 .my-sc-type-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--badge-color, #599ed6) 70%, var(--text-muted));
+  color: color-mix(in srgb, var(--badge-color, #599ed6) 75%, var(--text-muted));
 }
 
 button.my-sc-subcount-pill {
-  min-width: 28px;
-  height: 24px;
-  min-height: 24px;
-  padding: 0 var(--my-sc-s2);
-  border-radius: 99px;
-  font-size: var(--my-sc-fs-xs);
-  font-weight: 500;
+  min-width: 28px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 var(--my-sc-s2) !important;
+  border-radius: 99px !important;
+  font-size: var(--my-sc-fs-xs) !important;
+  font-weight: 600 !important;
   font-variant-numeric: tabular-nums;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  color: var(--text-faint);
+  background: var(--background-secondary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
   cursor: pointer;
 }
 
 button.my-sc-subcount-pill.is-collapsed {
-  color: var(--text-muted);
-  background: var(--background-modifier-hover);
+  color: var(--interactive-accent) !important;
+  background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-secondary)) !important;
+  border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border)) !important;
 }
 
 button.my-sc-subcount-pill:hover {
-  color: var(--text-normal);
+  color: var(--text-normal) !important;
 }
 
 .my-sc-deadline {
@@ -655,21 +725,19 @@ button.my-sc-subcount-pill:hover {
 }
 
 button.my-sc-row-more {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  font-size: 1.1rem;
-  line-height: 1;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  color: var(--text-muted);
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
   opacity: 0;
   cursor: pointer;
   transition: opacity 0.15s ease, background-color 0.15s ease;
@@ -682,14 +750,8 @@ button.my-sc-row-more:focus-visible {
 }
 
 button.my-sc-row-more:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-}
-
-@media (hover: none) {
-  button.my-sc-row-more {
-    opacity: 0.6;
-  }
+  background: var(--background-modifier-hover) !important;
+  color: var(--text-normal) !important;
 }
 
 .my-sc-empty {
@@ -705,6 +767,7 @@ button.my-sc-row-more:hover {
 .my-sc-crumb-btn,
 .my-sc-crumb-reset,
 button.my-sc-icon-btn,
+button.my-sc-view-seg-btn,
 button.my-sc-type-badge,
 button.my-sc-subcount-pill {
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
@@ -713,16 +776,17 @@ button.my-sc-subcount-pill {
 
 .my-sc-chip-btn:active,
 .my-sc-filter-chip:active,
-button.my-sc-icon-btn:active {
-  transform: scale(0.95);
+button.my-sc-icon-btn:active,
+button.my-sc-view-seg-btn:active {
+  transform: scale(0.96);
 }
 
 button.my-sc-toggle-btn:active {
-  transform: scale(0.9);
+  transform: scale(0.92);
 }
 
 button.my-sc-toggle-btn.is-open:active {
-  transform: rotate(90deg) scale(0.9);
+  transform: rotate(90deg) scale(0.92);
 }
 
 .my-sc-add-box.is-entering {
@@ -908,26 +972,26 @@ button.my-sc-toggle-btn.is-open:active {
 }
 
 button.my-sc-graph-ctrl {
-  width: var(--my-sc-hit);
-  height: var(--my-sc-hit);
-  min-height: var(--my-sc-hit);
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  box-shadow: none;
-  color: var(--text-muted);
+  width: var(--my-sc-hit) !important;
+  min-width: var(--my-sc-hit) !important;
+  height: var(--my-sc-hit) !important;
+  min-height: var(--my-sc-hit) !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  background: var(--background-primary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  box-shadow: none !important;
+  color: var(--text-normal) !important;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
     transform 0.1s ease;
 }
 
 button.my-sc-graph-ctrl:hover {
-  color: var(--text-normal);
-  border-color: var(--text-faint);
+  border-color: var(--text-faint) !important;
 }
 
 button.my-sc-graph-ctrl:active {
@@ -991,6 +1055,66 @@ button.my-sc-graph-ctrl:active {
   pointer-events: none;
 }
 
+/* ---------- Сенсорные экраны (iPadOS / iOS / Android): зоны 44x44 px и видимость без hover ---------- */
+@media (pointer: coarse), (any-pointer: coarse), (hover: none) {
+  .modal.my-sc-modal-container {
+    --my-sc-hit: 44px;
+    --my-sc-row-h: 48px;
+  }
+
+  .my-sc-top-row {
+    padding-right: 48px;
+  }
+
+  button.my-sc-toggle-btn {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    border-radius: 10px !important;
+  }
+
+  button.my-sc-toggle-btn svg.svg-icon {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+  }
+
+  .my-sc-leaf-marker {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .my-sc-children-container {
+    margin-left: 22px;
+  }
+
+  button.my-sc-row-more {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    opacity: 0.9 !important;
+    background: var(--background-secondary) !important;
+    border: 1px solid var(--background-modifier-border) !important;
+  }
+
+  button.my-sc-type-badge {
+    height: 34px !important;
+    min-height: 34px !important;
+    background: var(--background-secondary) !important;
+    border: 1px solid var(--background-modifier-border) !important;
+  }
+
+  button.my-sc-subcount-pill {
+    min-width: 34px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .my-sc-tree-row,
   button.my-sc-toggle-btn,
@@ -1000,6 +1124,7 @@ button.my-sc-graph-ctrl:active {
   .my-sc-crumb-btn,
   .my-sc-crumb-reset,
   button.my-sc-icon-btn,
+  button.my-sc-view-seg-btn,
   button.my-sc-type-badge,
   button.my-sc-subcount-pill,
   .my-sc-add-box,
@@ -1039,8 +1164,8 @@ button.my-sc-graph-ctrl:active {
   }
 
   .my-sc-children-container {
-    margin-left: 13px;
-    padding-left: var(--my-sc-s1);
+    margin-left: 16px;
+    padding-left: var(--my-sc-s2);
   }
 
   .my-sc-inline-editor {
@@ -1049,7 +1174,7 @@ button.my-sc-graph-ctrl:active {
 
   button.my-sc-type-badge {
     min-width: 0;
-    padding: 0 var(--my-sc-s1);
+    padding: 0 var(--my-sc-s2) !important;
   }
 
   .my-sc-type-name {
@@ -1063,7 +1188,7 @@ button.my-sc-graph-ctrl:active {
   }
 
   .my-sc-graph-info {
-    top: 48px;
+    top: 56px;
     right: var(--my-sc-s2);
   }
 }

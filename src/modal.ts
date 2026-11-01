@@ -196,10 +196,10 @@ export class StudyCompilerModal extends Modal {
     this.applyViewMode();
     this.renderTree();
 
+    // Проблема 1: при обычном открытии окна не фокусируем поиск, чтобы на iPad не вылезала экранная клавиатура.
+    // Фокус на поле названия ставится только тогда, когда явно запрошено добавление материала (addUnder или нажатие «＋»).
     if (addUnder && this.scan.byPath.has(addUnder)) {
-      this.openForm(addUnder);
-    } else {
-      window.setTimeout(() => this.searchInputEl?.focus(), 40);
+      this.openForm(addUnder, true);
     }
   }
 
@@ -254,7 +254,6 @@ export class StudyCompilerModal extends Modal {
     return first;
   }
 
-  // Если в текущей группе проектов нет, переключаемся на непустую
   private resolveRootWithFallback(): StudyNoteItem | null {
     const root = this.getRootInCurrentGroup();
     if (root) return root;
@@ -336,7 +335,7 @@ export class StudyCompilerModal extends Modal {
       this.renderBar();
       this.renderSearchPanel();
       this.renderBreadcrumbs();
-      if (this.form.open) this.renderForm();
+      if (this.form.open) this.renderForm(false);
       this.renderMain();
 
       if (this.viewMode === "tree") {
@@ -590,7 +589,7 @@ export class StudyCompilerModal extends Modal {
 
     const branchRoot = this.getActiveBranchRoot(root);
 
-    // Ряд 1: проект · меню проекта
+    // Ряд 1: выбор проекта + кнопка меню проекта (с явным SVG-значком)
     const topRow = this.barEl.createDiv("my-sc-top-row");
     const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
 
@@ -632,12 +631,12 @@ export class StudyCompilerModal extends Modal {
 
     const moreBtn = topRow.createEl("button", {
       cls: "my-sc-icon-btn",
-      text: "⋯",
       attr: { type: "button", title: "Действия с проектом", "aria-label": "Действия с проектом" },
     });
+    setIcon(moreBtn, "more-horizontal");
     moreBtn.onclick = (e) => this.openProjectMenu(e, root, branchRoot);
 
-    // Ряд 2: сводка · инструменты
+    // Ряд 2: сводка слева · понятный сегмент «Дерево | Граф» и кнопки справа
     const descendants = collectDescendants(branchRoot.path, this.scan);
     const metaRow = this.barEl.createDiv("my-sc-meta-row");
     const metaInfo = metaRow.createDiv("my-sc-meta-info");
@@ -651,6 +650,25 @@ export class StudyCompilerModal extends Modal {
     this.renderDeadline(metaInfo, branchRoot);
 
     const tools = metaRow.createDiv("my-sc-icon-group");
+
+    // Сегментный переключатель «Дерево | Граф» — всегда виден и понятен без подсказок
+    const modeSeg = tools.createDiv("my-sc-view-seg");
+    const addModeBtn = (mode: ViewMode, icon: string, label: string) => {
+      const b = modeSeg.createEl("button", {
+        cls: "my-sc-view-seg-btn" + (this.viewMode === mode ? " is-active" : ""),
+        attr: {
+          type: "button",
+          title: mode === "tree" ? "Вид дерева" : "Вид графа",
+          "aria-pressed": String(this.viewMode === mode),
+        },
+      });
+      const icSpan = b.createSpan("my-sc-view-seg-icon");
+      setIcon(icSpan, icon);
+      b.createSpan({ cls: "my-sc-view-seg-label", text: label });
+      b.onclick = () => this.setViewMode(mode);
+    };
+    addModeBtn("tree", "list", "Дерево");
+    addModeBtn("graph", "git-Fork", "Граф");
 
     if (this.viewMode === "tree") {
       this.expandToggleBtn = this.iconBtn(tools, "chevrons-up-down", "Развернуть все ветки", () => {
@@ -667,13 +685,6 @@ export class StudyCompilerModal extends Modal {
 
     this.iconBtn(
       tools,
-      this.viewMode === "graph" ? "list" : "network",
-      this.viewMode === "graph" ? "Показать списком" : "Показать графом",
-      () => this.setViewMode(this.viewMode === "graph" ? "tree" : "graph")
-    );
-
-    this.iconBtn(
-      tools,
       this.form.open ? "x" : "plus",
       this.form.open ? "Закрыть форму" : "Добавить материал",
       () => {
@@ -682,7 +693,7 @@ export class StudyCompilerModal extends Modal {
           this.formEl.empty();
           this.renderBar();
         } else {
-          this.openForm(branchRoot.path);
+          this.openForm(branchRoot.path, true);
         }
       },
       { primary: true, active: this.form.open }
@@ -788,7 +799,7 @@ export class StudyCompilerModal extends Modal {
     resetBtn.onclick = () => this.setFocusBranch(root, root.path);
   }
 
-  private openForm(parentPath: string) {
+  private openForm(parentPath: string, focusTitle = true) {
     const root = this.getRootInCurrentGroup();
     if (!root) return;
     this.form.open = true;
@@ -798,11 +809,11 @@ export class StudyCompilerModal extends Modal {
       "Термин";
     this.form.parentPath = this.scan.byPath.has(parentPath) ? parentPath : root.path;
     this.renderBar();
-    this.renderForm();
+    this.renderForm(focusTitle);
     this.formEl.querySelector(".my-sc-add-box")?.addClass("is-entering");
   }
 
-  private renderForm() {
+  private renderForm(focusTitle = false) {
     this.formEl.empty();
     if (!this.form.open) return;
     const root = this.getRootInCurrentGroup();
@@ -920,7 +931,7 @@ export class StudyCompilerModal extends Modal {
         });
         chip.onclick = () => {
           this.form.type = tc.name;
-          this.renderForm();
+          this.renderForm(false);
         };
       }
     }
@@ -991,7 +1002,7 @@ export class StudyCompilerModal extends Modal {
 
       this.iconBtn(pRow, "x", "Удалить свойство", () => {
         this.form.customProps.splice(i, 1);
-        this.renderForm();
+        this.renderForm(false);
       });
     }
 
@@ -1008,7 +1019,7 @@ export class StudyCompilerModal extends Modal {
         value: "",
         kind: "auto",
       });
-      this.renderForm();
+      this.renderForm(false);
     };
 
     const createBtn = actionsRow.createEl("button", {
@@ -1024,7 +1035,7 @@ export class StudyCompilerModal extends Modal {
         this.form.title = "";
         this.form.deadline = "";
         this.form.customProps = [];
-        this.renderForm();
+        this.renderForm(true);
       } else {
         createBtn.disabled = false;
       }
@@ -1033,7 +1044,9 @@ export class StudyCompilerModal extends Modal {
     titleInp.addEventListener("keydown", (e: KeyboardEvent) => {
       if (e.key === "Enter" && !e.isComposing) void submit();
     });
-    titleInp.focus();
+    if (focusTitle) {
+      window.setTimeout(() => titleInp.focus(), 20);
+    }
   }
 
   private async createNote(root: StudyNoteItem): Promise<boolean> {
@@ -1077,7 +1090,7 @@ export class StudyCompilerModal extends Modal {
         new Notice(`Дублирующийся ключ свойства «${k}». Оставь только одно поле.`);
         return false;
       }
-      if (parsedVal === undefined) continue; // Пустые значения не записываем совсем
+      if (parsedVal === undefined) continue;
 
       seenKeysLower.add(kLow);
       preparedProps.push({
@@ -1200,7 +1213,7 @@ export class StudyCompilerModal extends Modal {
       mi
         .setTitle("Добавить материал внутрь")
         .setIcon("plus")
-        .onClick(() => this.openForm(item.path))
+        .onClick(() => this.openForm(item.path, true))
     );
     menu.addSeparator();
     menu.addItem((mi) =>
@@ -1270,7 +1283,6 @@ export class StudyCompilerModal extends Modal {
     }
     this.treeEl.scrollTop = scrollTop;
 
-    // Плавное раскрытие только той ветки, которую открыл пользователь
     if (this.pendingOpenPath) {
       const openPath = this.pendingOpenPath;
       this.pendingOpenPath = null;
@@ -1361,7 +1373,6 @@ export class StudyCompilerModal extends Modal {
     const right = row.createDiv("my-sc-tree-right");
     this.renderDeadline(right, item);
 
-    // Тип материала: тихая колонка справа; клик меняет тип
     const meta = getWorkMeta(item.noteType, item.icon);
     const kind = right.createEl("button", {
       cls: "my-sc-type-badge",
@@ -1405,15 +1416,14 @@ export class StudyCompilerModal extends Modal {
 
     const moreBtn = right.createEl("button", {
       cls: "my-sc-row-more",
-      text: "⋯",
       attr: { type: "button", title: "Действия", "aria-label": "Действия с материалом" },
     });
+    setIcon(moreBtn, "more-horizontal");
     moreBtn.onclick = (e) => {
       e.stopPropagation();
       this.openRowMenu(e, item, projectRoot);
     };
 
-    // Компактная панель быстрого изменения типа или свойства у существующей заметки
     if (this.editingNodePath === item.path && this.editingNodeMode) {
       this.renderInlineNodeEditor(groupEl, item);
     }
@@ -1490,7 +1500,6 @@ export class StudyCompilerModal extends Modal {
       return;
     }
 
-    // Режим добавления/обновления произвольного свойства у существующей заметки
     editorBox.createSpan({ cls: "my-sc-inline-label", text: "Свойство YAML:" });
     const dlId = `my-sc-inline-val-${Date.now()}`;
     const keyInp = editorBox.createEl("input", {
