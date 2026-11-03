@@ -15,6 +15,12 @@ import {
   WorkMetaBadge,
 } from "./types";
 
+export interface AutoAdoptedItem {
+  childFile: TFile;
+  parentFile: TFile;
+  inheritedDiscipline: string;
+}
+
 export interface ScanResult {
   roots: StudyNoteItem[];
   activeRoots: StudyNoteItem[];
@@ -23,6 +29,7 @@ export interface ScanResult {
   byPath: Map<string, StudyNoteItem>;
   childrenOf: Map<string, string[]>;
   schema: VaultPropertySchema;
+  autoAdopted: AutoAdoptedItem[];
 }
 
 export function emptyScan(): ScanResult {
@@ -34,6 +41,7 @@ export function emptyScan(): ScanResult {
     byPath: new Map(),
     childrenOf: new Map(),
     schema: { typeCounts: [], propertyKeys: [], valuesByKey: new Map() },
+    autoAdopted: [],
   };
 }
 
@@ -120,6 +128,34 @@ export function resolveParentPaths(
   return resolved;
 }
 
+/**
+ * Извлекает целевые файлы всех исходящих вики-ссылок из тела заметки (исключая ссылки из YAML frontmatter).
+ */
+export function resolveBodyOutlinkFiles(app: App, sourceFile: TFile): TFile[] {
+  const cache = app.metadataCache.getFileCache(sourceFile);
+  if (!cache?.links || cache.links.length === 0) return [];
+
+  const result: TFile[] = [];
+  const seen = new Set<string>();
+
+  for (const linkRef of cache.links) {
+    const cleanLink = linkRef.link.split("#")[0]?.split("|")[0]?.trim();
+    if (!cleanLink) continue;
+    const dest = app.metadataCache.getFirstLinkpathDest(cleanLink, sourceFile.path);
+    if (
+      dest instanceof TFile &&
+      dest.extension === "md" &&
+      dest.path !== sourceFile.path &&
+      !seen.has(dest.path)
+    ) {
+      seen.add(dest.path);
+      result.push(dest);
+    }
+  }
+
+  return result;
+}
+
 export function todayISO(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
@@ -182,15 +218,46 @@ export function formatFullDateTooltip(iso: string): string {
   return `Дедлайн: ${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
-function isTemplateOrExcludedFile(
+const HARD_EXCLUDED_FOLDERS = [
+  "ежедневник",
+  "система",
+  "горизонты",
+  "грамматика",
+  "всякое",
+  "шаблоны",
+  "templates",
+  "знания/карточки",
+  "знания/сборки",
+];
+
+const HUB_NOTE_BASENAMES = new Set([
+  "🏠главная",
+  "🎓учёба",
+  "💪здоровье",
+  "📓дневник",
+  "🌎английский и книги",
+  "🧊3d",
+  "знания",
+  "ежедневник",
+]);
+
+export function isTemplateOrExcludedFile(
   file: TFile,
-  fm: Record<string, unknown>,
+  fm: Record<string, unknown> | undefined,
   tagsLower: string[],
   settings: StudyCompilerSettings
 ): boolean {
-  const excludedFolders = settings.excludedFolders
-    .map((f) => f.trim().replace(/^\/+|\/+$/g, "").toLowerCase())
-    .filter((f) => f.length > 0);
+  const baseLower = file.basename.toLowerCase();
+  if (HUB_NOTE_BASENAMES.has(baseLower)) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(baseLower)) return true;
+  if (/^тренировка\s+\d{4}-\d{2}-\d{2}$/i.test(baseLower)) return true;
+
+  const excludedFolders = [
+    ...HARD_EXCLUDED_FOLDERS,
+    ...settings.excludedFolders
+      .map((f) => f.trim().replace(/^\/+|\/+$/g, "").toLowerCase())
+      .filter((f) => f.length > 0),
+  ];
 
   const pathLower = file.path.toLowerCase();
   const folderSegments = pathLower.split("/").slice(0, -1);
@@ -206,7 +273,6 @@ function isTemplateOrExcludedFile(
   const prefixes = settings.excludedTitlePrefixes
     .map((p) => p.trim().toLowerCase())
     .filter((p) => p.length > 0);
-  const baseLower = file.basename.toLowerCase();
   if (prefixes.some((pref) => baseLower.startsWith(pref))) {
     return true;
   }
@@ -218,15 +284,27 @@ function isTemplateOrExcludedFile(
     return true;
   }
 
-  const noteTypeLower = readString(fm[KEYS.type]).toLowerCase();
-  if (noteTypeLower === "шаблон" || noteTypeLower === "template") {
-    return true;
-  }
-  if (
-    fm[KEYS.templateFlag] === true ||
-    String(fm[KEYS.templateFlag]).toLowerCase() === "true"
-  ) {
-    return true;
+  if (fm) {
+    const isCardDeck =
+      Boolean(fm["колода_карточек"]) ||
+      readString(fm["подтип"]).toLowerCase() === "карточки";
+    if (isCardDeck) return true;
+
+    const noteTypeLower = readString(fm[KEYS.type]).toLowerCase();
+    if (
+      noteTypeLower === "шаблон" ||
+      noteTypeLower === "template" ||
+      noteTypeLower === "тренировка" ||
+      noteTypeLower === "книга"
+    ) {
+      return true;
+    }
+    if (
+      fm[KEYS.templateFlag] === true ||
+      String(fm[KEYS.templateFlag]).toLowerCase() === "true"
+    ) {
+      return true;
+    }
   }
 
   return false;
@@ -245,6 +323,67 @@ const SYSTEM_FM_IGNORE = new Set([
   "cssclass",
 ]);
 
+function buildNoteItemFromFile(
+  app: App,
+  file: TFile,
+  fm: Record<string, unknown> | undefined,
+  tags: string[],
+  studyAreaName: string,
+  defaultTypeFallback: string
+): StudyNoteItem {
+  const areas = fm ? flattenFrontmatterValue(fm[KEYS.area]) : [];
+  const hasExplicitStudyArea = areas.includes(studyAreaName);
+  const explicitParents = fm ? resolveParentPaths(app, file, fm[KEYS.parent]) : [];
+  const rawType = fm ? normalizeSpaces(readString(fm[KEYS.type])) : "";
+  const noteType = rawType || defaultTypeFallback;
+  const status = fm ? normalizeSpaces(readString(fm[KEYS.status])) : "";
+  const rawDeadline = fm
+    ? (readString(fm[KEYS.deadline]) || readString(fm[KEYS.deadlineAlt])).slice(0, 10)
+    : "";
+  const rawFinished = fm ? readString(fm[KEYS.finishedAt]).slice(0, 10) : "";
+
+  return {
+    file,
+    path: file.path,
+    name: file.basename,
+    noteType,
+    status,
+    isCompletedRoot: isRootStatusCompleted(status),
+    finishedAt: /^\d{4}-\d{2}-\d{2}$/.test(rawFinished) ? rawFinished : null,
+    discipline: fm ? readString(fm[KEYS.discipline]) : "",
+    deadline: /^\d{4}-\d{2}-\d{2}$/.test(rawDeadline) ? rawDeadline : null,
+    icon: fm ? readString(fm[KEYS.icon]) : "",
+    tags,
+    parentPaths: explicitParents,
+    hasExplicitParent: explicitParents.length > 0,
+    hasExplicitStudyArea,
+  };
+}
+
+/**
+ * Проверяет, является ли `candidateAncestor` предком для `nodePath` по текущим связям `byPath`,
+ * чтобы исключить образование циклов A -> B -> A при парсинге взаимных ссылок.
+ */
+function isAncestorOf(
+  byPath: Map<string, StudyNoteItem>,
+  candidateAncestor: string,
+  nodePath: string
+): boolean {
+  const visited = new Set<string>();
+  const stack = [nodePath];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur || visited.has(cur)) continue;
+    if (cur === candidateAncestor) return true;
+    visited.add(cur);
+    const item = byPath.get(cur);
+    if (item) {
+      for (const p of item.parentPaths) stack.push(p);
+    }
+  }
+  return false;
+}
+
 export function scanStudyVault(
   app: App,
   settings: StudyCompilerSettings
@@ -253,21 +392,18 @@ export function scanStudyVault(
   const typeCounter = new Map<string, { display: string; count: number }>();
   const propKeyFreq = new Map<string, number>();
   const valuesSetByKey = new Map<string, Set<string>>();
+  const autoAdopted: AutoAdoptedItem[] = [];
 
-  for (const file of app.vault.getMarkdownFiles()) {
+  const allMdFiles = app.vault.getMarkdownFiles();
+  const eligibleFiles = new Map<
+    string,
+    { file: TFile; fm: Record<string, unknown> | undefined; tags: string[] }
+  >();
+
+  // Проход 1: собираем все заметки с явным направлением «Учёба» и список допустимых кандидатов для ссылок
+  for (const file of allMdFiles) {
     const cache = app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
-    if (!fm) continue;
-
-    if (!flattenFrontmatterValue(fm[KEYS.area]).includes(settings.studyAreaName)) {
-      continue;
-    }
-
-    const isCardDeck =
-      Boolean(fm["колода_карточек"]) ||
-      readString(fm["подтип"]).toLowerCase() === "карточки";
-    if (isCardDeck) continue;
-
     const rawTags = cache ? getAllTags(cache) ?? [] : [];
     const tags = rawTags.map((t) => t.replace(/^#/, "").toLowerCase());
 
@@ -275,14 +411,112 @@ export function scanStudyVault(
       continue;
     }
 
-    const noteType = normalizeSpaces(readString(fm[KEYS.type]));
-    if (noteType) {
-      const lowerT = noteType.toLowerCase();
-      const prev = typeCounter.get(lowerT);
-      if (prev) prev.count++;
-      else typeCounter.set(lowerT, { display: noteType, count: 1 });
+    const areas = fm ? flattenFrontmatterValue(fm[KEYS.area]) : [];
+    const hasOtherArea =
+      areas.length > 0 && !areas.includes(settings.studyAreaName);
+    if (hasOtherArea) {
+      continue;
     }
 
+    eligibleFiles.set(file.path, { file, fm, tags });
+
+    if (areas.includes(settings.studyAreaName)) {
+      const item = buildNoteItemFromFile(
+        app,
+        file,
+        fm,
+        tags,
+        settings.studyAreaName,
+        ""
+      );
+      byPath.set(file.path, item);
+    }
+  }
+
+  // Проход 2 (Транзитивный BFS вглубь A -> B -> C ...):
+  // Если в заметке дерева есть вики-ссылка на [[Термин Б]], подтягиваем его в дерево и назначаем родителя
+  if (settings.autoInheritFromLinks) {
+    const queue: string[] = [...byPath.keys()];
+    const queuedSet = new Set<string>(queue);
+
+    while (queue.length > 0) {
+      const parentPath = queue.shift();
+      if (!parentPath) continue;
+      const parentItem = byPath.get(parentPath);
+      if (!parentItem) continue;
+
+      const outlinkFiles = resolveBodyOutlinkFiles(app, parentItem.file);
+      for (const targetFile of outlinkFiles) {
+        const candidateMeta = eligibleFiles.get(targetFile.path);
+        if (!candidateMeta) continue;
+
+        let targetItem = byPath.get(targetFile.path);
+
+        if (!targetItem) {
+          // Заметка ещё не имела направления «Учёба» — включаем её в дерево как дочернюю к parentItem
+          targetItem = buildNoteItemFromFile(
+            app,
+            targetFile,
+            candidateMeta.fm,
+            candidateMeta.tags,
+            settings.studyAreaName,
+            settings.defaultAutoNoteType || "Заметка"
+          );
+          if (!targetItem.discipline && parentItem.discipline) {
+            targetItem.discipline = parentItem.discipline;
+          }
+          if (!targetItem.hasExplicitParent) {
+            targetItem.parentPaths = [parentItem.path];
+          }
+          byPath.set(targetFile.path, targetItem);
+          autoAdopted.push({
+            childFile: targetFile,
+            parentFile: parentItem.file,
+            inheritedDiscipline: targetItem.discipline,
+          });
+        } else if (!targetItem.hasExplicitParent) {
+          // Заметка уже в направлении «Учёба», но у неё не был указан родитель в YAML
+          const isTargetRootProject =
+            Boolean(targetItem.status || targetItem.deadline) &&
+            !LEGACY_MATERIAL_TYPES.some(
+              (t) => t.toLowerCase() === targetItem!.noteType.toLowerCase()
+            );
+
+          if (
+            !isTargetRootProject &&
+            targetItem.parentPaths.length === 0 &&
+            !isAncestorOf(byPath, targetItem.path, parentItem.path)
+          ) {
+            targetItem.parentPaths = [parentItem.path];
+            if (!targetItem.discipline && parentItem.discipline) {
+              targetItem.discipline = parentItem.discipline;
+            }
+            autoAdopted.push({
+              childFile: targetFile,
+              parentFile: parentItem.file,
+              inheritedDiscipline: targetItem.discipline,
+            });
+          }
+        }
+
+        if (!queuedSet.has(targetFile.path)) {
+          queuedSet.add(targetFile.path);
+          queue.push(targetFile.path);
+        }
+      }
+    }
+  }
+
+  // Сбор статистики типов и YAML-свойств по всем узлам учебного графа
+  for (const item of byPath.values()) {
+    if (item.noteType) {
+      const lowerT = item.noteType.toLowerCase();
+      const prev = typeCounter.get(lowerT);
+      if (prev) prev.count++;
+      else typeCounter.set(lowerT, { display: item.noteType, count: 1 });
+    }
+    const fm = eligibleFiles.get(item.path)?.fm;
+    if (!fm) continue;
     for (const [k, rawVal] of Object.entries(fm)) {
       if (SYSTEM_FM_IGNORE.has(k)) continue;
       propKeyFreq.set(k, (propKeyFreq.get(k) ?? 0) + 1);
@@ -300,27 +534,6 @@ export function scanStudyVault(
         }
       }
     }
-
-    const status = normalizeSpaces(readString(fm[KEYS.status]));
-    const rawDeadline = (
-      readString(fm[KEYS.deadline]) || readString(fm[KEYS.deadlineAlt])
-    ).slice(0, 10);
-    const rawFinished = readString(fm[KEYS.finishedAt]).slice(0, 10);
-
-    byPath.set(file.path, {
-      file,
-      path: file.path,
-      name: file.basename,
-      noteType,
-      status,
-      isCompletedRoot: isRootStatusCompleted(status),
-      finishedAt: /^\d{4}-\d{2}-\d{2}$/.test(rawFinished) ? rawFinished : null,
-      discipline: readString(fm[KEYS.discipline]),
-      deadline: /^\d{4}-\d{2}-\d{2}$/.test(rawDeadline) ? rawDeadline : null,
-      icon: readString(fm[KEYS.icon]),
-      tags,
-      parentPaths: resolveParentPaths(app, file, fm[KEYS.parent]),
-    });
   }
 
   const childrenOf = new Map<string, string[]>();
@@ -391,7 +604,64 @@ export function scanStudyVault(
     byPath,
     childrenOf,
     schema: { typeCounts, propertyKeys, valuesByKey },
+    autoAdopted,
   };
+}
+
+/**
+ * Прописывает в YAML автоматически усыновлённых по ссылкам заметок свойства
+ * `направление: "Учёба"`, `родитель: "[[...]]"` и `тип` (если они ещё не заполнены).
+ */
+export async function syncAutoAdoptedFrontmatter(
+  app: App,
+  settings: StudyCompilerSettings
+): Promise<number> {
+  if (!settings.autoInheritFromLinks) return 0;
+  const scan = scanStudyVault(app, settings);
+  if (scan.autoAdopted.length === 0) return 0;
+
+  let updatedCount = 0;
+  for (const entry of scan.autoAdopted) {
+    const cache = app.metadataCache.getFileCache(entry.childFile);
+    const fm = cache?.frontmatter;
+    const hasArea = fm
+      ? flattenFrontmatterValue(fm[KEYS.area]).includes(settings.studyAreaName)
+      : false;
+    const hasParent = fm
+      ? flattenFrontmatterValue(fm[KEYS.parent]).length > 0
+      : false;
+
+    if (hasArea && hasParent) continue;
+
+    const linkText = app.metadataCache.fileToLinktext(
+      entry.parentFile,
+      entry.childFile.path
+    );
+    try {
+      await app.fileManager.processFrontMatter(
+        entry.childFile,
+        (frontmatter: Record<string, unknown>) => {
+          if (!frontmatter[KEYS.area]) {
+            frontmatter[KEYS.area] = settings.studyAreaName;
+          }
+          if (!frontmatter[KEYS.type]) {
+            frontmatter[KEYS.type] = settings.defaultAutoNoteType || "Заметка";
+          }
+          if (!frontmatter[KEYS.parent]) {
+            frontmatter[KEYS.parent] = `[[${linkText}]]`;
+          }
+          if (!frontmatter[KEYS.discipline] && entry.inheritedDiscipline) {
+            frontmatter[KEYS.discipline] = entry.inheritedDiscipline;
+          }
+        }
+      );
+      updatedCount++;
+    } catch {
+      // игнорируем одиночные ошибки доступа к файлу
+    }
+  }
+
+  return updatedCount;
 }
 
 export function findCaseInsensitiveTypeMatch(
@@ -409,14 +679,6 @@ export function findCaseInsensitiveTypeMatch(
   return null;
 }
 
-/**
- * Преобразует строковый ввод произвольного свойства в корректный тип для YAML:
- * - пустая строка -> undefined (не записывать)
- * - kind === "list" -> массив строк по запятой
- * - YYYY-MM-DD -> строка (будет записана в кавычках в YAML)
- * - true / false -> boolean
- * - число -> number без кавычек
- */
 export function parseCustomPropertyValue(
   rawValue: string,
   kind: CustomPropValueKind

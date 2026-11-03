@@ -1,10 +1,11 @@
-import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import {
   DEFAULT_SETTINGS,
   ProjectGroupTab,
   StudyCompilerSettings,
 } from "./types";
 import { OpenOptions, StudyCompilerModal } from "./modal";
+import { syncAutoAdoptedFrontmatter } from "./scanner";
 
 function migrateSettings(raw: unknown): StudyCompilerSettings {
   const s =
@@ -42,6 +43,14 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
       typeof s.lastUsedMaterialType === "string" && s.lastUsedMaterialType.trim()
         ? s.lastUsedMaterialType.trim()
         : DEFAULT_SETTINGS.lastUsedMaterialType,
+    autoInheritFromLinks:
+      typeof s.autoInheritFromLinks === "boolean"
+        ? s.autoInheritFromLinks
+        : DEFAULT_SETTINGS.autoInheritFromLinks,
+    defaultAutoNoteType:
+      typeof s.defaultAutoNoteType === "string" && s.defaultAutoNoteType.trim()
+        ? s.defaultAutoNoteType.trim()
+        : DEFAULT_SETTINGS.defaultAutoNoteType,
     excludedFolders: strList(s.excludedFolders, DEFAULT_SETTINGS.excludedFolders),
     excludedTitlePrefixes: strList(
       s.excludedTitlePrefixes,
@@ -66,6 +75,60 @@ class StudyCompilerSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h3", { text: "Конструктор учебных проектов" });
+
+    new Setting(containerEl)
+      .setName("Автонаследование иерархии по вики-ссылкам из текста")
+      .setDesc(
+        "Если внутри проекта или конспекта A поставлена ссылка [[Термин Б]], а внутри него [[Источник В]], плагин автоматически выстраивает цепочку родителей A → Б → В и прописывает «направление» и «родитель» в YAML новых заметок"
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoInheritFromLinks)
+          .onChange((val) => {
+            this.plugin.settings.autoInheritFromLinks = val;
+            this.plugin.requestSaveSettings();
+            if (val) {
+              this.plugin.scheduleAutoInheritSync();
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Тип по умолчанию для заметок из вики-ссылок")
+      .setDesc(
+        "Записывается в свойство «тип», если у новой заметки, созданной по ссылке из текста, тип ещё не указан (по умолчанию: Заметка)"
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder("Заметка")
+          .setValue(this.plugin.settings.defaultAutoNoteType)
+          .onChange((val) => {
+            this.plugin.settings.defaultAutoNoteType =
+              val.trim() || DEFAULT_SETTINGS.defaultAutoNoteType;
+            this.plugin.requestSaveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Синхронизировать YAML по ссылкам сейчас")
+      .setDesc(
+        "Проверить все ветки учебных проектов и прописать «родитель» и «направление» тем заметкам, на которые ведут ссылки из конспектов"
+      )
+      .addButton((btn) =>
+        btn.setButtonText("Синхронизировать").onClick(async () => {
+          btn.setDisabled(true);
+          const count = await syncAutoAdoptedFrontmatter(
+            this.app,
+            this.plugin.settings
+          );
+          new Notice(
+            count > 0
+              ? `Обновлено заметок по ссылкам: ${count}`
+              : "Все связанные заметки уже синхронизированы."
+          );
+          btn.setDisabled(false);
+        })
+      );
 
     new Setting(containerEl)
       .setName("Направление в YAML")
@@ -139,6 +202,8 @@ class StudyCompilerSettingTab extends PluginSettingTab {
 export default class MyStudyCompilerPlugin extends Plugin {
   settings!: StudyCompilerSettings;
   private saveTimer: number | null = null;
+  private autoSyncTimer: number | null = null;
+  private isSyncingAutoYaml = false;
 
   async onload() {
     this.settings = migrateSettings(await this.loadData());
@@ -171,6 +236,39 @@ export default class MyStudyCompilerPlugin extends Plugin {
         return true;
       },
     });
+
+    // Автоматически отслеживаем появление новых заметок и вики-ссылок в конспектах
+    this.app.workspace.onLayoutReady(() => {
+      this.scheduleAutoInheritSync(800);
+
+      this.registerEvent(
+        this.app.metadataCache.on("changed", () => {
+          this.scheduleAutoInheritSync(1200);
+        })
+      );
+      this.registerEvent(
+        this.app.vault.on("create", () => {
+          this.scheduleAutoInheritSync(1000);
+        })
+      );
+    });
+  }
+
+  scheduleAutoInheritSync(delayMs = 1000): void {
+    if (!this.settings.autoInheritFromLinks || this.isSyncingAutoYaml) return;
+    if (this.autoSyncTimer !== null) {
+      window.clearTimeout(this.autoSyncTimer);
+    }
+    this.autoSyncTimer = window.setTimeout(async () => {
+      this.autoSyncTimer = null;
+      if (this.isSyncingAutoYaml) return;
+      this.isSyncingAutoYaml = true;
+      try {
+        await syncAutoAdoptedFrontmatter(this.app, this.settings);
+      } finally {
+        this.isSyncingAutoYaml = false;
+      }
+    }, delayMs);
   }
 
   openCompiler(options: OpenOptions = {}) {
@@ -189,6 +287,10 @@ export default class MyStudyCompilerPlugin extends Plugin {
     if (this.saveTimer !== null) {
       window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
+    }
+    if (this.autoSyncTimer !== null) {
+      window.clearTimeout(this.autoSyncTimer);
+      this.autoSyncTimer = null;
     }
   }
 }

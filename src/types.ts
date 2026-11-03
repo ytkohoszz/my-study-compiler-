@@ -85,6 +85,8 @@ export interface StudyCompilerSettings {
   newNoteFolder: string;
   projectGroupTab: ProjectGroupTab;
   lastUsedMaterialType: string;
+  autoInheritFromLinks: boolean;
+  defaultAutoNoteType: string;
   excludedFolders: string[];
   excludedTitlePrefixes: string[];
   excludedTags: string[];
@@ -98,8 +100,20 @@ export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   newNoteFolder: "Знания",
   projectGroupTab: "active",
   lastUsedMaterialType: "Термин",
-  excludedFolders: ["Templates", "Шаблоны", "Знания/Карточки", "Знания/Сборки"],
-  excludedTitlePrefixes: ["Учёба — ", "Шаблон", "Template"],
+  autoInheritFromLinks: true,
+  defaultAutoNoteType: "Заметка",
+  excludedFolders: [
+    "Templates",
+    "Шаблоны",
+    "Знания/Карточки",
+    "Знания/Сборки",
+    "Ежедневник",
+    "Система",
+    "Горизонты",
+    "Грамматика",
+    "Всякое",
+  ],
+  excludedTitlePrefixes: ["Учёба — ", "Шаблон", "Template", "Тренировка "],
   excludedTags: ["шаблон", "template"],
   expandedPaths: [],
   lastWorkPath: "",
@@ -125,6 +139,8 @@ export interface StudyNoteItem {
   icon: string;
   tags: string[];
   parentPaths: string[];
+  hasExplicitParent: boolean;
+  hasExplicitStudyArea: boolean;
 }
 
 export interface TreeNode {
