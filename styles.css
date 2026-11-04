@@ -1,9 +1,6 @@
 /* ============================================================
-   Конструктор учебных проектов (v0.3.4)
-   Шкала отступов: 4 / 8 / 12 / 16 px
-   Размеры текста: 0.9rem (основной), 0.78rem (вторичный), 0.72rem (третичный)
-   Начертания: 400 / 500 / 600
-   Защита от переопределений .is-mobile button на iPadOS/iOS
+   Конструктор учебных проектов (v0.5.0)
+   Дерево | Граф | Интерактивные схемы и аннотации
    ============================================================ */
 
 .modal.my-sc-modal-container {
@@ -19,13 +16,21 @@
   --my-sc-rail: var(--background-modifier-border);
 
   position: relative;
-  width: min(860px, 96vw) !important;
-  max-width: 860px !important;
+  width: min(880px, 96vw) !important;
+  max-width: 880px !important;
   max-height: 92vh !important;
   padding: var(--my-sc-s4) !important;
   border-radius: 14px;
   display: flex;
   flex-direction: column;
+  transition: width 0.2s ease, max-width 0.2s ease, height 0.2s ease;
+}
+
+.modal.my-sc-modal-container.is-schema-mode {
+  width: min(1240px, 98vw) !important;
+  max-width: 1240px !important;
+  height: 94vh !important;
+  max-height: 94vh !important;
 }
 
 .modal.my-sc-modal-container > .modal-close-button {
@@ -58,7 +63,6 @@
   outline-offset: 1px;
 }
 
-/* Жёсткая защита SVG-значков от сжатия мобильными стилями Obsidian (.is-mobile button) */
 .my-sc-modal svg.svg-icon {
   width: 18px !important;
   height: 18px !important;
@@ -123,7 +127,7 @@
   gap: var(--my-sc-s2);
 }
 
-/* Сегментный переключатель «Дерево | Граф» */
+/* Сегментный переключатель «Дерево | Граф | Схема» */
 .my-sc-view-seg {
   display: inline-flex;
   align-items: center;
@@ -227,6 +231,12 @@ button.my-sc-icon-btn.is-primary:hover {
   white-space: nowrap;
 }
 
+.my-sc-chip-btn.is-schema-btn {
+  color: #e5a158;
+  border-color: color-mix(in srgb, #e5a158 45%, var(--background-modifier-border));
+  background: color-mix(in srgb, #e5a158 14%, var(--background-secondary));
+}
+
 /* ---------- Поиск ---------- */
 .my-sc-search-panel {
   display: flex;
@@ -271,7 +281,7 @@ button.my-sc-icon-btn.is-primary:hover {
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
 
-/* ---------- Фокус ветки (хлебные крошки) ---------- */
+/* ---------- Хлебные крошки ---------- */
 .my-sc-crumbs-bar {
   display: flex;
   flex-wrap: wrap;
@@ -622,7 +632,6 @@ button.my-sc-toggle-btn.is-open {
   color: var(--text-faint);
 }
 
-/* Правая колонка: количество · срок · тип · действия */
 .my-sc-tree-right {
   display: flex;
   align-items: center;
@@ -631,6 +640,9 @@ button.my-sc-toggle-btn.is-open {
   flex-shrink: 0;
 }
 
+.my-sc-tree-right .my-sc-media-pill {
+  order: 0;
+}
 .my-sc-tree-right .my-sc-subcount-pill {
   order: 1;
 }
@@ -642,6 +654,25 @@ button.my-sc-toggle-btn.is-open {
 }
 .my-sc-tree-right .my-sc-row-more {
   order: 4;
+}
+
+button.my-sc-media-pill {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 var(--my-sc-s2) !important;
+  border-radius: 99px !important;
+  font-size: var(--my-sc-fs-xs) !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums;
+  color: #e5a158 !important;
+  background: color-mix(in srgb, #e5a158 14%, var(--background-secondary)) !important;
+  border: 1px solid color-mix(in srgb, #e5a158 38%, var(--background-modifier-border)) !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+button.my-sc-media-pill:hover {
+  background: color-mix(in srgb, #e5a158 24%, var(--background-secondary)) !important;
 }
 
 button.my-sc-type-badge {
@@ -766,45 +797,6 @@ button.my-sc-row-more:hover {
   font-size: var(--my-sc-fs-sm);
 }
 
-/* ---------- Обратная связь ---------- */
-.my-sc-chip-btn,
-.my-sc-filter-chip,
-.my-sc-crumb-btn,
-.my-sc-crumb-reset,
-button.my-sc-icon-btn,
-button.my-sc-view-seg-btn,
-button.my-sc-type-badge,
-button.my-sc-subcount-pill {
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
-    transform 0.1s ease;
-}
-
-.my-sc-chip-btn:active,
-.my-sc-filter-chip:active,
-button.my-sc-icon-btn:active,
-button.my-sc-view-seg-btn:active {
-  transform: scale(0.96);
-}
-
-button.my-sc-toggle-btn:active {
-  transform: scale(0.92);
-}
-
-button.my-sc-toggle-btn.is-open:active {
-  transform: rotate(90deg) scale(0.92);
-}
-
-.my-sc-add-box.is-entering {
-  animation: my-sc-form-in 0.16s ease-out;
-}
-
-@keyframes my-sc-form-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
 /* ---------- Граф проекта ---------- */
 .my-sc-graph-wrap {
   position: relative;
@@ -920,20 +912,12 @@ button.my-sc-toggle-btn.is-open:active {
   fill: var(--color-orange, #e5a158);
 }
 
+.my-sc-gnode-schema-dot {
+  fill: #9c83e8;
+}
+
 .my-sc-gnode.is-overdue .my-sc-gnode-dot {
   fill: var(--text-error, #e06c75);
-}
-
-.my-sc-gnode.is-new .my-sc-gnode-body {
-  animation: my-sc-gnode-fresh 2.2s ease-out;
-}
-
-@keyframes my-sc-gnode-fresh {
-  from {
-    fill: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-primary));
-    stroke: var(--interactive-accent);
-    stroke-width: 2.4;
-  }
 }
 
 .my-sc-gtoggle {
@@ -991,16 +975,6 @@ button.my-sc-graph-ctrl {
   box-shadow: none !important;
   color: var(--text-normal) !important;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
-    transform 0.1s ease;
-}
-
-button.my-sc-graph-ctrl:hover {
-  border-color: var(--text-faint) !important;
-}
-
-button.my-sc-graph-ctrl:active {
-  transform: scale(0.95);
 }
 
 .my-sc-graph-info {
@@ -1016,7 +990,6 @@ button.my-sc-graph-ctrl:active {
   border-radius: 10px;
   background: var(--background-primary);
   border: 1px solid var(--interactive-accent);
-  animation: my-sc-form-in 0.16s ease-out;
 }
 
 .my-sc-graph-info.is-hidden {
@@ -1060,7 +1033,495 @@ button.my-sc-graph-ctrl:active {
   pointer-events: none;
 }
 
-/* ---------- Сенсорные экраны (iPadOS / iOS / Android): зоны 44x44 px и видимость без hover ---------- */
+/* ============================================================
+   ВКЛАДКА «СХЕМА» И ХОЛСТ АННОТАЦИЙ (INTEGRATED CANVAS)
+   ============================================================ */
+
+.my-sc-schema-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 360px;
+  gap: var(--my-sc-s2);
+}
+
+.my-sc-schema-wrap.is-hidden {
+  display: none;
+}
+
+.my-sc-schema-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--my-sc-s2);
+}
+
+.my-sc-schema-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s2);
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-schema-header-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--my-sc-s2);
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.my-sc-schema-note-select {
+  min-width: 190px;
+  max-width: 340px;
+  min-height: var(--my-sc-hit);
+  font-weight: 600;
+}
+
+.my-sc-schema-slides {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.my-sc-schema-header-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.my-sc-schema-url-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--my-sc-s2);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.my-sc-schema-url-bar.is-hidden {
+  display: none;
+}
+
+.mni-container.my-sc-schema-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 340px;
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  background: rgba(18, 20, 24, 0.94);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.my-sc-board-surface {
+  position: relative;
+  border-radius: 8px;
+  background-color: #1c1f26;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+
+.my-sc-board-surface.is-hidden,
+.mni-image.is-hidden {
+  display: none !important;
+}
+
+.mni-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.mni-viewport.is-pan-mode { cursor: grab; }
+.mni-viewport.is-rect-mode { cursor: crosshair; }
+.mni-viewport.is-arrow-mode { cursor: crosshair; }
+.mni-viewport.is-text-mode { cursor: text; }
+.mni-viewport.is-select-mode { cursor: default; }
+.mni-viewport.is-dragging { cursor: grabbing; }
+
+.mni-canvas-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.mni-image {
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
+}
+
+.mni-toolbar {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(30, 33, 40, 0.9);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.mni-tool-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: transform 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+
+.mni-tool-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.mni-tool-btn.is-active {
+  background: rgba(229, 161, 88, 0.2);
+  border-color: #e5a158;
+  color: #e5a158;
+}
+
+.mni-tool-delete {
+  color: #ff5c5c !important;
+  font-size: 1.2rem !important;
+  font-weight: bold;
+}
+
+.mni-tool-delete.is-disabled {
+  opacity: 0.22;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+@keyframes mni-pop-in {
+  0% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.mni-elements-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.mni-el {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.mni-el.is-pop-in,
+.mni-el-svg.is-pop-in {
+  animation: mni-pop-in 0.18s cubic-bezier(0.2, 0.85, 0.25, 1.15);
+}
+
+.is-select-mode .mni-el {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.mni-el.is-selected {
+  outline: 2px dashed #e5a158;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 4px rgba(229, 161, 88, 0.12);
+}
+
+.mni-el-rect {
+  border-style: solid;
+  border-radius: 4px;
+}
+
+.mni-el-rect.is-preview {
+  pointer-events: none;
+  border-style: dashed;
+}
+
+.mni-el-text {
+  padding: 6px 10px;
+  background: rgba(18, 20, 26, 0.76);
+  border-radius: 6px;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.mni-el-text p {
+  margin: 0;
+  padding: 0;
+}
+
+.mni-el-text a.internal-link {
+  pointer-events: auto;
+  cursor: pointer;
+  color: #e5a158;
+  text-decoration: underline;
+}
+
+.mni-el-input-wrapper {
+  position: absolute;
+  z-index: 100;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.mni-text-input {
+  width: 100%;
+  min-height: 42px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 2px solid #e5a158;
+  background: rgba(24, 27, 34, 0.96);
+  color: #ffffff;
+  font-family: var(--font-text);
+  line-height: 1.35;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mni-svg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: visible;
+}
+
+.mni-el-svg {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.mni-el-svg-preview {
+  pointer-events: none;
+  opacity: 0.78;
+  stroke-dasharray: 5 4;
+}
+
+.mni-bezier-guide {
+  stroke: rgba(92, 141, 246, 0.45);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.mni-arrow-handle {
+  pointer-events: all;
+  cursor: grab;
+}
+
+.mni-arrow-handle.is-control {
+  fill: #5c8df6 !important;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.mni-resize-handle {
+  pointer-events: all;
+  fill: #e5a158;
+  stroke: #ffffff;
+  stroke-width: 1.75;
+}
+
+.mni-resize-handle[data-handle="nw"],
+.mni-resize-handle[data-handle="se"] { cursor: nwse-resize; }
+.mni-resize-handle[data-handle="ne"],
+.mni-resize-handle[data-handle="sw"] { cursor: nesw-resize; }
+.mni-resize-handle[data-handle="n"],
+.mni-resize-handle[data-handle="s"] { cursor: ns-resize; }
+.mni-resize-handle[data-handle="e"],
+.mni-resize-handle[data-handle="w"] { cursor: ew-resize; }
+
+.mni-snap-indicator {
+  fill: rgba(74, 171, 128, 0.28);
+  stroke: #4aab80;
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+
+.mni-snap-indicator.is-hidden {
+  opacity: 0;
+}
+
+.mni-marquee {
+  position: absolute;
+  border: 1.5px dashed #e5a158;
+  background-color: rgba(229, 161, 88, 0.12);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.mni-properties-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 236px;
+  z-index: 40;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(26, 29, 36, 0.94);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.52);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.mni-properties-panel.is-hidden {
+  opacity: 0;
+  transform: translateX(12px) scale(0.97);
+  pointer-events: none;
+}
+
+.mni-prop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+}
+
+.mni-prop-title {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.mni-prop-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.mni-prop-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.mni-prop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-normal);
+}
+
+.mni-prop-row.is-column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.mni-prop-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mni-prop-val-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #e5a158;
+}
+
+.mni-prop-color-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mni-prop-swatches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mni-swatch-btn {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+}
+
+.mni-prop-row input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.mni-prop-row input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
+
+.mni-prop-select {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+}
+
+/* ---------- Сенсорные экраны (iPadOS / iOS / Android) ---------- */
 @media (pointer: coarse), (any-pointer: coarse), (hover: none) {
   .modal.my-sc-modal-container {
     --my-sc-hit: 44px;
@@ -1077,13 +1538,6 @@ button.my-sc-graph-ctrl:active {
     height: 44px !important;
     min-height: 44px !important;
     border-radius: 10px !important;
-  }
-
-  button.my-sc-toggle-btn svg.svg-icon {
-    width: 18px !important;
-    height: 18px !important;
-    min-width: 18px !important;
-    min-height: 18px !important;
   }
 
   .my-sc-leaf-marker {
@@ -1113,35 +1567,16 @@ button.my-sc-graph-ctrl:active {
     border: 1px solid var(--background-modifier-border) !important;
   }
 
-  button.my-sc-subcount-pill {
+  button.my-sc-subcount-pill,
+  button.my-sc-media-pill {
     min-width: 34px !important;
     height: 30px !important;
     min-height: 30px !important;
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .my-sc-tree-row,
-  button.my-sc-toggle-btn,
-  button.my-sc-row-more,
-  .my-sc-chip-btn,
-  .my-sc-filter-chip,
-  .my-sc-crumb-btn,
-  .my-sc-crumb-reset,
-  button.my-sc-icon-btn,
-  button.my-sc-view-seg-btn,
-  button.my-sc-type-badge,
-  button.my-sc-subcount-pill,
-  .my-sc-add-box,
-  .my-sc-graph-viewport,
-  button.my-sc-graph-ctrl,
-  .my-sc-graph-info,
-  .my-sc-gnode,
-  .my-sc-gnode-body,
-  .my-sc-gedge,
-  .my-sc-gtoggle-pill {
-    transition: none !important;
-    animation: none !important;
+  .mni-tool-btn {
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -1153,47 +1588,10 @@ button.my-sc-graph-ctrl:active {
     max-height: 100dvh !important;
     margin: 0 !important;
     border-radius: 0 !important;
-    padding-top: max(12px, env(safe-area-inset-top, 12px)) !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
-    padding-left: max(12px, env(safe-area-inset-left, 12px)) !important;
-    padding-right: max(12px, env(safe-area-inset-right, 12px)) !important;
-  }
-
-  .modal.my-sc-modal-container > .modal-close-button {
-    top: max(12px, env(safe-area-inset-top, 12px));
-    right: max(12px, env(safe-area-inset-right, 12px));
-  }
-
-  .my-sc-body {
-    max-height: none;
-  }
-
-  .my-sc-children-container {
-    margin-left: 16px;
-    padding-left: var(--my-sc-s2);
-  }
-
-  .my-sc-inline-editor {
-    margin-left: var(--my-sc-s1);
-  }
-
-  button.my-sc-type-badge {
-    min-width: 0;
-    padding: 0 var(--my-sc-s2) !important;
+    padding: 12px !important;
   }
 
   .my-sc-type-name {
     display: none;
-  }
-
-  .my-sc-graph-wrap {
-    height: auto;
-    flex: 1 1 0;
-    min-height: 280px;
-  }
-
-  .my-sc-graph-info {
-    top: 56px;
-    right: var(--my-sc-s2);
   }
 }

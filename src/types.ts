@@ -11,18 +11,21 @@ export const KEYS = {
   icon: "иконка",
   templateFlag: "шаблон",
   finishedAt: "дата_завершения",
+  annotations: "схемы_аннотации",
+  legacyPins: "схемы_пины",
 } as const;
 
 export const RESERVED_YAML_KEYS: readonly string[] = [
   KEYS.area,
   KEYS.type,
   KEYS.parent,
+  KEYS.annotations,
+  KEYS.legacyPins,
 ];
 
 export const ROOT_STATUS_ACTIVE = "В работе";
 export const ROOT_STATUS_DONE = "Завершён";
 
-/** Полный список завершающих статусов корневого проекта (объединён из v0.1.0 и v0.2.0). */
 export const ROOT_DONE_STATUSES: readonly string[] = [
   "выполнено",
   "выполнен",
@@ -38,10 +41,6 @@ export const ROOT_DONE_STATUSES: readonly string[] = [
   "done",
 ];
 
-/**
- * Типы атомарных материалов: если у такой заметки нет ни родителя, ни детей, ни статуса/дедлайна,
- * она попадает в «🧭 Без родителя», а не засоряет список проектов.
- */
 export const LEGACY_MATERIAL_TYPES: readonly string[] = [
   "Источник",
   "Термин",
@@ -83,6 +82,7 @@ export interface VaultPropertySchema {
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
+  mediaFolder: string;
   projectGroupTab: ProjectGroupTab;
   lastUsedMaterialType: string;
   autoInheritFromLinks: boolean;
@@ -98,6 +98,7 @@ export interface StudyCompilerSettings {
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
   newNoteFolder: "Знания",
+  mediaFolder: "Знания/Вложения",
   projectGroupTab: "active",
   lastUsedMaterialType: "Термин",
   autoInheritFromLinks: true,
@@ -126,6 +127,141 @@ export interface WorkMetaBadge {
   label: string;
 }
 
+// ============================================================
+// ТИПЫ МЕДИА И ИНТЕРАКТИВНЫХ СХЕМ (ИНТЕГРАЦИЯ В КОНСТРУКТОР)
+// ============================================================
+
+export type StudyMediaKind = "vault" | "external" | "board";
+
+export interface StudyMediaItem {
+  /** Ключ для записи в YAML `схемы_аннотации[key]` (имя файла, URL или `__board__`) */
+  key: string;
+  /** Отображаемое название на переключателе слайдов */
+  label: string;
+  /** Ресурсный URL для тега <img> (пустая строка для чистого холста `board`) */
+  src: string;
+  kind: StudyMediaKind;
+  file?: TFile;
+}
+
+export type ToolType = "pan" | "select" | "text" | "rect" | "arrow";
+
+export type ResizeHandleType = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+export type ArrowHandleType = "start" | "end" | "curve1" | "curve2";
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CanvasElementBase {
+  id: string;
+  type: "text" | "rect" | "arrow";
+}
+
+export interface TextElement extends CanvasElementBase {
+  type: "text";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  fontSize: number;
+  color: string;
+}
+
+export interface RectElement extends CanvasElementBase {
+  type: "rect";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  stroke: string;
+  strokeWidth: number;
+  fill: string;
+  borderRadius?: number;
+}
+
+export type ArrowRouting = "straight" | "curved" | "orthogonal";
+export type ArrowHead = "none" | "arrow";
+export type AnchorType = "top" | "bottom" | "left" | "right";
+
+export interface ArrowElement extends CanvasElementBase {
+  type: "arrow";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  cx1?: number;
+  cy1?: number;
+  cx2?: number;
+  cy2?: number;
+
+  routing: ArrowRouting;
+  startHead: ArrowHead;
+  endHead: ArrowHead;
+  stroke: string;
+  strokeWidth: number;
+
+  startElementId?: string;
+  startAnchor?: AnchorType;
+  endElementId?: string;
+  endAnchor?: AnchorType;
+}
+
+export type CanvasElement = TextElement | RectElement | ArrowElement;
+
+export type ElementDragSnapshot =
+  | {
+      type: "box";
+      x: number;
+      y: number;
+    }
+  | {
+      type: "arrow";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      cx1?: number;
+      cy1?: number;
+      cx2?: number;
+      cy2?: number;
+    };
+
+export interface ResizeSnapshot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  fontSize: number;
+}
+
+export interface SnapAnchorMatch {
+  id: string;
+  anchor: AnchorType;
+  x: number;
+  y: number;
+}
+
+export interface NodePin {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+}
+
+// ============================================================
+// МОДЕЛЬ УЗЛА ДЕРЕВА И ГРАФА
+// ============================================================
+
 export interface StudyNoteItem {
   file: TFile;
   path: string;
@@ -141,6 +277,8 @@ export interface StudyNoteItem {
   parentPaths: string[];
   hasExplicitParent: boolean;
   hasExplicitStudyArea: boolean;
+  mediaItems: StudyMediaItem[];
+  annotationCount: number;
 }
 
 export interface TreeNode {

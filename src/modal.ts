@@ -34,13 +34,15 @@ import {
 } from "./scanner";
 import { animateClose, animateOpen, prefersReducedMotion } from "./motion";
 import { ProjectGraphView } from "./graph";
+import { ProjectSchemaView } from "./schema-view";
 
 export interface OpenOptions {
   rootPath?: string;
   addUnder?: string;
+  schemaNotePath?: string;
 }
 
-type ViewMode = "tree" | "graph";
+type ViewMode = "tree" | "graph" | "schema";
 
 class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
   private items: StudyNoteItem[];
@@ -73,6 +75,7 @@ export class StudyCompilerModal extends Modal {
   private groupTab: ProjectGroupTab;
   private selectedPath: string;
   private focusBranchPath = "";
+  private schemaNotePath = "";
   private expanded: Set<string>;
   private cleanups: Array<() => void> = [];
   private refreshTimer: number | null = null;
@@ -84,7 +87,6 @@ export class StudyCompilerModal extends Modal {
   private currentVisibleFlat: TreeNode[] = [];
   private rowElementByPath = new Map<string, HTMLElement>();
 
-  // Стадия 3: микро-анимации
   private knownPaths: Set<string> = new Set();
   private freshPaths = new Set<string>();
   private freshTimer: number | null = null;
@@ -92,13 +94,13 @@ export class StudyCompilerModal extends Modal {
   private closingBranch = false;
   private closed = false;
 
-  // Стадия 4: граф проекта
+  // Режимы: Дерево | Граф | Схема
   private viewMode: ViewMode = "tree";
   private graphView: ProjectGraphView | null = null;
+  private schemaView: ProjectSchemaView | null = null;
   private lastGraphRootPath = "";
   private expandToggleBtn: HTMLButtonElement | null = null;
 
-  // Быстрое редактирование типа или свойств конкретного узла дерева
   private editingNodePath: string | null = null;
   private editingNodeMode: "type" | "props" | null = null;
 
@@ -108,6 +110,7 @@ export class StudyCompilerModal extends Modal {
   private formEl!: HTMLElement;
   private treeEl!: HTMLElement;
   private graphEl!: HTMLElement;
+  private schemaEl!: HTMLElement;
   private datalistsEl!: HTMLElement;
   private searchInputEl: HTMLInputElement | null = null;
   private workSelectEl: HTMLSelectElement | null = null;
@@ -127,6 +130,7 @@ export class StudyCompilerModal extends Modal {
     this.options = options;
     this.groupTab = plugin.settings.projectGroupTab || "active";
     this.selectedPath = options.rootPath || plugin.settings.lastWorkPath;
+    this.schemaNotePath = options.schemaNotePath || "";
     this.expanded = new Set(plugin.settings.expandedPaths);
     this.form = {
       open: false,
@@ -143,11 +147,6 @@ export class StudyCompilerModal extends Modal {
     (this as unknown as { shouldRestoreSelection?: boolean }).shouldRestoreSelection = false;
   }
 
-  /**
-   * Переводит фокус на сам контейнер окна (tabindex="-1"), снимая его с <select>, <input> и <button>.
-   * Благодаря этому на iPad не выскакивает системное меню <select> или экранная клавиатура,
-   * а на десктопе продолжают работать горячие клавиши (Ctrl/Cmd+F и стрелки).
-   */
   private focusSafeContainer() {
     if (this.closed) return;
     const active = document.activeElement;
@@ -165,7 +164,7 @@ export class StudyCompilerModal extends Modal {
   onOpen(): void {
     this.noRestore();
     this.closed = false;
-    this.viewMode = "tree";
+    this.viewMode = this.options.schemaNotePath ? "schema" : "tree";
     this.modalEl.addClass("my-sc-modal-container");
     this.contentEl.addClass("my-sc-modal");
     this.contentEl.setAttribute("tabindex", "-1");
@@ -177,6 +176,7 @@ export class StudyCompilerModal extends Modal {
     this.formEl = this.contentEl.createDiv("my-sc-form-wrap");
     this.treeEl = this.contentEl.createDiv("my-sc-body");
     this.graphEl = this.contentEl.createDiv("my-sc-graph-wrap is-hidden");
+    this.schemaEl = this.contentEl.createDiv("my-sc-schema-wrap is-hidden");
 
     const onKeyDown = (e: KeyboardEvent) => this.handleKeyboardNav(e);
     this.modalEl.addEventListener("keydown", onKeyDown);
@@ -197,6 +197,8 @@ export class StudyCompilerModal extends Modal {
     const addUnder = this.options.addUnder;
     if (addUnder && this.scan.byPath.has(addUnder)) {
       this.selectedPath = findRootPath(this.scan, addUnder);
+    } else if (this.schemaNotePath && this.scan.byPath.has(this.schemaNotePath)) {
+      this.selectedPath = findRootPath(this.scan, this.schemaNotePath);
     }
 
     this.syncGroupTabWithSelectedProject();
@@ -214,10 +216,9 @@ export class StudyCompilerModal extends Modal {
     this.renderSearchPanel();
     this.renderBreadcrumbs();
     this.applyViewMode();
-    this.renderTree();
+    this.renderMain();
 
     if (addUnder && this.scan.byPath.has(addUnder)) {
-      // Временно блокируем автофокус на <select>, пока через 20 мс фокус не перейдёт в поле названия формы
       if (this.workSelectEl) this.workSelectEl.tabIndex = -1;
       this.openForm(addUnder, true);
       const restoreSelectTabIdx = window.setTimeout(() => {
@@ -225,7 +226,6 @@ export class StudyCompilerModal extends Modal {
       }, 60);
       this.cleanups.push(() => window.clearTimeout(restoreSelectTabIdx));
     } else {
-      // Блокируем перехват фокуса первым <select> со стороны Modal.open() в Obsidian на iPadOS
       if (this.workSelectEl) this.workSelectEl.tabIndex = -1;
       this.focusSafeContainer();
       const t1 = window.setTimeout(() => {
@@ -260,6 +260,10 @@ export class StudyCompilerModal extends Modal {
     if (this.graphView) {
       this.graphView.destroy();
       this.graphView = null;
+    }
+    if (this.schemaView) {
+      this.schemaView.destroy();
+      this.schemaView = null;
     }
     this.lastGraphRootPath = "";
     this.expandToggleBtn = null;
@@ -308,13 +312,22 @@ export class StudyCompilerModal extends Modal {
     return this.getRootInCurrentGroup();
   }
 
-  // ---------- Режимы «Дерево / Граф» ----------
+  // ---------- Режимы «Дерево | Граф | Схема» ----------
 
   private applyViewMode() {
-    const graph = this.viewMode === "graph";
-    this.searchWrapEl.toggleClass("is-hidden", graph);
-    this.treeEl.toggleClass("is-hidden", graph);
-    this.graphEl.toggleClass("is-hidden", !graph);
+    const isTree = this.viewMode === "tree";
+    const isGraph = this.viewMode === "graph";
+    const isSchema = this.viewMode === "schema";
+
+    this.modalEl.toggleClass("is-schema-mode", isSchema);
+    this.searchWrapEl.toggleClass("is-hidden", !isTree);
+    this.crumbsEl.toggleClass(
+      "is-hidden",
+      isSchema || !this.focusBranchPath
+    );
+    this.treeEl.toggleClass("is-hidden", !isTree);
+    this.graphEl.toggleClass("is-hidden", !isGraph);
+    this.schemaEl.toggleClass("is-hidden", !isSchema);
   }
 
   private setViewMode(mode: ViewMode) {
@@ -322,12 +335,26 @@ export class StudyCompilerModal extends Modal {
     this.viewMode = mode;
     this.applyViewMode();
     this.renderBar();
+    this.renderBreadcrumbs();
     this.renderMain();
+    this.focusSafeContainer();
+  }
+
+  private openSchemaForNode(notePath: string) {
+    this.schemaNotePath = notePath;
+    if (this.viewMode !== "schema") {
+      this.viewMode = "schema";
+      this.applyViewMode();
+      this.renderBar();
+      this.renderBreadcrumbs();
+    }
+    this.renderSchema();
     this.focusSafeContainer();
   }
 
   private renderMain() {
     if (this.viewMode === "graph") this.renderGraph();
+    else if (this.viewMode === "schema") this.renderSchema();
     else this.renderTree();
   }
 
@@ -351,6 +378,7 @@ export class StudyCompilerModal extends Modal {
           const r = this.getRootInCurrentGroup();
           if (r) this.setFocusBranch(r, p);
         },
+        onOpenSchema: (p) => this.openSchemaForNode(p),
       });
       this.lastGraphRootPath = "";
     }
@@ -360,11 +388,55 @@ export class StudyCompilerModal extends Modal {
     this.graphView.update(this.scan, branchRoot, reset, this.freshPaths);
   }
 
+  private renderSchema() {
+    const root = this.getRootInCurrentGroup();
+    if (!root) {
+      if (this.schemaView) {
+        this.schemaView.destroy();
+        this.schemaView = null;
+      }
+      this.schemaEl.empty();
+      return;
+    }
+
+    const branchRoot = this.getActiveBranchRoot(root);
+    let targetNote = this.schemaNotePath
+      ? this.scan.byPath.get(this.schemaNotePath)
+      : undefined;
+
+    if (!targetNote || findRootPath(this.scan, targetNote.path) !== root.path) {
+      targetNote = branchRoot;
+      this.schemaNotePath = targetNote.path;
+    }
+
+    if (!this.schemaView) {
+      this.schemaView = new ProjectSchemaView(this.app, this.schemaEl, {
+        onSelectNote: (nextPath) => {
+          this.schemaNotePath = nextPath;
+          this.renderSchema();
+        },
+        onOpenNote: (path) => this.openNote(path),
+        getMediaFolder: () => this.plugin.settings.mediaFolder || "Знания/Вложения",
+      });
+    }
+
+    void this.schemaView.update(this.scan, root, targetNote);
+  }
+
   private scheduleRefresh() {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null;
       if (this.closed) return;
+
+      // Если пользователь прямо сейчас вводит текст внутри холста схемы, не перебиваем ввод
+      if (
+        this.viewMode === "schema" &&
+        document.activeElement instanceof HTMLTextAreaElement &&
+        document.activeElement.classList.contains("mni-text-input")
+      ) {
+        return;
+      }
 
       const wasSearchFocused = document.activeElement === this.searchInputEl;
       const inFormOrInlineInput =
@@ -385,11 +457,13 @@ export class StudyCompilerModal extends Modal {
       this.renderSearchPanel();
       this.renderBreadcrumbs();
       if (this.form.open && !inFormOrInlineInput) this.renderForm(false);
-      this.renderMain();
+      if (this.viewMode !== "schema") {
+        this.renderMain();
+      }
 
       if (wasSearchFocused && this.searchInputEl) {
         this.searchInputEl.focus({ preventScroll: true });
-      } else if (!inFormOrInlineInput) {
+      } else if (!inFormOrInlineInput && this.viewMode !== "schema") {
         this.focusSafeContainer();
       }
 
@@ -506,7 +580,7 @@ export class StudyCompilerModal extends Modal {
   }
 
   private handleKeyboardNav(e: KeyboardEvent) {
-    if (this.viewMode === "graph") return;
+    if (this.viewMode !== "tree") return;
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
       e.preventDefault();
@@ -619,6 +693,12 @@ export class StudyCompilerModal extends Modal {
         .setIcon("file-text")
         .onClick(() => this.openNote(branchRoot.path))
     );
+    menu.addItem((mi) =>
+      mi
+        .setTitle("Открыть схему / холст проекта")
+        .setIcon("image")
+        .onClick(() => this.openSchemaForNode(branchRoot.path))
+    );
     menu.addSeparator();
     menu.addItem((mi) =>
       mi
@@ -675,6 +755,7 @@ export class StudyCompilerModal extends Modal {
       this.groupTab = picked.isCompletedRoot ? "completed" : "active";
       this.plugin.settings.projectGroupTab = this.groupTab;
       this.selectedPath = picked.path;
+      this.schemaNotePath = picked.path;
       this.plugin.settings.lastWorkPath = picked.path;
       this.focusBranchPath =
         this.plugin.settings.focusedBranchByWork[picked.path] || "";
@@ -695,15 +776,25 @@ export class StudyCompilerModal extends Modal {
     setIcon(moreBtn, "more-horizontal");
     moreBtn.onclick = (e) => this.openProjectMenu(e, root, branchRoot);
 
-    // Ряд 2: сводка слева · сегмент «Дерево | Граф» и кнопки справа
+    // Ряд 2: сводка слева · сегмент «Дерево | Граф | Схема» и кнопки справа
     const descendants = collectDescendants(branchRoot.path, this.scan);
+    let mediaNodesCount =
+      branchRoot.mediaItems.length > 0 || branchRoot.annotationCount > 0 ? 1 : 0;
+    for (const dPath of descendants) {
+      const dItem = this.scan.byPath.get(dPath);
+      if (dItem && (dItem.mediaItems.length > 0 || dItem.annotationCount > 0)) {
+        mediaNodesCount++;
+      }
+    }
+
     const metaRow = this.barEl.createDiv("my-sc-meta-row");
     const metaInfo = metaRow.createDiv("my-sc-meta-info");
     metaInfo.createSpan({
       cls: "my-sc-summary-text",
       text:
         descendants.size > 0
-          ? `Материалов: ${descendants.size}`
+          ? `Материалов: ${descendants.size}` +
+            (mediaNodesCount > 0 ? ` · Схем: ${mediaNodesCount}` : "")
           : "Материалов пока нет",
     });
     this.renderDeadline(metaInfo, branchRoot);
@@ -711,12 +802,12 @@ export class StudyCompilerModal extends Modal {
     const tools = metaRow.createDiv("my-sc-icon-group");
 
     const modeSeg = tools.createDiv("my-sc-view-seg");
-    const addModeBtn = (mode: ViewMode, icon: string, label: string) => {
+    const addModeBtn = (mode: ViewMode, icon: string, label: string, hint: string) => {
       const b = modeSeg.createEl("button", {
         cls: "my-sc-view-seg-btn" + (this.viewMode === mode ? " is-active" : ""),
         attr: {
           type: "button",
-          title: mode === "tree" ? "Вид дерева" : "Вид графа",
+          title: hint,
           "aria-pressed": String(this.viewMode === mode),
         },
       });
@@ -725,8 +816,9 @@ export class StudyCompilerModal extends Modal {
       b.createSpan({ cls: "my-sc-view-seg-label", text: label });
       b.onclick = () => this.setViewMode(mode);
     };
-    addModeBtn("tree", "list", "Дерево");
-    addModeBtn("graph", "network", "Граф");
+    addModeBtn("tree", "list", "Дерево", "Иерархическое дерево проекта");
+    addModeBtn("graph", "network", "Граф", "Силовой граф связей проекта");
+    addModeBtn("schema", "image", "Схема", "Редактор схем и аннотаций поверх картинок");
 
     if (this.viewMode === "tree") {
       this.expandToggleBtn = this.iconBtn(tools, "chevrons-up-down", "Развернуть все ветки", () => {
@@ -825,6 +917,10 @@ export class StudyCompilerModal extends Modal {
 
   private renderBreadcrumbs() {
     this.crumbsEl.empty();
+    if (this.viewMode === "schema") {
+      this.crumbsEl.addClass("is-hidden");
+      return;
+    }
     const root = this.getRootInCurrentGroup();
     if (!root) {
       this.crumbsEl.addClass("is-hidden");
@@ -1262,6 +1358,12 @@ export class StudyCompilerModal extends Modal {
     );
     menu.addItem((mi) =>
       mi
+        .setTitle("Открыть схему / аннотации")
+        .setIcon("image")
+        .onClick(() => this.openSchemaForNode(item.path))
+    );
+    menu.addItem((mi) =>
+      mi
         .setTitle("Фокус на этой ветке")
         .setIcon("crosshair")
         .onClick(() => this.setFocusBranch(projectRoot, item.path))
@@ -1429,6 +1531,25 @@ export class StudyCompilerModal extends Modal {
 
     const right = row.createDiv("my-sc-tree-right");
     this.renderDeadline(right, item);
+
+    // Кнопка-индикатор схемы/медиа на строке узла
+    if (item.mediaItems.length > 0 || item.annotationCount > 0) {
+      const mediaPill = right.createEl("button", {
+        cls: "my-sc-media-pill",
+        text:
+          item.annotationCount > 0
+            ? `☊ ${item.annotationCount}`
+            : `🖼 ${item.mediaItems.length}`,
+        attr: {
+          type: "button",
+          title: `Открыть схему «${item.name}» (картинок: ${item.mediaItems.length}, аннотаций: ${item.annotationCount})`,
+        },
+      });
+      mediaPill.onclick = (e) => {
+        e.stopPropagation();
+        this.openSchemaForNode(item.path);
+      };
+    }
 
     const meta = getWorkMeta(item.noteType, item.icon);
     const kind = right.createEl("button", {

@@ -14,6 +14,10 @@ import {
   VaultPropertySchema,
   WorkMetaBadge,
 } from "./types";
+import {
+  extractMediaAndAnnotationMeta,
+  extractWikiLinksFromAnnotations,
+} from "./media";
 
 export interface AutoAdoptedItem {
   childFile: TFile;
@@ -129,18 +133,17 @@ export function resolveParentPaths(
 }
 
 /**
- * Извлекает целевые файлы всех исходящих вики-ссылок из тела заметки (исключая ссылки из YAML frontmatter).
+ * Извлекает целевые файлы всех исходящих вики-ссылок из тела заметки
+ * И из текстовых блоков на интерактивных схемах (`схемы_аннотации`).
  */
 export function resolveBodyOutlinkFiles(app: App, sourceFile: TFile): TFile[] {
   const cache = app.metadataCache.getFileCache(sourceFile);
-  if (!cache?.links || cache.links.length === 0) return [];
-
   const result: TFile[] = [];
   const seen = new Set<string>();
 
-  for (const linkRef of cache.links) {
-    const cleanLink = linkRef.link.split("#")[0]?.split("|")[0]?.trim();
-    if (!cleanLink) continue;
+  const tryAddLinkTarget = (rawLink: string) => {
+    const cleanLink = rawLink.split("#")[0]?.split("|")[0]?.trim();
+    if (!cleanLink) return;
     const dest = app.metadataCache.getFirstLinkpathDest(cleanLink, sourceFile.path);
     if (
       dest instanceof TFile &&
@@ -151,6 +154,19 @@ export function resolveBodyOutlinkFiles(app: App, sourceFile: TFile): TFile[] {
       seen.add(dest.path);
       result.push(dest);
     }
+  };
+
+  if (cache?.links) {
+    for (const linkRef of cache.links) {
+      tryAddLinkTarget(linkRef.link);
+    }
+  }
+
+  const annotationLinks = extractWikiLinksFromAnnotations(
+    cache?.frontmatter as Record<string, unknown> | undefined
+  );
+  for (const linkStr of annotationLinks) {
+    tryAddLinkTarget(linkStr);
   }
 
   return result;
@@ -314,6 +330,8 @@ const SYSTEM_FM_IGNORE = new Set([
   KEYS.area,
   KEYS.type,
   KEYS.parent,
+  KEYS.annotations,
+  KEYS.legacyPins,
   "position",
   "tags",
   "tag",
@@ -342,6 +360,8 @@ function buildNoteItemFromFile(
     : "";
   const rawFinished = fm ? readString(fm[KEYS.finishedAt]).slice(0, 10) : "";
 
+  const { mediaItems, annotationCount } = extractMediaAndAnnotationMeta(app, file);
+
   return {
     file,
     path: file.path,
@@ -357,13 +377,11 @@ function buildNoteItemFromFile(
     parentPaths: explicitParents,
     hasExplicitParent: explicitParents.length > 0,
     hasExplicitStudyArea,
+    mediaItems,
+    annotationCount,
   };
 }
 
-/**
- * Проверяет, является ли `candidateAncestor` предком для `nodePath` по текущим связям `byPath`,
- * чтобы исключить образование циклов A -> B -> A при парсинге взаимных ссылок.
- */
 function isAncestorOf(
   byPath: Map<string, StudyNoteItem>,
   candidateAncestor: string,
@@ -400,7 +418,7 @@ export function scanStudyVault(
     { file: TFile; fm: Record<string, unknown> | undefined; tags: string[] }
   >();
 
-  // Проход 1: собираем все заметки с явным направлением «Учёба» и список допустимых кандидатов для ссылок
+  // Проход 1: заметки с явным направлением «Учёба»
   for (const file of allMdFiles) {
     const cache = app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
@@ -433,8 +451,7 @@ export function scanStudyVault(
     }
   }
 
-  // Проход 2 (Транзитивный BFS вглубь A -> B -> C ...):
-  // Если в заметке дерева есть вики-ссылка на [[Термин Б]], подтягиваем его в дерево и назначаем родителя
+  // Проход 2 (Транзитивный BFS вглубь A -> B -> C ... по вики-ссылкам в тексте И на схемах)
   if (settings.autoInheritFromLinks) {
     const queue: string[] = [...byPath.keys()];
     const queuedSet = new Set<string>(queue);
@@ -453,7 +470,6 @@ export function scanStudyVault(
         let targetItem = byPath.get(targetFile.path);
 
         if (!targetItem) {
-          // Заметка ещё не имела направления «Учёба» — включаем её в дерево как дочернюю к parentItem
           targetItem = buildNoteItemFromFile(
             app,
             targetFile,
@@ -475,7 +491,6 @@ export function scanStudyVault(
             inheritedDiscipline: targetItem.discipline,
           });
         } else if (!targetItem.hasExplicitParent) {
-          // Заметка уже в направлении «Учёба», но у неё не был указан родитель в YAML
           const isTargetRootProject =
             Boolean(targetItem.status || targetItem.deadline) &&
             !LEGACY_MATERIAL_TYPES.some(
@@ -507,7 +522,6 @@ export function scanStudyVault(
     }
   }
 
-  // Сбор статистики типов и YAML-свойств по всем узлам учебного графа
   for (const item of byPath.values()) {
     if (item.noteType) {
       const lowerT = item.noteType.toLowerCase();
@@ -608,10 +622,6 @@ export function scanStudyVault(
   };
 }
 
-/**
- * Прописывает в YAML автоматически усыновлённых по ссылкам заметок свойства
- * `направление: "Учёба"`, `родитель: "[[...]]"` и `тип` (если они ещё не заполнены).
- */
 export async function syncAutoAdoptedFrontmatter(
   app: App,
   settings: StudyCompilerSettings

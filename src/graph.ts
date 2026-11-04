@@ -25,6 +25,7 @@ const LABEL_MAX_CHARS = 21;
 export interface GraphCallbacks {
   onOpen: (path: string) => void;
   onFocus: (path: string) => void;
+  onOpenSchema: (path: string) => void;
 }
 
 interface LayoutNode {
@@ -85,6 +86,7 @@ export class ProjectGraphView {
   private infoEl: HTMLElement;
   private infoTitleEl: HTMLElement;
   private infoSubEl: HTMLElement;
+  private schemaBtn: HTMLButtonElement;
   private focusBtn: HTMLButtonElement;
   private toggleAllBtn: HTMLButtonElement;
 
@@ -155,6 +157,16 @@ export class ProjectGraphView {
     this.infoTitleEl = infoText.createDiv("my-sc-graph-info-title");
     this.infoSubEl = infoText.createDiv("my-sc-graph-info-sub");
     const infoBtns = this.infoEl.createDiv("my-sc-graph-info-btns");
+
+    this.schemaBtn = infoBtns.createEl("button", {
+      cls: "my-sc-chip-btn is-schema-btn",
+      text: "☊ Схема",
+      attr: { type: "button", title: "Открыть интерактивную схему этого узла" },
+    });
+    this.schemaBtn.onclick = () => {
+      if (this.selectedPath) this.callbacks.onOpenSchema(this.selectedPath);
+    };
+
     const openBtn = infoBtns.createEl("button", {
       cls: "my-sc-chip-btn",
       text: "Открыть",
@@ -223,8 +235,6 @@ export class ProjectGraphView {
     this.container.removeEventListener("wheel", this.onWheel);
     this.container.empty();
   }
-
-  // ---------- Построение графа ----------
 
   private rebuild(): void {
     const scan = this.scan;
@@ -366,6 +376,8 @@ export class ProjectGraphView {
       const item = n.item;
       const meta = getWorkMeta(item.noteType, item.icon);
       const tone: DeadlineTone = getDeadlineTone(item);
+      const hasMediaOrSchema =
+        item.mediaItems.length > 0 || item.annotationCount > 0;
       const cls = [
         "my-sc-gnode",
         n.depth === 0 ? "is-root" : "",
@@ -383,7 +395,10 @@ export class ProjectGraphView {
       const title = this.doc.createElementNS(SVG_NS, "title");
       title.textContent =
         `${item.name} · ${item.noteType || "без типа"}` +
-        (item.deadline ? ` · ${formatDeadlineBadge(item)}` : "");
+        (item.deadline ? ` · ${formatDeadlineBadge(item)}` : "") +
+        (hasMediaOrSchema
+          ? ` · Иллюстраций: ${item.mediaItems.length}, аннотаций: ${item.annotationCount}`
+          : "");
       g.appendChild(title);
 
       const body = svgEl(this.doc, "rect", "my-sc-gnode-body");
@@ -404,6 +419,14 @@ export class ProjectGraphView {
       text.setAttribute("dominant-baseline", "central");
       text.textContent = truncate(`${meta.icon} ${item.name}`, LABEL_MAX_CHARS);
       g.appendChild(text);
+
+      if (hasMediaOrSchema) {
+        const schemaDot = svgEl(this.doc, "circle", "my-sc-gnode-schema-dot");
+        schemaDot.setAttribute("cx", String(NODE_W - 10));
+        schemaDot.setAttribute("cy", String(NODE_H - 9));
+        schemaDot.setAttribute("r", "3.5");
+        g.appendChild(schemaDot);
+      }
 
       if (tone === "overdue" || tone === "soon") {
         const dot = svgEl(this.doc, "circle", "my-sc-gnode-dot");
@@ -452,8 +475,6 @@ export class ProjectGraphView {
     else this.collapsed.add(path);
     this.rebuild();
   }
-
-  // ---------- Выделение ----------
 
   private select(path: string | null): void {
     this.selectedPath = path;
@@ -505,11 +526,21 @@ export class ProjectGraphView {
     this.infoTitleEl.setText(`${meta.icon} ${it.name}`);
     const parts = [it.noteType || "без типа"];
     if (it.deadline) parts.push(formatDeadlineBadge(it));
+    if (it.mediaItems.length > 0 || it.annotationCount > 0) {
+      parts.push(
+        `🖼 ${it.mediaItems.length}${it.annotationCount > 0 ? ` · ☊ ${it.annotationCount}` : ""}`
+      );
+    }
     this.infoSubEl.setText(parts.join(" · "));
+    this.schemaBtn.setText(
+      it.annotationCount > 0
+        ? `☊ Схема (${it.annotationCount})`
+        : it.mediaItems.length > 0
+          ? `🖼 Схема (${it.mediaItems.length})`
+          : "☊ Схема"
+    );
     this.focusBtn.disabled = it.path === this.branchRoot?.path;
   }
-
-  // ---------- Масштаб и сдвиг ----------
 
   private tryFit(): void {
     if (this.svg.clientWidth <= 0 || this.svg.clientHeight <= 0) return;
@@ -572,8 +603,6 @@ export class ProjectGraphView {
   private stopAnimation(): void {
     this.viewport.classList.remove("is-animating");
   }
-
-  // ---------- Указатель ----------
 
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();

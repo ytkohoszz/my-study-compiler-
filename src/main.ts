@@ -38,6 +38,10 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
       typeof s.newNoteFolder === "string" && s.newNoteFolder.trim()
         ? s.newNoteFolder.trim()
         : DEFAULT_SETTINGS.newNoteFolder,
+    mediaFolder:
+      typeof s.mediaFolder === "string" && s.mediaFolder.trim()
+        ? s.mediaFolder.trim()
+        : DEFAULT_SETTINGS.mediaFolder,
     projectGroupTab,
     lastUsedMaterialType:
       typeof s.lastUsedMaterialType === "string" && s.lastUsedMaterialType.trim()
@@ -77,9 +81,9 @@ class StudyCompilerSettingTab extends PluginSettingTab {
     containerEl.createEl("h3", { text: "Конструктор учебных проектов" });
 
     new Setting(containerEl)
-      .setName("Автонаследование иерархии по вики-ссылкам из текста")
+      .setName("Автонаследование иерархии по вики-ссылкам из текста и схем")
       .setDesc(
-        "Если внутри проекта или конспекта A поставлена ссылка [[Термин Б]], а внутри него [[Источник В]], плагин автоматически выстраивает цепочку родителей A → Б → В и прописывает «направление» и «родитель» в YAML новых заметок"
+        "Если внутри проекта, конспекта или на графической схеме поставлена ссылка [[Термин Б]], плагин автоматически выстраивает цепочку родителей и прописывает «направление» и «родитель» в YAML"
       )
       .addToggle((toggle) =>
         toggle
@@ -96,7 +100,7 @@ class StudyCompilerSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Тип по умолчанию для заметок из вики-ссылок")
       .setDesc(
-        "Записывается в свойство «тип», если у новой заметки, созданной по ссылке из текста, тип ещё не указан (по умолчанию: Заметка)"
+        "Записывается в свойство «тип», если у новой заметки тип ещё не указан (по умолчанию: Заметка)"
       )
       .addText((text) =>
         text
@@ -112,7 +116,7 @@ class StudyCompilerSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Синхронизировать YAML по ссылкам сейчас")
       .setDesc(
-        "Проверить все ветки учебных проектов и прописать «родитель» и «направление» тем заметкам, на которые ведут ссылки из конспектов"
+        "Проверить все ветки учебных проектов и прописать «родитель» и «направление» тем заметкам, на которые ведут ссылки из конспектов и схем"
       )
       .addButton((btn) =>
         btn.setButtonText("Синхронизировать").onClick(async () => {
@@ -148,6 +152,17 @@ class StudyCompilerSettingTab extends PluginSettingTab {
         text.setValue(this.plugin.settings.newNoteFolder).onChange((val) => {
           this.plugin.settings.newNoteFolder =
             val.trim() || DEFAULT_SETTINGS.newNoteFolder;
+          this.plugin.requestSaveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Папка для сохраняемых картинок и схем")
+      .setDesc("Куда сохранять изображения при вставке из буфера обмена (по умолчанию: Знания/Вложения)")
+      .addText((text) =>
+        text.setValue(this.plugin.settings.mediaFolder).onChange((val) => {
+          this.plugin.settings.mediaFolder =
+            val.trim() || DEFAULT_SETTINGS.mediaFolder;
           this.plugin.requestSaveSettings();
         })
       );
@@ -237,7 +252,6 @@ export default class MyStudyCompilerPlugin extends Plugin {
       },
     });
 
-    // Автоматически отслеживаем появление новых заметок и вики-ссылок в конспектах
     this.app.workspace.onLayoutReady(() => {
       this.scheduleAutoInheritSync(800);
 
