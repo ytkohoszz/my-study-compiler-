@@ -146,6 +146,8 @@ export interface StudyMediaItem {
   key: string;
   /** Отображаемое название на переключателе холстов */
   label: string;
+  /** Пользовательское название холста (если было явно задано переименованием) */
+  customTitle?: string;
   /** Ресурсный URL фонового изображения (для старых одиночных холстов до миграции) */
   src: string;
   kind: StudyMediaKind;
@@ -234,6 +236,14 @@ export interface ArrowElement extends CanvasElementBase {
 export type CanvasElement = ImageElement | TextElement | RectElement | ArrowElement;
 
 export type BoxCanvasElement = ImageElement | TextElement | RectElement;
+
+export interface CanvasBoardData {
+  /** Пользовательское имя холста; если не задано — в YAML не пишется */
+  title?: string;
+  elements: CanvasElement[];
+  /** Флаг скрытия удалённого холста, если исходная картинка осталась в тексте заметки */
+  deleted?: boolean;
+}
 
 export type ElementDragSnapshot =
   | {

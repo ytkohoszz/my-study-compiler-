@@ -53,15 +53,38 @@ function flattenUnknownStrings(val: unknown): string[] {
 }
 
 export function isVirtualBoardKey(key: string): boolean {
-  return key === VIRTUAL_BOARD_KEY || /^__board_\d+__$/.test(key) || /^холст[_\s-]*\d+$/i.test(key);
+  return (
+    key === VIRTUAL_BOARD_KEY ||
+    /^__board_\d+__$/.test(key) ||
+    /^холст[_\s-]*\d+$/i.test(key)
+  );
 }
 
-export function formatBoardLabel(key: string, indexFallback?: number): string {
-  if (key === VIRTUAL_BOARD_KEY) return "Холст 1";
-  const m = /^__board_(\d+)__$/.exec(key);
-  if (m && m[1]) return `Холст ${m[1]}`;
-  if (/^холст/i.test(key)) return key;
-  return indexFallback !== undefined ? `Холст ${indexFallback}` : key;
+export function formatBoardLabel(key: string, indexFallback = 1): string {
+  return `Холст ${indexFallback}`;
+}
+
+function extractRawBoardEntry(rawEntry: unknown): {
+  title?: string;
+  elements: unknown[];
+  deleted: boolean;
+} | null {
+  if (Array.isArray(rawEntry)) {
+    return { elements: rawEntry, deleted: false };
+  }
+  if (rawEntry && typeof rawEntry === "object") {
+    const rec = rawEntry as Record<string, unknown>;
+    if (rec["deleted"] === true) {
+      return { elements: [], deleted: true };
+    }
+    const title =
+      typeof rec["title"] === "string" && rec["title"].trim().length > 0
+        ? rec["title"].trim()
+        : undefined;
+    const elements = Array.isArray(rec["elements"]) ? rec["elements"] : [];
+    return { title, elements, deleted: false };
+  }
+  return null;
 }
 
 /**
@@ -127,39 +150,57 @@ export function extractMediaAndAnnotationMeta(
   const cache = app.metadataCache.getFileCache(file);
   const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 
+  const rawAnnotations = fm?.[KEYS.annotations];
+  const deletedKeys = new Set<string>();
+  const customTitles = new Map<string, string>();
+
+  if (
+    rawAnnotations &&
+    typeof rawAnnotations === "object" &&
+    !Array.isArray(rawAnnotations)
+  ) {
+    for (const [k, rawVal] of Object.entries(
+      rawAnnotations as Record<string, unknown>
+    )) {
+      const parsed = extractRawBoardEntry(rawVal);
+      if (!parsed) continue;
+      if (parsed.deleted) {
+        deletedKeys.add(k);
+      } else if (parsed.title) {
+        customTitles.set(k, parsed.title);
+      }
+    }
+  }
+
   const mediaItems: StudyMediaItem[] = [];
   const seenKeys = new Set<string>();
 
   const addVaultImage = (target: TFile, customKey?: string) => {
     const key = customKey || target.name;
-    if (seenKeys.has(key)) return;
+    if (seenKeys.has(key) || deletedKeys.has(key)) return;
     seenKeys.add(key);
+    const customTitle = customTitles.get(key);
+    const defaultLabel = `Холст ${mediaItems.length + 1}`;
     mediaItems.push({
       key,
-      label: target.basename,
+      label: customTitle || defaultLabel,
+      customTitle,
       src: app.vault.adapter.getResourcePath(target.path),
       kind: "vault",
       file: target,
     });
   };
 
-  const addExternalUrl = (url: string, customLabel?: string) => {
+  const addExternalUrl = (url: string) => {
     const cleanUrl = url.trim();
-    if (!cleanUrl || seenKeys.has(cleanUrl)) return;
+    if (!cleanUrl || seenKeys.has(cleanUrl) || deletedKeys.has(cleanUrl)) return;
     seenKeys.add(cleanUrl);
-    let shortLabel = customLabel?.trim() || "";
-    if (!shortLabel) {
-      try {
-        const u = new URL(cleanUrl);
-        const lastSeg = u.pathname.split("/").filter(Boolean).pop() || u.hostname;
-        shortLabel = decodeURIComponent(lastSeg).slice(0, 28) || "Веб-схема";
-      } catch {
-        shortLabel = "Веб-схема";
-      }
-    }
+    const customTitle = customTitles.get(cleanUrl);
+    const defaultLabel = `Холст ${mediaItems.length + 1}`;
     mediaItems.push({
       key: cleanUrl,
-      label: shortLabel,
+      label: customTitle || defaultLabel,
+      customTitle,
       src: cleanUrl,
       kind: "external",
     });
@@ -171,7 +212,7 @@ export function extractMediaAndAnnotationMeta(
     const linkPath = cleanWikiTarget(em.link);
     if (!linkPath) continue;
     if (isExternalImageUrl(linkPath)) {
-      addExternalUrl(linkPath, em.displayText);
+      addExternalUrl(linkPath);
       continue;
     }
     const dest = app.metadataCache.getFirstLinkpathDest(linkPath, file.path);
@@ -206,20 +247,30 @@ export function extractMediaAndAnnotationMeta(
 
   // 3. Подсчёт элементов в `схемы_аннотации` и восстановление всех сохранённых холстов
   let annotationCount = 0;
-  const rawAnnotations = fm?.[KEYS.annotations];
-  if (rawAnnotations && typeof rawAnnotations === "object" && !Array.isArray(rawAnnotations)) {
-    let boardIdx = 1;
-    for (const [canvasKey, list] of Object.entries(rawAnnotations as Record<string, unknown>)) {
-      if (!Array.isArray(list)) continue;
-      annotationCount += list.length;
+  if (
+    rawAnnotations &&
+    typeof rawAnnotations === "object" &&
+    !Array.isArray(rawAnnotations)
+  ) {
+    for (const [canvasKey, rawVal] of Object.entries(
+      rawAnnotations as Record<string, unknown>
+    )) {
+      const parsed = extractRawBoardEntry(rawVal);
+      if (!parsed || parsed.deleted) continue;
+
+      annotationCount += parsed.elements.length;
 
       if (seenKeys.has(canvasKey)) continue;
+
+      const customTitle = parsed.title;
+      const defaultLabel = `Холст ${mediaItems.length + 1}`;
 
       if (isVirtualBoardKey(canvasKey)) {
         seenKeys.add(canvasKey);
         mediaItems.push({
           key: canvasKey,
-          label: formatBoardLabel(canvasKey, boardIdx++),
+          label: customTitle || defaultLabel,
+          customTitle,
           src: "",
           kind: "board",
         });
@@ -236,7 +287,8 @@ export function extractMediaAndAnnotationMeta(
           seenKeys.add(canvasKey);
           mediaItems.push({
             key: canvasKey,
-            label: canvasKey,
+            label: customTitle || defaultLabel,
+            customTitle,
             src: "",
             kind: "board",
           });
@@ -257,16 +309,23 @@ export function extractWikiLinksFromAnnotations(
 ): string[] {
   if (!fm) return [];
   const rawAnnotations = fm[KEYS.annotations];
-  if (!rawAnnotations || typeof rawAnnotations !== "object" || Array.isArray(rawAnnotations)) {
+  if (
+    !rawAnnotations ||
+    typeof rawAnnotations !== "object" ||
+    Array.isArray(rawAnnotations)
+  ) {
     return [];
   }
 
   const links: string[] = [];
   const wikiRegex = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g;
 
-  for (const list of Object.values(rawAnnotations as Record<string, unknown>)) {
-    if (!Array.isArray(list)) continue;
-    for (const el of list) {
+  for (const rawVal of Object.values(
+    rawAnnotations as Record<string, unknown>
+  )) {
+    const parsed = extractRawBoardEntry(rawVal);
+    if (!parsed || parsed.deleted) continue;
+    for (const el of parsed.elements) {
       if (!el || typeof el !== "object") continue;
       const rec = el as Record<string, unknown>;
       if (rec["type"] === "text" && typeof rec["text"] === "string") {

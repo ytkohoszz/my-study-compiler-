@@ -1,5 +1,5 @@
 // C:\Users\user\dev\my-study-compiler\src\schema-view.ts
-import { App, FuzzySuggestModal, Notice, TFile, setIcon } from "obsidian";
+import { App, FuzzySuggestModal, Modal, Notice, TFile, setIcon } from "obsidian";
 import {
   AnchorType,
   ArrowElement,
@@ -18,14 +18,15 @@ import {
   TextElement,
   ToolType,
 } from "./types";
-import { AnnotationManager } from "./pin-manager";
+import { AnnotationManager, BoardsMap } from "./pin-manager";
 import { CanvasEngine } from "./canvas-engine";
 import { CanvasRenderer } from "./canvas-renderer";
 import {
   IMAGE_EXTENSIONS,
   VIRTUAL_BOARD_KEY,
+  cleanWikiTarget,
   extractMediaAndAnnotationMeta,
-  formatBoardLabel,
+  isExternalImageUrl,
   resolveImageSource,
   saveBinaryImageToVault,
 } from "./media";
@@ -35,6 +36,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const DEFAULT_BOARD_W = 1400;
 const DEFAULT_BOARD_H = 900;
 const DOUBLE_TAP_MS = 340;
+const DRAG_THRESHOLD_PX = 5;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 6.0;
 const QUICK_COLORS: readonly string[] = [
   "#e5a158",
   "#4aab80",
@@ -68,6 +72,130 @@ class VaultImagePickerModal extends FuzzySuggestModal<TFile> {
   }
 }
 
+class RenameCanvasModal extends Modal {
+  private initialName: string;
+  private onSubmit: (nextName: string) => void;
+
+  constructor(app: App, initialName: string, onSubmit: (nextName: string) => void) {
+    super(app);
+    this.initialName = initialName;
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen(): void {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass("my-sc-small-dialog");
+    contentEl.empty();
+
+    contentEl.createEl("h4", {
+      cls: "my-sc-dialog-title",
+      text: "Переименовать холст",
+    });
+
+    const input = contentEl.createEl("input", {
+      cls: "my-sc-input my-sc-dialog-input",
+      attr: {
+        type: "text",
+        placeholder: "Название холста…",
+        value: this.initialName,
+      },
+    });
+
+    const actions = contentEl.createDiv("my-sc-dialog-actions");
+    const cancelBtn = actions.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Отмена",
+      attr: { type: "button" },
+    });
+    const saveBtn = actions.createEl("button", {
+      cls: "mod-cta my-sc-chip-btn",
+      text: "Сохранить",
+      attr: { type: "button" },
+    });
+
+    const confirm = () => {
+      const trimmed = input.value.trim();
+      this.close();
+      if (trimmed.length > 0) {
+        this.onSubmit(trimmed);
+      }
+    };
+
+    cancelBtn.onclick = () => this.close();
+    saveBtn.onclick = () => confirm();
+
+    input.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        e.stopPropagation();
+        confirm();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.close();
+      }
+    });
+
+    window.setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 20);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+class ConfirmDeleteCanvasModal extends Modal {
+  private canvasLabel: string;
+  private onConfirm: () => void;
+
+  constructor(app: App, canvasLabel: string, onConfirm: () => void) {
+    super(app);
+    this.canvasLabel = canvasLabel;
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen(): void {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass("my-sc-small-dialog");
+    contentEl.empty();
+
+    contentEl.createEl("h4", {
+      cls: "my-sc-dialog-title",
+      text: "Удалить холст?",
+    });
+
+    contentEl.createDiv({
+      cls: "my-sc-dialog-desc",
+      text: `Холст «${this.canvasLabel}» и все расположенные на нём элементы будут удалены из этой заметки.`,
+    });
+
+    const actions = contentEl.createDiv("my-sc-dialog-actions");
+    const cancelBtn = actions.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "Отмена",
+      attr: { type: "button" },
+    });
+    const deleteBtn = actions.createEl("button", {
+      cls: "mod-warning my-sc-chip-btn",
+      text: "Удалить",
+      attr: { type: "button" },
+    });
+
+    cancelBtn.onclick = () => this.close();
+    deleteBtn.onclick = () => {
+      this.close();
+      this.onConfirm();
+    };
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 export interface SchemaViewCallbacks {
   onSelectNote: (notePath: string) => void;
   onOpenNote: (notePath: string) => void;
@@ -92,6 +220,10 @@ export class ProjectSchemaView {
   private panY = 0;
   private naturalW = DEFAULT_BOARD_W;
   private naturalH = DEFAULT_BOARD_H;
+  private viewportStateBySlide = new Map<
+    string,
+    { scale: number; panX: number; panY: number }
+  >();
   private resizeObserver: ResizeObserver | null = null;
   private lastViewportW = 0;
   private lastViewportH = 0;
@@ -99,12 +231,14 @@ export class ProjectSchemaView {
 
   private activePointers: Map<number, Point> = new Map();
   private prevPinchDistance: number | null = null;
+  private prevPinchCenter: Point | null = null;
   private isPanning = false;
+  private isSpacePressed = false;
   private startPanPoint: Point = { x: 0, y: 0 };
   private startTransform: Point = { x: 0, y: 0 };
 
   private currentTool: ToolType = "select";
-  private elementsByMediaKey: Map<string, CanvasElement[]> = new Map();
+  private boardsMap: BoardsMap = new Map();
   private selectedElementIds: Set<string> = new Set();
   private lastSelectedId: string | null = null;
 
@@ -119,6 +253,11 @@ export class ProjectSchemaView {
   private isMarquee = false;
   private marqueeStart: Point = { x: 0, y: 0 };
   private marqueeEl: HTMLElement | null = null;
+
+  private pendingElementId: string | null = null;
+  private pendingShiftKey = false;
+  private downClientPoint: Point = { x: 0, y: 0 };
+  private hasExceededDragThreshold = false;
 
   private isDraggingEl = false;
   private isDraggingHandle = false;
@@ -145,8 +284,13 @@ export class ProjectSchemaView {
   private headerBarEl!: HTMLElement;
   private noteSelectEl!: HTMLSelectElement;
   private slidesBarEl!: HTMLElement;
+  private addCanvasBtn!: HTMLButtonElement;
+  private renameCanvasBtn!: HTMLButtonElement;
+  private deleteCanvasBtn!: HTMLButtonElement;
+  private zoomResetBtn!: HTMLButtonElement;
   private urlDrawerEl!: HTMLElement;
   private stageWrapEl!: HTMLElement;
+  private emptyStateEl!: HTMLElement;
   private viewportEl!: HTMLElement;
   private layerEl!: HTMLElement;
   private boardBgEl!: HTMLElement;
@@ -161,7 +305,9 @@ export class ProjectSchemaView {
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
 
-  private keyHandler?: (e: KeyboardEvent) => void;
+  private keyDownHandler?: (e: KeyboardEvent) => void;
+  private keyUpHandler?: (e: KeyboardEvent) => void;
+  private windowBlurHandler?: () => void;
   private pasteHandler?: (e: ClipboardEvent) => void;
 
   constructor(
@@ -193,16 +339,46 @@ export class ProjectSchemaView {
 
     this.slidesBarEl = leftControls.createDiv("my-sc-schema-slides");
 
-    const newBoardBtn = leftControls.createEl("button", {
-      cls: "my-sc-chip-btn",
-      text: "＋ Холст",
+    // Минималистичные кнопки управления холстами: Добавить, Переименовать, Удалить
+    const canvasMgmtGroup = leftControls.createDiv("my-sc-canvas-mgmt");
+
+    this.addCanvasBtn = canvasMgmtGroup.createEl("button", {
+      cls: "my-sc-canvas-mgmt-btn",
       attr: {
         type: "button",
-        title: "Создать новый отдельный холст для этой заметки",
+        title: "Добавить холст",
+        "aria-label": "Добавить холст",
       },
     });
-    newBoardBtn.onclick = () => {
+    setIcon(this.addCanvasBtn, "plus");
+    this.addCanvasBtn.onclick = () => {
       void this.createNewBoardSlide();
+    };
+
+    this.renameCanvasBtn = canvasMgmtGroup.createEl("button", {
+      cls: "my-sc-canvas-mgmt-btn",
+      attr: {
+        type: "button",
+        title: "Переименовать холст",
+        "aria-label": "Переименовать холст",
+      },
+    });
+    setIcon(this.renameCanvasBtn, "pencil");
+    this.renameCanvasBtn.onclick = () => {
+      this.promptRenameActiveCanvas();
+    };
+
+    this.deleteCanvasBtn = canvasMgmtGroup.createEl("button", {
+      cls: "my-sc-canvas-mgmt-btn is-danger",
+      attr: {
+        type: "button",
+        title: "Удалить холст",
+        "aria-label": "Удалить холст",
+      },
+    });
+    setIcon(this.deleteCanvasBtn, "trash-2");
+    this.deleteCanvasBtn.onclick = () => {
+      this.promptDeleteActiveCanvas();
     };
 
     const rightControls = this.headerBarEl.createDiv("my-sc-schema-header-right");
@@ -216,7 +392,7 @@ export class ProjectSchemaView {
       },
     });
     addVaultImgBtn.onclick = () => {
-      if (!this.currentNote) return;
+      if (!this.currentNote || this.slides.length === 0) return;
       new VaultImagePickerModal(this.app, async (pickedFile) => {
         await this.addImageElementToCurrentCanvas(pickedFile.path);
       }).open();
@@ -231,6 +407,7 @@ export class ProjectSchemaView {
       },
     });
     attachUrlBtn.onclick = () => {
+      if (this.slides.length === 0) return;
       this.urlDrawerEl.toggleClass(
         "is-hidden",
         !this.urlDrawerEl.hasClass("is-hidden")
@@ -239,21 +416,53 @@ export class ProjectSchemaView {
 
     this.undoBtn = rightControls.createEl("button", {
       cls: "my-sc-icon-btn",
-      attr: { type: "button", title: "Отменить (Ctrl+Z)" },
+      attr: { type: "button", title: "Отменить (Ctrl+Z)", "aria-label": "Отменить" },
     });
     setIcon(this.undoBtn, "undo-2");
     this.undoBtn.onclick = () => this.undo();
 
     this.redoBtn = rightControls.createEl("button", {
       cls: "my-sc-icon-btn",
-      attr: { type: "button", title: "Повторить (Ctrl+Shift+Z)" },
+      attr: { type: "button", title: "Повторить (Ctrl+Shift+Z)", "aria-label": "Повторить" },
     });
     setIcon(this.redoBtn, "redo-2");
     this.redoBtn.onclick = () => this.redo();
 
-    const fitBtn = rightControls.createEl("button", {
-      cls: "my-sc-icon-btn",
-      attr: { type: "button", title: "Вписать схему в окно" },
+    // Группа управления масштабом: «−», «100%», «+», «Вписать всё»
+    const zoomGroup = rightControls.createDiv("my-sc-zoom-group");
+
+    const zoomOutBtn = zoomGroup.createEl("button", {
+      cls: "my-sc-icon-btn my-sc-zoom-btn",
+      attr: { type: "button", title: "Отдалить (−)", "aria-label": "Отдалить" },
+    });
+    setIcon(zoomOutBtn, "minus");
+    zoomOutBtn.onclick = () => this.zoomByCenter(1 / 1.25);
+
+    this.zoomResetBtn = zoomGroup.createEl("button", {
+      cls: "my-sc-zoom-pct-btn",
+      text: "100%",
+      attr: {
+        type: "button",
+        title: "Масштаб 100%",
+        "aria-label": "Масштаб 100%",
+      },
+    });
+    this.zoomResetBtn.onclick = () => this.resetZoomTo100();
+
+    const zoomInBtn = zoomGroup.createEl("button", {
+      cls: "my-sc-icon-btn my-sc-zoom-btn",
+      attr: { type: "button", title: "Приблизить (+)", "aria-label": "Приблизить" },
+    });
+    setIcon(zoomInBtn, "plus");
+    zoomInBtn.onclick = () => this.zoomByCenter(1.25);
+
+    const fitBtn = zoomGroup.createEl("button", {
+      cls: "my-sc-icon-btn my-sc-zoom-btn",
+      attr: {
+        type: "button",
+        title: "Вписать всё",
+        "aria-label": "Вписать всё",
+      },
     });
     setIcon(fitBtn, "maximize");
     fitBtn.onclick = () => {
@@ -295,6 +504,23 @@ export class ProjectSchemaView {
     this.svgLayerEl = document.createElementNS(SVG_NS, "svg");
     this.svgLayerEl.classList.add("mni-svg-layer");
     this.layerEl.appendChild(this.svgLayerEl);
+
+    // Пустое состояние, когда у заметки удалены все холсты
+    this.emptyStateEl = this.stageWrapEl.createDiv(
+      "my-sc-schema-empty-state is-hidden"
+    );
+    this.emptyStateEl.createDiv({
+      cls: "my-sc-schema-empty-text",
+      text: "У этой заметки пока нет открытых холстов.",
+    });
+    const emptyAddBtn = this.emptyStateEl.createEl("button", {
+      cls: "mod-cta my-sc-chip-btn",
+      text: "＋ Добавить холст",
+      attr: { type: "button" },
+    });
+    emptyAddBtn.onclick = () => {
+      void this.createNewBoardSlide();
+    };
 
     this.renderer = new CanvasRenderer(
       this.elementsLayerEl,
@@ -342,8 +568,11 @@ export class ProjectSchemaView {
     targetNote: StudyNoteItem
   ): Promise<void> {
     const noteChanged = this.currentNote?.path !== targetNote.path;
-    if (noteChanged && this.manager) {
-      await this.manager.flushSave(this.elementsByMediaKey);
+    if (noteChanged) {
+      this.saveCurrentSlideViewportState();
+      if (this.manager) {
+        await this.manager.flushSave(this.boardsMap);
+      }
     }
 
     this.scan = scan;
@@ -359,6 +588,21 @@ export class ProjectSchemaView {
     } else {
       window.requestAnimationFrame(() => this.fitToScreen());
     }
+  }
+
+  private getSlideViewportCacheKey(slideKey?: string): string {
+    const k = slideKey ?? this.slides[this.activeSlideIndex]?.key ?? "";
+    return `${this.currentNote?.path ?? ""}::${k}`;
+  }
+
+  private saveCurrentSlideViewportState(): void {
+    const slide = this.slides[this.activeSlideIndex];
+    if (!slide || !this.currentNote) return;
+    this.viewportStateBySlide.set(this.getSlideViewportCacheKey(slide.key), {
+      scale: this.scale,
+      panX: this.panX,
+      panY: this.panY,
+    });
   }
 
   private populateNoteSelect(): void {
@@ -389,10 +633,24 @@ export class ProjectSchemaView {
     }
   }
 
+  private refreshSlidesDefaultLabels(): void {
+    this.slides.forEach((slide, idx) => {
+      const board = this.boardsMap.get(slide.key);
+      const custom = board?.title?.trim() || slide.customTitle?.trim();
+      if (custom) {
+        slide.customTitle = custom;
+        slide.label = custom;
+      } else {
+        slide.customTitle = undefined;
+        slide.label = `Холст ${idx + 1}`;
+      }
+    });
+  }
+
   private async reloadCurrentNoteMedia(preferKey?: string): Promise<void> {
     if (!this.currentNote || !this.manager) return;
 
-    this.elementsByMediaKey = await this.manager.loadElements(
+    this.boardsMap = await this.manager.loadBoards(
       DEFAULT_BOARD_W,
       DEFAULT_BOARD_H
     );
@@ -404,20 +662,24 @@ export class ProjectSchemaView {
 
     this.slides = [...mediaItems];
 
-    // Добавляем все сохранённые холсты из elementsByMediaKey, если их ещё нет в списке
-    let boardIdx = this.slides.length + 1;
-    for (const key of this.elementsByMediaKey.keys()) {
+    for (const [key, board] of this.boardsMap.entries()) {
+      if (board.deleted) continue;
       if (!this.slides.some((s) => s.key === key)) {
         this.slides.push({
           key,
-          label: formatBoardLabel(key, boardIdx++),
+          label: board.title || `Холст ${this.slides.length + 1}`,
+          customTitle: board.title,
           src: "",
           kind: "board",
         });
       }
     }
 
-    if (this.slides.length === 0) {
+    const allDeletedExplicitly =
+      this.boardsMap.size > 0 &&
+      Array.from(this.boardsMap.values()).every((b) => b.deleted === true);
+
+    if (this.slides.length === 0 && !allDeletedExplicitly) {
       this.slides.push({
         key: VIRTUAL_BOARD_KEY,
         label: "Холст 1",
@@ -426,10 +688,17 @@ export class ProjectSchemaView {
       });
     }
 
-    if (preferKey) {
+    this.refreshSlidesDefaultLabels();
+
+    if (this.slides.length === 0) {
+      this.activeSlideIndex = -1;
+    } else if (preferKey) {
       const idx = this.slides.findIndex((s) => s.key === preferKey);
       this.activeSlideIndex = idx >= 0 ? idx : 0;
-    } else if (this.activeSlideIndex >= this.slides.length) {
+    } else if (
+      this.activeSlideIndex < 0 ||
+      this.activeSlideIndex >= this.slides.length
+    ) {
       this.activeSlideIndex = 0;
     }
 
@@ -439,52 +708,177 @@ export class ProjectSchemaView {
     await this.loadActiveSlide();
   }
 
+  private syncCanvasMgmtButtonsState(): void {
+    const hasActiveCanvas =
+      this.slides.length > 0 &&
+      this.activeSlideIndex >= 0 &&
+      this.activeSlideIndex < this.slides.length;
+
+    if (this.renameCanvasBtn) {
+      this.renameCanvasBtn.disabled = !hasActiveCanvas;
+      this.renameCanvasBtn.classList.toggle("is-disabled", !hasActiveCanvas);
+    }
+    if (this.deleteCanvasBtn) {
+      this.deleteCanvasBtn.disabled = !hasActiveCanvas;
+      this.deleteCanvasBtn.classList.toggle("is-disabled", !hasActiveCanvas);
+    }
+    this.emptyStateEl?.toggleClass("is-hidden", hasActiveCanvas);
+    this.viewportEl?.toggleClass("is-hidden", !hasActiveCanvas);
+    this.toolbarEl?.toggleClass("is-hidden", !hasActiveCanvas);
+    if (!hasActiveCanvas) {
+      this.propertiesPanelEl?.addClass("is-hidden");
+    }
+  }
+
   private async createNewBoardSlide(): Promise<void> {
     if (!this.currentNote || !this.manager) return;
 
+    this.saveCurrentSlideViewportState();
+
     let n = 1;
     let nextKey = VIRTUAL_BOARD_KEY;
-    const existingKeys = new Set([
+    const usedKeys = new Set<string>([
       ...this.slides.map((s) => s.key),
-      ...this.elementsByMediaKey.keys(),
+      ...Array.from(this.boardsMap.entries())
+        .filter(([, b]) => !b.deleted)
+        .map(([k]) => k),
     ]);
-    while (existingKeys.has(nextKey)) {
+    while (usedKeys.has(nextKey)) {
       n++;
       nextKey = `__board_${n}__`;
     }
 
-    const label = `Холст ${this.slides.length + 1}`;
+    this.boardsMap.set(nextKey, {
+      elements: [],
+    });
+
     this.slides.push({
       key: nextKey,
-      label,
+      label: `Холст ${this.slides.length + 1}`,
       src: "",
       kind: "board",
     });
-    if (!this.elementsByMediaKey.has(nextKey)) {
-      this.elementsByMediaKey.set(nextKey, []);
-    }
+    this.refreshSlidesDefaultLabels();
 
     this.activeSlideIndex = this.slides.length - 1;
     this.selectedElementIds.clear();
     this.lastSelectedId = null;
     this.renderSlidesChips();
     await this.loadActiveSlide();
-    new Notice(`Создан новый холст: ${label}`);
+    this.manager.scheduleSave(this.boardsMap);
+  }
+
+  private promptRenameActiveCanvas(): void {
+    const slide = this.slides[this.activeSlideIndex];
+    if (!slide || !this.manager) return;
+
+    const currentLabel = slide.customTitle || slide.label;
+    new RenameCanvasModal(this.app, currentLabel, (nextName) => {
+      const cleanName = nextName.trim();
+      if (!cleanName) return;
+
+      let board = this.boardsMap.get(slide.key);
+      if (!board) {
+        board = { elements: [] };
+        this.boardsMap.set(slide.key, board);
+      }
+      board.title = cleanName;
+      slide.customTitle = cleanName;
+      slide.label = cleanName;
+
+      this.renderSlidesChips();
+      this.manager?.scheduleSave(this.boardsMap);
+    }).open();
+  }
+
+  private isKeyBackedByNoteEmbedOrYaml(key: string): boolean {
+    if (!this.currentNote) return false;
+    const cache = this.app.metadataCache.getFileCache(this.currentNote.file);
+    for (const em of cache?.embeds ?? []) {
+      const linkPath = cleanWikiTarget(em.link);
+      if (!linkPath) continue;
+      if (linkPath === key) return true;
+      const dest = this.app.metadataCache.getFirstLinkpathDest(
+        linkPath,
+        this.currentNote.path
+      );
+      if (dest && (dest.name === key || dest.path === key)) return true;
+    }
+    const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+    if (fm) {
+      for (const prop of [
+        "изображение",
+        "изображения",
+        "картинка",
+        "схема",
+        "медиа",
+        "обложка",
+        "image",
+        "media",
+      ]) {
+        const raw = fm[prop];
+        const vals = Array.isArray(raw)
+          ? raw.map(String)
+          : typeof raw === "string"
+            ? [raw]
+            : [];
+        for (const v of vals) {
+          const cl = cleanWikiTarget(v);
+          if (cl === key || v.trim() === key) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private promptDeleteActiveCanvas(): void {
+    const slide = this.slides[this.activeSlideIndex];
+    if (!slide || !this.manager) return;
+
+    new ConfirmDeleteCanvasModal(this.app, slide.label, async () => {
+      const targetKey = slide.key;
+      this.viewportStateBySlide.delete(
+        this.getSlideViewportCacheKey(targetKey)
+      );
+
+      if (this.isKeyBackedByNoteEmbedOrYaml(targetKey)) {
+        this.boardsMap.set(targetKey, {
+          elements: [],
+          deleted: true,
+        });
+      } else {
+        this.boardsMap.delete(targetKey);
+      }
+
+      this.slides.splice(this.activeSlideIndex, 1);
+      this.refreshSlidesDefaultLabels();
+
+      if (this.slides.length === 0) {
+        this.activeSlideIndex = -1;
+      } else if (this.activeSlideIndex >= this.slides.length) {
+        this.activeSlideIndex = this.slides.length - 1;
+      }
+
+      this.selectedElementIds.clear();
+      this.lastSelectedId = null;
+      this.renderSlidesChips();
+      await this.loadActiveSlide();
+      this.manager?.scheduleSave(this.boardsMap);
+    }).open();
   }
 
   private renderSlidesChips(): void {
     this.slidesBarEl.empty();
     this.slides.forEach((slide, idx) => {
       const isAct = idx === this.activeSlideIndex;
-      const icon =
-        slide.kind === "board" ? "📐" : slide.kind === "external" ? "🌐" : "🖼";
       const chip = this.slidesBarEl.createEl("button", {
         cls: `my-sc-filter-chip ${isAct ? "is-active" : ""}`,
-        text: `${icon} ${slide.label}`,
-        attr: { type: "button", title: `Холст: ${slide.label}` },
+        text: slide.label,
+        attr: { type: "button", title: slide.label },
       });
       chip.onclick = async () => {
         if (this.activeSlideIndex === idx) return;
+        this.saveCurrentSlideViewportState();
         this.activeSlideIndex = idx;
         this.selectedElementIds.clear();
         this.lastSelectedId = null;
@@ -492,6 +886,7 @@ export class ProjectSchemaView {
         await this.loadActiveSlide();
       };
     });
+    this.syncCanvasMgmtButtonsState();
   }
 
   private syncBoardSurfaceBounds(): void {
@@ -513,15 +908,29 @@ export class ProjectSchemaView {
   }
 
   private async loadActiveSlide(): Promise<void> {
+    this.syncCanvasMgmtButtonsState();
+
     const slide = this.slides[this.activeSlideIndex];
-    if (!slide || !this.manager) return;
+    if (!slide || !this.manager) {
+      this.elementsLayerEl.empty();
+      this.renderer.renderAll([], this.selectedElementIds);
+      return;
+    }
 
     this.imgEl.addClass("is-hidden");
     this.boardBgEl.removeClass("is-hidden");
 
-    const list = [...(this.elementsByMediaKey.get(slide.key) ?? [])];
+    let board = this.boardsMap.get(slide.key);
+    if (!board || board.deleted) {
+      board = {
+        title: slide.customTitle,
+        elements: [],
+      };
+    }
 
-    // Автоматическая миграция старого холста с одиночной фоновой картинкой в полноценный элемент ImageElement
+    const list = [...board.elements];
+
+    // Автоматическая миграция старого холста с одиночной картинкой в элемент ImageElement
     const hasImageElement = list.some((el) => el.type === "image");
     if (
       !hasImageElement &&
@@ -542,20 +951,31 @@ export class ProjectSchemaView {
         aspectRatio: Number((w / Math.max(1, h)).toFixed(4)),
       };
       list.unshift(migratedImg);
-      this.elementsByMediaKey.set(slide.key, list);
-      this.manager.scheduleSave(this.elementsByMediaKey);
-    } else if (!this.elementsByMediaKey.has(slide.key)) {
-      this.elementsByMediaKey.set(slide.key, list);
+      board.elements = list;
+      this.boardsMap.set(slide.key, board);
+      this.manager.scheduleSave(this.boardsMap);
     }
 
-    this.userAdjustedViewport = false;
     CanvasEngine.syncArrowsToBlocks(this.getCurrentElements());
     this.syncBoardSurfaceBounds();
     this.resetHistory();
     this.updatePropertiesPanel();
     this.updateDeleteButton();
     this.renderElements();
-    window.requestAnimationFrame(() => this.fitToScreen());
+
+    const savedVp = this.viewportStateBySlide.get(
+      this.getSlideViewportCacheKey(slide.key)
+    );
+    if (savedVp) {
+      this.scale = savedVp.scale;
+      this.panX = savedVp.panX;
+      this.panY = savedVp.panY;
+      this.userAdjustedViewport = true;
+      this.applyTransform();
+    } else {
+      this.userAdjustedViewport = false;
+      window.requestAnimationFrame(() => this.fitToScreen());
+    }
   }
 
   private probeImageDimensions(
@@ -583,14 +1003,17 @@ export class ProjectSchemaView {
   }
 
   /**
-   * Добавляет картинку (из файла в хранилище, буфера обмена, перетаскивания или URL)
-   * как выбираемый и масштабируемый элемент на ТЕКУЩИЙ открытый холст.
+   * Добавляет картинку на ТЕКУЩИЙ открытый холст.
    */
   public async addImageElementToCurrentCanvas(
     srcKey: string,
     dropCanvasPoint?: Point
   ): Promise<void> {
     if (!this.currentNote) return;
+
+    if (this.slides.length === 0) {
+      await this.createNewBoardSlide();
+    }
 
     const resolved = resolveImageSource(
       this.app,
@@ -665,18 +1088,24 @@ export class ProjectSchemaView {
   private getCurrentElements(): CanvasElement[] {
     const slide = this.slides[this.activeSlideIndex];
     if (!slide) return [];
-    let list = this.elementsByMediaKey.get(slide.key);
-    if (!list) {
-      list = [];
-      this.elementsByMediaKey.set(slide.key, list);
+    let board = this.boardsMap.get(slide.key);
+    if (!board) {
+      board = { title: slide.customTitle, elements: [] };
+      this.boardsMap.set(slide.key, board);
     }
-    return list;
+    return board.elements;
   }
 
   private setCurrentElements(list: CanvasElement[]): void {
     const slide = this.slides[this.activeSlideIndex];
     if (!slide) return;
-    this.elementsByMediaKey.set(slide.key, list);
+    let board = this.boardsMap.get(slide.key);
+    if (!board) {
+      board = { title: slide.customTitle, elements: list };
+      this.boardsMap.set(slide.key, board);
+    } else {
+      board.elements = list;
+    }
   }
 
   private renderElements(freshElementId?: string | null): void {
@@ -710,10 +1139,23 @@ export class ProjectSchemaView {
     this.commitHistory(false);
   }
 
+  private serializeBoardsForHistory(): string {
+    const entries: Array<[string, { title?: string; deleted?: boolean; elements: CanvasElement[] }]> = [];
+    for (const [k, b] of this.boardsMap.entries()) {
+      entries.push([
+        k,
+        {
+          title: b.title,
+          deleted: b.deleted,
+          elements: b.elements,
+        },
+      ]);
+    }
+    return JSON.stringify(entries);
+  }
+
   private commitHistory(persist = true): void {
-    const currentState = JSON.stringify(
-      Array.from(this.elementsByMediaKey.entries())
-    );
+    const currentState = this.serializeBoardsForHistory();
     if (
       this.historyIndex === -1 ||
       this.history[this.historyIndex] !== currentState
@@ -726,7 +1168,7 @@ export class ProjectSchemaView {
         this.historyIndex--;
       }
       if (persist && this.manager) {
-        this.manager.scheduleSave(this.elementsByMediaKey);
+        this.manager.scheduleSave(this.boardsMap);
       }
       this.updateUndoButtons();
     }
@@ -749,14 +1191,16 @@ export class ProjectSchemaView {
   private restoreStateFromHistory(): void {
     const stateStr = this.history[this.historyIndex];
     if (!stateStr) return;
-    const parsed = JSON.parse(stateStr) as [string, CanvasElement[]][];
-    this.elementsByMediaKey = new Map(parsed);
+    const parsed = JSON.parse(stateStr) as Array<
+      [string, { title?: string; deleted?: boolean; elements: CanvasElement[] }]
+    >;
+    this.boardsMap = new Map(parsed);
     this.selectedElementIds.clear();
     this.lastSelectedId = null;
     this.syncBoardSurfaceBounds();
     this.updatePropertiesPanel();
     this.renderElements();
-    this.manager?.scheduleSave(this.elementsByMediaKey);
+    this.manager?.scheduleSave(this.boardsMap);
     this.updateUndoButtons();
   }
 
@@ -808,8 +1252,8 @@ export class ProjectSchemaView {
     this.toolbarEl = parent.createDiv({ cls: "mni-toolbar" });
     const tools: { id: ToolType; icon: string; label: string; hotkey: string }[] =
       [
-        { id: "select", icon: "🖐️", label: "Выделение и перемещение", hotkey: "V" },
-        { id: "pan", icon: "✥", label: "Панорама холста", hotkey: "H" },
+        { id: "select", icon: "🖐️", label: "Выделение", hotkey: "V" },
+        { id: "pan", icon: "✥", label: "Панорама", hotkey: "H" },
         { id: "rect", icon: "⬜", label: "Прямоугольник (рамка)", hotkey: "R" },
         { id: "arrow", icon: "↗️", label: "Стрелка", hotkey: "A" },
         { id: "text", icon: "T", label: "Текст / [[Ссылка]]", hotkey: "T" },
@@ -879,7 +1323,7 @@ export class ProjectSchemaView {
   private updatePropertiesPanel(): void {
     this.propertiesPanelEl.empty();
 
-    if (!this.lastSelectedId) {
+    if (!this.lastSelectedId || this.currentTool !== "select") {
       this.propertiesPanelEl.classList.add("is-hidden");
       return;
     }
@@ -1171,26 +1615,48 @@ export class ProjectSchemaView {
     this.lastViewportH = Math.round(rect.height);
 
     const list = this.getCurrentElements();
-    let fitW = this.naturalW;
-    let fitH = this.naturalH;
+    const pad = 36;
 
     if (list.length > 0) {
-      let maxR = 400;
-      let maxB = 300;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
       for (const el of list) {
         const b = CanvasEngine.getElementBBox(el);
-        maxR = Math.max(maxR, b.x + b.width + 60);
-        maxB = Math.max(maxB, b.y + b.height + 60);
+        minX = Math.min(minX, b.x);
+        minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + b.width);
+        maxY = Math.max(maxY, b.y + b.height);
       }
-      fitW = Math.min(this.naturalW, Math.max(600, maxR));
-      fitH = Math.min(this.naturalH, Math.max(450, maxB));
+
+      const contentW = Math.max(160, maxX - minX);
+      const contentH = Math.max(120, maxY - minY);
+      const availW = Math.max(100, rect.width - pad * 2);
+      const availH = Math.max(100, rect.height - pad * 2);
+      const fitScale = Math.min(availW / contentW, availH / contentH, 1.4);
+
+      this.scale = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, Number(fitScale.toFixed(3)))
+      );
+      this.panX = Math.round(
+        (rect.width - contentW * this.scale) / 2 - minX * this.scale
+      );
+      this.panY = Math.round(
+        (rect.height - contentH * this.scale) / 2 - minY * this.scale
+      );
+      this.applyTransform();
+      return;
     }
 
     const fit = CanvasEngine.computeFitTransform(
       rect.width,
       rect.height,
-      fitW,
-      fitH
+      this.naturalW,
+      this.naturalH,
+      pad
     );
     this.scale = fit.scale;
     this.panX = fit.panX;
@@ -1198,8 +1664,33 @@ export class ProjectSchemaView {
     this.applyTransform();
   }
 
+  private resetZoomTo100(): void {
+    const rect = this.viewportEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const factor = 1 / (this.scale > 0.001 ? this.scale : 1);
+    this.zoomAtPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+      factor
+    );
+  }
+
+  private zoomByCenter(factor: number): void {
+    const rect = this.viewportEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    this.zoomAtPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+      factor
+    );
+  }
+
   private applyTransform(): void {
     this.layerEl.style.transform = `translate3d(${this.panX}px, ${this.panY}px, 0) scale(${this.scale})`;
+    if (this.zoomResetBtn) {
+      this.zoomResetBtn.setText(`${Math.round(this.scale * 100)}%`);
+    }
+    this.saveCurrentSlideViewportState();
   }
 
   private bindDragAndDropEvents(target: HTMLElement): void {
@@ -1220,7 +1711,6 @@ export class ProjectSchemaView {
 
       const dropCoords = this.getImageCoords(e.clientX, e.clientY);
 
-      // 1. Файлы, перетащенные из проводника / Finder / iPad Files
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         for (const file of Array.from(e.dataTransfer.files)) {
           const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -1242,7 +1732,6 @@ export class ProjectSchemaView {
         return;
       }
 
-      // 2. Ссылка или файл, перетащенный из дерева файлов Obsidian
       const rawText =
         e.dataTransfer.getData("text/plain") ||
         e.dataTransfer.getData("text/uri-list") ||
@@ -1266,17 +1755,28 @@ export class ProjectSchemaView {
         }
       }
 
-      await this.addImageElementToCurrentCanvas(clean, dropCoords);
+      if (isExternalImageUrl(clean) || clean.length > 0) {
+        await this.addImageElementToCurrentCanvas(clean, dropCoords);
+      }
     });
   }
 
   private bindKeyboardAndPasteEvents(): void {
-    this.keyHandler = (e: KeyboardEvent) => {
+    this.keyDownHandler = (e: KeyboardEvent) => {
       if (!this.container.isConnected || this.container.hasClass("is-hidden")) {
         return;
       }
       const targetTag = (e.target as HTMLElement | null)?.tagName ?? "";
       if (["INPUT", "TEXTAREA", "SELECT"].includes(targetTag)) return;
+
+      if (e.code === "Space" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (!this.isSpacePressed) {
+          this.isSpacePressed = true;
+          this.viewportEl.classList.add("is-space-panning");
+        }
+        return;
+      }
 
       const key = e.key.toLowerCase();
       if (!e.ctrlKey && !e.metaKey) {
@@ -1299,6 +1799,20 @@ export class ProjectSchemaView {
       ) {
         e.preventDefault();
         this.deleteSelected();
+      }
+    };
+
+    this.keyUpHandler = (e: KeyboardEvent) => {
+      if (e.code === "Space" && this.isSpacePressed) {
+        this.isSpacePressed = false;
+        this.viewportEl?.classList.remove("is-space-panning");
+      }
+    };
+
+    this.windowBlurHandler = () => {
+      if (this.isSpacePressed) {
+        this.isSpacePressed = false;
+        this.viewportEl?.classList.remove("is-space-panning");
       }
     };
 
@@ -1330,7 +1844,9 @@ export class ProjectSchemaView {
       }
     };
 
-    window.addEventListener("keydown", this.keyHandler);
+    window.addEventListener("keydown", this.keyDownHandler);
+    window.addEventListener("keyup", this.keyUpHandler);
+    window.addEventListener("blur", this.windowBlurHandler);
     window.addEventListener("paste", this.pasteHandler);
   }
 
@@ -1348,10 +1864,70 @@ export class ProjectSchemaView {
     this.commitHistory();
   }
 
-  private bindPointerEvents(target: HTMLElement): void {
-    let pointerMoved = false;
+  private cancelActiveSinglePointerInteraction(): void {
+    const elements = this.getCurrentElements();
 
+    if (this.isDrawing && this.previewEl) {
+      this.previewEl.remove();
+      this.previewEl = null;
+      this.isDrawing = false;
+      this.drawStartSnap = null;
+    }
+
+    if (this.isMarquee) {
+      this.isMarquee = false;
+      if (this.marqueeEl) {
+        this.marqueeEl.remove();
+        this.marqueeEl = null;
+      }
+    }
+
+    if (this.isDraggingEl && this.hasExceededDragThreshold) {
+      this.groupDragStartPositions.forEach((start, id) => {
+        const el = elements.find((x) => x.id === id);
+        if (!el) return;
+        if (el.type === "arrow" && start.type === "arrow") {
+          el.x1 = start.x1;
+          el.y1 = start.y1;
+          el.x2 = start.x2;
+          el.y2 = start.y2;
+          if (start.cx1 !== undefined) el.cx1 = start.cx1;
+          if (start.cy1 !== undefined) el.cy1 = start.cy1;
+          if (start.cx2 !== undefined) el.cx2 = start.cx2;
+          if (start.cy2 !== undefined) el.cy2 = start.cy2;
+        } else if (el.type !== "arrow" && start.type === "box") {
+          el.x = start.x;
+          el.y = start.y;
+        }
+      });
+      CanvasEngine.syncArrowsToBlocks(elements);
+      this.renderElements();
+    }
+
+    if (this.isResizing && this.lastSelectedId) {
+      const el = elements.find((x) => x.id === this.lastSelectedId);
+      if (el && el.type !== "arrow") {
+        el.x = this.resizeStartBBox.x;
+        el.y = this.resizeStartBBox.y;
+        el.width = this.resizeStartBBox.w;
+        el.height = this.resizeStartBBox.h;
+        this.renderElements();
+      }
+    }
+
+    this.isDraggingEl = false;
+    this.isResizing = false;
+    this.isDraggingHandle = false;
+    this.pendingElementId = null;
+    this.hasExceededDragThreshold = false;
+    this.groupDragStartPositions.clear();
+    this.isPanning = false;
+    this.viewportEl.classList.remove("is-dragging");
+  }
+
+  private bindPointerEvents(target: HTMLElement): void {
     target.addEventListener("dblclick", (e: MouseEvent) => {
+      if (this.currentTool === "pan" || this.isSpacePressed) return;
       const clickedTextEl = (e.target as HTMLElement).closest(
         ".mni-el-text"
       ) as HTMLElement | null;
@@ -1367,16 +1943,59 @@ export class ProjectSchemaView {
     target.addEventListener("pointerdown", (e: PointerEvent) => {
       if (
         (e.target as HTMLElement).closest(
-          ".mni-toolbar, .mni-properties-panel, .mni-el-input-wrapper, a.internal-link"
+          ".mni-toolbar, .mni-properties-panel, .mni-el-input-wrapper, .my-sc-schema-empty-state"
         )
       ) {
         return;
       }
 
+      if (
+        this.currentTool === "select" &&
+        !this.isSpacePressed &&
+        (e.target as HTMLElement).closest("a.internal-link")
+      ) {
+        return;
+      }
+
+      if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) {
+        return;
+      }
+
       e.preventDefault();
-      target.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+      try {
+        target.setPointerCapture(e.pointerId);
+      } catch {
+        // игнорируем, если pointerCapture недоступен
+      }
+
       this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      pointerMoved = false;
+      this.downClientPoint = { x: e.clientX, y: e.clientY };
+      this.hasExceededDragThreshold = false;
+      this.pendingElementId = null;
+      this.pendingShiftKey = e.shiftKey;
+
+      // Два пальца на экране — всегда панорама + масштаб (pinch) в любом режиме
+      if (this.activePointers.size >= 2) {
+        this.cancelActiveSinglePointerInteraction();
+        this.prevPinchDistance = this.getPinchDistance();
+        this.prevPinchCenter = this.getPinchCenter();
+        return;
+      }
+
+      // Принудительная панорама: режим «Панорама», удержание пробела или средняя кнопка мыши
+      const isForcedPan =
+        this.currentTool === "pan" ||
+        this.isSpacePressed ||
+        (e.pointerType === "mouse" && e.button === 1);
+
+      if (isForcedPan) {
+        this.isPanning = true;
+        target.classList.add("is-dragging");
+        this.startPanPoint = { x: e.clientX, y: e.clientY };
+        this.startTransform = { x: this.panX, y: this.panY };
+        return;
+      }
 
       const elements = this.getCurrentElements();
       const svgTarget = e.target as SVGElement;
@@ -1384,120 +2003,68 @@ export class ProjectSchemaView {
         ".mni-el, .mni-el-svg"
       ) as HTMLElement | SVGElement | null;
 
-      // Клик по маркеру изменения размера или стрелки работает всегда
-      if (svgTarget.classList.contains("mni-resize-handle")) {
-        const handleAttr = svgTarget.dataset.handle as
-          | ResizeHandleType
-          | undefined;
-        const targetId = svgTarget.dataset.id;
-        if (!handleAttr || !targetId) return;
+      // В режиме «Выделение» проверяем маркеры масштабирования, маркеры стрелки и клик по объекту
+      if (this.currentTool === "select") {
+        if (svgTarget.classList.contains("mni-resize-handle")) {
+          const handleAttr = svgTarget.dataset.handle as
+            | ResizeHandleType
+            | undefined;
+          const targetId = svgTarget.dataset.id;
+          if (!handleAttr || !targetId) return;
 
-        this.isResizing = true;
-        this.activeResizeHandle = handleAttr;
-        this.selectedElementIds.clear();
-        this.selectedElementIds.add(targetId);
-        this.lastSelectedId = targetId;
+          this.isResizing = true;
+          this.activeResizeHandle = handleAttr;
+          this.selectedElementIds.clear();
+          this.selectedElementIds.add(targetId);
+          this.lastSelectedId = targetId;
 
-        const el = elements.find((x) => x.id === targetId);
-        if (el && el.type !== "arrow") {
-          this.resizeStartBBox = {
-            x: el.x,
-            y: el.y,
-            w: el.width,
-            h: el.height,
-            fontSize: el.type === "text" ? el.fontSize : 16,
-            aspectRatio:
-              el.type === "image"
-                ? el.aspectRatio || el.width / Math.max(1, el.height)
-                : el.width / Math.max(1, el.height),
-          };
-          this.dragStartPoint = this.getImageCoords(e.clientX, e.clientY);
-        }
-        return;
-      }
-
-      if (svgTarget.classList.contains("mni-arrow-handle")) {
-        const handleAttr = svgTarget.dataset.handle as
-          | ArrowHandleType
-          | undefined;
-        const targetId = svgTarget.dataset.id;
-        if (!handleAttr || !targetId) return;
-
-        this.isDraggingHandle = true;
-        this.draggedHandleType = handleAttr;
-        this.selectedElementIds.clear();
-        this.selectedElementIds.add(targetId);
-        this.lastSelectedId = targetId;
-        return;
-      }
-
-      // Выделение и перетаскивание элементов (работает в режиме select, а также при клике по элементу в режиме pan)
-      if (
-        (this.currentTool === "select" ||
-          (this.currentTool === "pan" && clickedEl)) &&
-        this.activePointers.size === 1
-      ) {
-        if (clickedEl) {
-          const clickedId = clickedEl.dataset.id;
-          if (clickedId) {
-            if (this.currentTool === "pan") {
-              this.setTool("select");
-            }
-            if (e.shiftKey) {
-              if (
-                this.selectedElementIds.has(clickedId) &&
-                this.selectedElementIds.size > 1
-              ) {
-                this.selectedElementIds.delete(clickedId);
-              } else {
-                this.selectedElementIds.add(clickedId);
-              }
-            } else if (!this.selectedElementIds.has(clickedId)) {
-              this.selectedElementIds.clear();
-              this.selectedElementIds.add(clickedId);
-            }
-            this.lastSelectedId =
-              Array.from(this.selectedElementIds).pop() ?? null;
-            this.updateDeleteButton();
-            this.updatePropertiesPanel();
-            this.renderer.updateSelectionStates(
-              elements,
-              this.selectedElementIds
-            );
-
-            this.isDraggingEl = true;
+          const el = elements.find((x) => x.id === targetId);
+          if (el && el.type !== "arrow") {
+            this.resizeStartBBox = {
+              x: el.x,
+              y: el.y,
+              w: el.width,
+              h: el.height,
+              fontSize: el.type === "text" ? el.fontSize : 16,
+              aspectRatio:
+                el.type === "image"
+                  ? el.aspectRatio || el.width / Math.max(1, el.height)
+                  : el.width / Math.max(1, el.height),
+            };
             this.dragStartPoint = this.getImageCoords(e.clientX, e.clientY);
-            this.groupDragStartPositions.clear();
-
-            this.selectedElementIds.forEach((id) => {
-              const el = elements.find((x) => x.id === id);
-              if (!el) return;
-              if (el.type === "arrow") {
-                const ctrl = CanvasEngine.getArrowControlPoints(el);
-                this.groupDragStartPositions.set(id, {
-                  type: "arrow",
-                  x1: el.x1,
-                  y1: el.y1,
-                  x2: el.x2,
-                  y2: el.y2,
-                  cx1: el.cx1 !== undefined ? ctrl.cx1 : undefined,
-                  cy1: el.cy1 !== undefined ? ctrl.cy1 : undefined,
-                  cx2: el.cx2 !== undefined ? ctrl.cx2 : undefined,
-                  cy2: el.cy2 !== undefined ? ctrl.cy2 : undefined,
-                });
-              } else {
-                this.groupDragStartPositions.set(id, {
-                  type: "box",
-                  x: el.x,
-                  y: el.y,
-                });
-              }
-            });
           }
           return;
         }
 
-        if (this.currentTool === "select") {
+        if (svgTarget.classList.contains("mni-arrow-handle")) {
+          const handleAttr = svgTarget.dataset.handle as
+            | ArrowHandleType
+            | undefined;
+          const targetId = svgTarget.dataset.id;
+          if (!handleAttr || !targetId) return;
+
+          this.isDraggingHandle = true;
+          this.draggedHandleType = handleAttr;
+          this.selectedElementIds.clear();
+          this.selectedElementIds.add(targetId);
+          this.lastSelectedId = targetId;
+          return;
+        }
+
+        if (clickedEl) {
+          const clickedId = clickedEl.dataset.id;
+          if (clickedId) {
+            this.pendingElementId = clickedId;
+            this.isDraggingEl = true;
+            this.dragStartPoint = this.getImageCoords(e.clientX, e.clientY);
+            return;
+          }
+        }
+
+        // Пустое место в режиме «Выделение»:
+        // Shift + перетаскивание или Apple Pencil -> рамка выделения нескольких объектов;
+        // обычное перетаскивание мышью или одним пальцем по пустому месту -> панорама!
+        if (e.shiftKey || e.pointerType === "pen") {
           this.isMarquee = true;
           this.marqueeStart = this.getImageCoords(e.clientX, e.clientY);
           if (!e.shiftKey) {
@@ -1517,12 +2084,18 @@ export class ProjectSchemaView {
           this.marqueeEl.style.height = "0px";
           return;
         }
+
+        this.isPanning = true;
+        target.classList.add("is-dragging");
+        this.startPanPoint = { x: e.clientX, y: e.clientY };
+        this.startTransform = { x: this.panX, y: this.panY };
+        return;
       }
 
-      if (
-        (this.currentTool === "rect" || this.currentTool === "arrow") &&
-        this.activePointers.size === 1
-      ) {
+      // Инструменты рисования «Прямоугольник» и «Стрелка»
+      if (this.currentTool === "rect" || this.currentTool === "arrow") {
+        // Если на сенсорном экране пользователь ведёт одним пальцем по пустому месту в режиме текста — панорамируем,
+        // а в режиме фигур рисуем (при касании двумя пальцами рисование автоматически отменяется и переходит в pinch-pan)
         const coords = this.getImageCoords(e.clientX, e.clientY);
         this.drawStartPoint = coords;
         this.drawStartSnap = null;
@@ -1562,41 +2135,50 @@ export class ProjectSchemaView {
         return;
       }
 
-      if (this.activePointers.size === 2) {
-        this.isPanning = false;
-        this.isDraggingEl = false;
-        this.isMarquee = false;
-        if (this.marqueeEl) {
-          this.marqueeEl.remove();
-          this.marqueeEl = null;
-        }
-        this.prevPinchDistance = this.getPinchDistance();
-        return;
-      }
-
-      if (
-        this.activePointers.size === 1 &&
-        !this.isDraggingEl &&
-        !this.isDraggingHandle &&
-        !this.isMarquee &&
-        !this.isResizing
-      ) {
-        this.isPanning = true;
-        target.classList.add("is-dragging");
-        this.startPanPoint = { x: e.clientX, y: e.clientY };
-        this.startTransform = { x: this.panX, y: this.panY };
-      }
+      // В режиме «Текст» перетаскивание по пустому месту панорамирует, а одиночный клик/тап ставит текст
+      this.isPanning = true;
+      target.classList.add("is-dragging");
+      this.startPanPoint = { x: e.clientX, y: e.clientY };
+      this.startTransform = { x: this.panX, y: this.panY };
     });
 
     target.addEventListener("pointermove", (e: PointerEvent) => {
       if (!this.activePointers.has(e.pointerId)) return;
+
+      // Обработка жеста двумя пальцами (одновременная панорама + масштаб вокруг центра щипка)
+      if (this.activePointers.size >= 2) {
+        const oldCenter = this.prevPinchCenter ?? this.getPinchCenter();
+        const oldDist = this.prevPinchDistance ?? this.getPinchDistance();
+
+        this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        const newCenter = this.getPinchCenter();
+        const newDist = this.getPinchDistance();
+
+        this.panX += newCenter.x - oldCenter.x;
+        this.panY += newCenter.y - oldCenter.y;
+        this.userAdjustedViewport = true;
+
+        if (oldDist > 8 && newDist > 8) {
+          const factor = newDist / oldDist;
+          this.zoomAtPoint(newCenter.x, newCenter.y, factor);
+        } else {
+          this.applyTransform();
+        }
+
+        this.prevPinchCenter = newCenter;
+        this.prevPinchDistance = newDist;
+        return;
+      }
+
       this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-      if (
-        Math.abs(e.clientX - this.startPanPoint.x) > 4 ||
-        Math.abs(e.clientY - this.startPanPoint.y) > 4
-      ) {
-        pointerMoved = true;
+      const clientDist = Math.hypot(
+        e.clientX - this.downClientPoint.x,
+        e.clientY - this.downClientPoint.y
+      );
+      if (clientDist >= DRAG_THRESHOLD_PX) {
+        this.hasExceededDragThreshold = true;
       }
 
       const elements = this.getCurrentElements();
@@ -1609,7 +2191,6 @@ export class ProjectSchemaView {
         const dx = current.x - this.dragStartPoint.x;
         const dy = current.y - this.dragStartPoint.y;
 
-        // Для картинок сохраняем пропорции, для прямоугольника и текста — свободно
         const lockAspect = el.type === "image";
         const nextGeom = CanvasEngine.computeResizedGeometry(
           this.resizeStartBBox,
@@ -1719,13 +2300,58 @@ export class ProjectSchemaView {
         return;
       }
 
-      if (this.isDraggingEl && this.groupDragStartPositions.size > 0) {
+      // Перемещение объектов начинается ТОЛЬКО после преодоления порога смещения DRAG_THRESHOLD_PX (5 px)
+      if (this.isDraggingEl) {
+        if (!this.hasExceededDragThreshold) {
+          return;
+        }
+
+        if (this.groupDragStartPositions.size === 0 && this.pendingElementId) {
+          const clickedId = this.pendingElementId;
+          if (!this.selectedElementIds.has(clickedId)) {
+            if (!this.pendingShiftKey) {
+              this.selectedElementIds.clear();
+            }
+            this.selectedElementIds.add(clickedId);
+          }
+          this.lastSelectedId =
+            Array.from(this.selectedElementIds).pop() ?? null;
+          this.updateDeleteButton();
+          this.updatePropertiesPanel();
+          this.renderer.updateSelectionStates(
+            elements,
+            this.selectedElementIds
+          );
+
+          this.selectedElementIds.forEach((id) => {
+            const el = elements.find((x) => x.id === id);
+            if (!el) return;
+            if (el.type === "arrow") {
+              const ctrl = CanvasEngine.getArrowControlPoints(el);
+              this.groupDragStartPositions.set(id, {
+                type: "arrow",
+                x1: el.x1,
+                y1: el.y1,
+                x2: el.x2,
+                y2: el.y2,
+                cx1: el.cx1 !== undefined ? ctrl.cx1 : undefined,
+                cy1: el.cy1 !== undefined ? ctrl.cy1 : undefined,
+                cx2: el.cx2 !== undefined ? ctrl.cx2 : undefined,
+                cy2: el.cy2 !== undefined ? ctrl.cy2 : undefined,
+              });
+            } else {
+              this.groupDragStartPositions.set(id, {
+                type: "box",
+                x: el.x,
+                y: el.y,
+              });
+            }
+          });
+        }
+
         const current = this.getImageCoords(e.clientX, e.clientY);
         const dx = current.x - this.dragStartPoint.x;
         const dy = current.y - this.dragStartPoint.y;
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-          pointerMoved = true;
-        }
         const dirtyIds = new Set<string>();
 
         this.selectedElementIds.forEach((id) => {
@@ -1801,23 +2427,36 @@ export class ProjectSchemaView {
         this.panY = this.startTransform.y + moveDy;
         this.userAdjustedViewport = true;
         this.applyTransform();
-        return;
-      }
-
-      if (this.activePointers.size === 2) {
-        const dist = this.getPinchDistance();
-        if (this.prevPinchDistance && dist > 0) {
-          const factor = dist / this.prevPinchDistance;
-          const center = this.getPinchCenter();
-          this.zoomAtPoint(center.x, center.y, factor);
-        }
-        this.prevPinchDistance = dist;
       }
     });
 
     const onPointerEnd = (e: PointerEvent) => {
+      if (!this.activePointers.has(e.pointerId)) return;
       this.activePointers.delete(e.pointerId);
       this.renderer.showSnapIndicator(null);
+
+      if (this.activePointers.size === 1) {
+        const remaining = Array.from(this.activePointers.values())[0];
+        if (remaining) {
+          this.prevPinchDistance = null;
+          this.prevPinchCenter = null;
+          this.isPanning = true;
+          this.startPanPoint = { x: remaining.x, y: remaining.y };
+          this.startTransform = { x: this.panX, y: this.panY };
+        }
+        return;
+      }
+
+      if (this.activePointers.size > 1) {
+        this.prevPinchDistance = this.getPinchDistance();
+        this.prevPinchCenter = this.getPinchCenter();
+        return;
+      }
+
+      this.prevPinchDistance = null;
+      this.prevPinchCenter = null;
+
+      const elements = this.getCurrentElements();
 
       if (this.isResizing) {
         this.isResizing = false;
@@ -1837,7 +2476,7 @@ export class ProjectSchemaView {
         this.updatePropertiesPanel();
         this.updateDeleteButton();
         this.renderer.updateSelectionStates(
-          this.getCurrentElements(),
+          elements,
           this.selectedElementIds
         );
         return;
@@ -1851,13 +2490,44 @@ export class ProjectSchemaView {
       }
 
       if (this.isDraggingEl) {
+        const clickedId = this.pendingElementId;
+        const wasDragged = this.hasExceededDragThreshold;
+
         this.isDraggingEl = false;
+        this.pendingElementId = null;
         this.groupDragStartPositions.clear();
-        if (pointerMoved) {
+
+        if (wasDragged) {
           this.syncBoardSurfaceBounds();
           this.commitHistory();
-        } else {
-          // Поддержка двойного тапа на iPad / двойного клика по текстовому блоку для редактирования
+          return;
+        }
+
+        // Одиночный клик/тап без смещения (< 5 px) в режиме «Выделение» просто выбирает объект
+        if (clickedId && this.currentTool === "select") {
+          if (this.pendingShiftKey) {
+            if (
+              this.selectedElementIds.has(clickedId) &&
+              this.selectedElementIds.size > 1
+            ) {
+              this.selectedElementIds.delete(clickedId);
+            } else {
+              this.selectedElementIds.add(clickedId);
+            }
+          } else {
+            this.selectedElementIds.clear();
+            this.selectedElementIds.add(clickedId);
+          }
+          this.lastSelectedId =
+            Array.from(this.selectedElementIds).pop() ?? null;
+          this.updateDeleteButton();
+          this.updatePropertiesPanel();
+          this.renderer.updateSelectionStates(
+            elements,
+            this.selectedElementIds
+          );
+
+          // Проверка двойного тапа по текстовому элементу для редактирования
           const tappedTextEl = (e.target as HTMLElement | null)?.closest(
             ".mni-el-text"
           ) as HTMLElement | null;
@@ -1957,20 +2627,30 @@ export class ProjectSchemaView {
         return;
       }
 
-      if (this.currentTool === "text" && !pointerMoved) {
-        this.spawnTextInput(e.clientX, e.clientY);
-      }
-
-      if (this.activePointers.size < 2) this.prevPinchDistance = null;
-      if (this.activePointers.size === 1) {
-        const remaining = Array.from(this.activePointers.values())[0];
-        if (remaining) {
-          this.startPanPoint = { x: remaining.x, y: remaining.y };
-          this.startTransform = { x: this.panX, y: this.panY };
-        }
-      } else if (this.activePointers.size === 0) {
+      if (this.isPanning) {
         this.isPanning = false;
         target.classList.remove("is-dragging");
+
+        // Если это был клик/тап без перетаскивания (< 5 px) по пустому месту:
+        if (!this.hasExceededDragThreshold && e.type === "pointerup") {
+          if (this.currentTool === "text" && !this.isSpacePressed) {
+            this.spawnTextInput(e.clientX, e.clientY);
+          } else if (
+            this.currentTool === "select" &&
+            !this.isSpacePressed &&
+            !this.pendingShiftKey &&
+            this.selectedElementIds.size > 0
+          ) {
+            this.selectedElementIds.clear();
+            this.lastSelectedId = null;
+            this.updateDeleteButton();
+            this.updatePropertiesPanel();
+            this.renderer.updateSelectionStates(
+              elements,
+              this.selectedElementIds
+            );
+          }
+        }
       }
     };
 
@@ -1980,8 +2660,23 @@ export class ProjectSchemaView {
       "wheel",
       (e: WheelEvent) => {
         e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.12 : 0.89;
-        this.zoomAtPoint(e.clientX, e.clientY, factor);
+        e.stopPropagation();
+
+        // Ctrl + колесо или жест щипка на тачпаде -> плавный зум вокруг курсора
+        if (e.ctrlKey || e.metaKey) {
+          const dy = Math.max(-120, Math.min(120, e.deltaY));
+          const factor = Math.exp(-dy * 0.005);
+          this.zoomAtPoint(e.clientX, e.clientY, factor);
+          return;
+        }
+
+        // Обычная прокрутка колеса / тачпада -> панорамирование холста
+        const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
+        this.panX -= dx;
+        this.panY -= dy;
+        this.userAdjustedViewport = true;
+        this.applyTransform();
       },
       { passive: false }
     );
@@ -2137,7 +2832,7 @@ export class ProjectSchemaView {
       this.panY,
       factor
     );
-    this.scale = next.scale;
+    this.scale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next.scale));
     this.panX = next.panX;
     this.panY = next.panY;
     this.userAdjustedViewport = true;
@@ -2161,20 +2856,29 @@ export class ProjectSchemaView {
   }
 
   public destroy(): void {
+    this.saveCurrentSlideViewportState();
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
     }
-    if (this.keyHandler) {
-      window.removeEventListener("keydown", this.keyHandler);
-      this.keyHandler = undefined;
+    if (this.keyDownHandler) {
+      window.removeEventListener("keydown", this.keyDownHandler);
+      this.keyDownHandler = undefined;
+    }
+    if (this.keyUpHandler) {
+      window.removeEventListener("keyup", this.keyUpHandler);
+      this.keyUpHandler = undefined;
+    }
+    if (this.windowBlurHandler) {
+      window.removeEventListener("blur", this.windowBlurHandler);
+      this.windowBlurHandler = undefined;
     }
     if (this.pasteHandler) {
       window.removeEventListener("paste", this.pasteHandler);
       this.pasteHandler = undefined;
     }
     this.renderer?.destroy();
-    void this.manager?.flushSave(this.elementsByMediaKey);
+    void this.manager?.flushSave(this.boardsMap);
     this.container.empty();
   }
 }

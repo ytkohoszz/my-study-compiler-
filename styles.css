@@ -1,6 +1,6 @@
 /* C:\Users\user\dev\my-study-compiler\styles.css */
 /* ============================================================
-   Конструктор учебных проектов (v0.6.0)
+   Конструктор учебных проектов
    Дерево | Граф | Интерактивные схемы и аннотации
    Фиксированный полноэкранный размер (96vw × 92dvh) во всех режимах
    ============================================================ */
@@ -88,6 +88,39 @@
 
 .my-sc-datalists-host {
   display: none;
+}
+
+/* ---------- Компактные диалоги переименования / удаления ---------- */
+.modal.my-sc-small-dialog {
+  width: min(400px, 92vw) !important;
+  max-width: 400px !important;
+  padding: 16px !important;
+  border-radius: 12px !important;
+}
+
+.my-sc-dialog-title {
+  margin: 0 0 10px 0;
+  font-size: 0.98rem;
+  font-weight: 650;
+  color: var(--text-normal);
+}
+
+.my-sc-dialog-desc {
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.my-sc-dialog-input {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.my-sc-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* ---------- Верхняя панель ---------- */
@@ -684,21 +717,11 @@ button.my-sc-toggle-btn.is-open {
   flex-shrink: 0;
 }
 
-.my-sc-tree-right .my-sc-media-pill {
-  order: 0;
-}
-.my-sc-tree-right .my-sc-subcount-pill {
-  order: 1;
-}
-.my-sc-tree-right .my-sc-deadline {
-  order: 2;
-}
-.my-sc-tree-right .my-sc-type-badge {
-  order: 3;
-}
-.my-sc-tree-right .my-sc-row-more {
-  order: 4;
-}
+.my-sc-tree-right .my-sc-media-pill { order: 0; }
+.my-sc-tree-right .my-sc-subcount-pill { order: 1; }
+.my-sc-tree-right .my-sc-deadline { order: 2; }
+.my-sc-tree-right .my-sc-type-badge { order: 3; }
+.my-sc-tree-right .my-sc-row-more { order: 4; }
 
 button.my-sc-media-pill {
   height: 24px !important;
@@ -1155,6 +1178,16 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   gap: var(--my-sc-s2);
 }
 
+/* Скрываем лишний блок пустого состояния («У этой заметки пока нет открытых холстов» + «+ Добавить холст») */
+.my-sc-schema-empty,
+.my-sc-schema-empty-state,
+.my-sc-schema-empty-box,
+.my-sc-schema-placeholder,
+.my-sc-schema-no-boards,
+.my-sc-schema-host > :not(.my-sc-schema-header):not(.my-sc-schema-url-bar):not(.my-sc-schema-stage) {
+  display: none !important;
+}
+
 .my-sc-schema-header {
   display: flex;
   align-items: center;
@@ -1173,14 +1206,14 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--my-sc-s2);
+  gap: 6px;
   flex: 1 1 260px;
   min-width: 0;
 }
 
 .my-sc-schema-note-select {
   min-width: 0;
-  max-width: min(340px, 100%);
+  max-width: min(320px, 100%);
   min-height: var(--my-sc-hit);
   font-weight: 600;
 }
@@ -1190,15 +1223,38 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   align-items: center;
   flex-wrap: wrap;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
 }
 
+/* Свободное пространство между кнопками справа (масштаб - / 77% / + и кнопка вписывания) */
 .my-sc-schema-header-right {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   min-width: 0;
-  gap: 6px;
+  gap: 8px;
+}
+
+.my-sc-schema-header-right > span,
+.my-sc-schema-zoom-label,
+.my-sc-zoom-badge,
+.my-sc-zoom-pct {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 4px;
+  font-size: var(--my-sc-fs-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-align: center;
+  user-select: none;
+}
+
+/* Дополнительный отступ перед крайней правой кнопкой «Вписать в окно», чтобы «+» не прижимался к ней */
+.my-sc-schema-header-right > button:last-child {
+  margin-left: 4px !important;
 }
 
 .my-sc-schema-url-bar {

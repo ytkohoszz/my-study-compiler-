@@ -2,6 +2,7 @@
 import { App, TFile, Notice } from "obsidian";
 import {
   ArrowElement,
+  CanvasBoardData,
   CanvasElement,
   ImageElement,
   KEYS,
@@ -10,7 +11,7 @@ import {
   TextElement,
 } from "./types";
 
-export type ElementsMap = Map<string, CanvasElement[]>;
+export type BoardsMap = Map<string, CanvasBoardData>;
 
 function isFiniteNumber(val: unknown): val is number {
   return typeof val === "number" && Number.isFinite(val);
@@ -20,12 +21,174 @@ function roundFinite(val: number, fallback = 0): number {
   return Number.isFinite(val) ? Math.round(val) : fallback;
 }
 
+function parseRawElementsArray(rawList: unknown[]): CanvasElement[] {
+  const typedElements: CanvasElement[] = [];
+
+  for (const rawEl of rawList) {
+    if (!rawEl || typeof rawEl !== "object") continue;
+    const el = rawEl as CanvasElement;
+
+    if (el.type === "image") {
+      const rawImg = el as ImageElement;
+      const srcKey =
+        typeof rawImg.srcKey === "string" ? rawImg.srcKey.trim() : "";
+      if (!srcKey) continue;
+      const w = Math.max(20, roundFinite(rawImg.width, 480));
+      const h = Math.max(20, roundFinite(rawImg.height, 320));
+      const ratio =
+        isFiniteNumber(rawImg.aspectRatio) && rawImg.aspectRatio > 0
+          ? Number(rawImg.aspectRatio.toFixed(4))
+          : Number((w / h).toFixed(4));
+      const imageEl: ImageElement = {
+        id:
+          rawImg.id ||
+          `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type: "image",
+        x: roundFinite(rawImg.x, 0),
+        y: roundFinite(rawImg.y, 0),
+        width: w,
+        height: h,
+        srcKey,
+        aspectRatio: ratio,
+      };
+      typedElements.push(imageEl);
+    } else if (el.type === "arrow") {
+      const arrow: ArrowElement = {
+        ...el,
+        x1: roundFinite(el.x1, 0),
+        y1: roundFinite(el.y1, 0),
+        x2: roundFinite(el.x2, 100),
+        y2: roundFinite(el.y2, 100),
+        routing: el.routing ?? "straight",
+        startHead: el.startHead ?? "none",
+        endHead: el.endHead ?? "arrow",
+        stroke: el.stroke || "#e5a158",
+        strokeWidth: isFiniteNumber(el.strokeWidth) ? el.strokeWidth : 2,
+      };
+      if (isFiniteNumber(el.cx1)) arrow.cx1 = roundFinite(el.cx1);
+      else delete arrow.cx1;
+      if (isFiniteNumber(el.cy1)) arrow.cy1 = roundFinite(el.cy1);
+      else delete arrow.cy1;
+      if (isFiniteNumber(el.cx2)) arrow.cx2 = roundFinite(el.cx2);
+      else delete arrow.cx2;
+      if (isFiniteNumber(el.cy2)) arrow.cy2 = roundFinite(el.cy2);
+      else delete arrow.cy2;
+
+      typedElements.push(arrow);
+    } else if (el.type === "rect") {
+      const rect: RectElement = {
+        ...el,
+        x: roundFinite(el.x, 0),
+        y: roundFinite(el.y, 0),
+        width: Math.max(10, roundFinite(el.width, 100)),
+        height: Math.max(10, roundFinite(el.height, 60)),
+        stroke: el.stroke || "#e5a158",
+        strokeWidth: isFiniteNumber(el.strokeWidth) ? el.strokeWidth : 2,
+        fill: el.fill || "rgba(229, 161, 88, 0.1)",
+        borderRadius: isFiniteNumber(el.borderRadius) ? el.borderRadius : 0,
+      };
+      typedElements.push(rect);
+    } else if (el.type === "text") {
+      const textEl: TextElement = {
+        ...el,
+        x: roundFinite(el.x, 0),
+        y: roundFinite(el.y, 0),
+        width: Math.max(40, roundFinite(el.width, 200)),
+        height: Math.max(24, roundFinite(el.height, 48)),
+        text: typeof el.text === "string" ? el.text : "",
+        fontSize: isFiniteNumber(el.fontSize) ? Math.max(8, el.fontSize) : 16,
+        color: el.color || "#ffffff",
+      };
+      typedElements.push(textEl);
+    }
+  }
+
+  return typedElements;
+}
+
+function serializeElementsArray(list: readonly CanvasElement[]): CanvasElement[] {
+  return list.map((el): CanvasElement => {
+    if (el.type === "image") {
+      const w = Math.max(20, roundFinite(el.width, 200));
+      const h = Math.max(20, roundFinite(el.height, 150));
+      const savedImg: ImageElement = {
+        id: el.id,
+        type: "image",
+        x: roundFinite(el.x),
+        y: roundFinite(el.y),
+        width: w,
+        height: h,
+        srcKey: el.srcKey,
+        aspectRatio:
+          isFiniteNumber(el.aspectRatio) && el.aspectRatio > 0
+            ? Number(el.aspectRatio.toFixed(4))
+            : Number((w / h).toFixed(4)),
+      };
+      return savedImg;
+    }
+
+    if (el.type === "arrow") {
+      const savedArrow: ArrowElement = {
+        id: el.id,
+        type: "arrow",
+        x1: roundFinite(el.x1),
+        y1: roundFinite(el.y1),
+        x2: roundFinite(el.x2),
+        y2: roundFinite(el.y2),
+        routing: el.routing,
+        startHead: el.startHead,
+        endHead: el.endHead,
+        stroke: el.stroke,
+        strokeWidth: roundFinite(el.strokeWidth, 2),
+      };
+      if (isFiniteNumber(el.cx1)) savedArrow.cx1 = roundFinite(el.cx1);
+      if (isFiniteNumber(el.cy1)) savedArrow.cy1 = roundFinite(el.cy1);
+      if (isFiniteNumber(el.cx2)) savedArrow.cx2 = roundFinite(el.cx2);
+      if (isFiniteNumber(el.cy2)) savedArrow.cy2 = roundFinite(el.cy2);
+      if (el.startElementId) savedArrow.startElementId = el.startElementId;
+      if (el.startAnchor) savedArrow.startAnchor = el.startAnchor;
+      if (el.endElementId) savedArrow.endElementId = el.endElementId;
+      if (el.endAnchor) savedArrow.endAnchor = el.endAnchor;
+      return savedArrow;
+    }
+
+    if (el.type === "rect") {
+      const savedRect: RectElement = {
+        id: el.id,
+        type: "rect",
+        x: roundFinite(el.x),
+        y: roundFinite(el.y),
+        width: Math.max(10, roundFinite(el.width, 20)),
+        height: Math.max(10, roundFinite(el.height, 20)),
+        stroke: el.stroke,
+        strokeWidth: roundFinite(el.strokeWidth, 2),
+        fill: el.fill,
+        borderRadius: roundFinite(el.borderRadius ?? 0, 0),
+      };
+      return savedRect;
+    }
+
+    const savedText: TextElement = {
+      id: el.id,
+      type: "text",
+      x: roundFinite(el.x),
+      y: roundFinite(el.y),
+      width: Math.max(40, roundFinite(el.width, 100)),
+      height: Math.max(24, roundFinite(el.height, 40)),
+      text: el.text,
+      fontSize: Math.max(8, roundFinite(el.fontSize, 16)),
+      color: el.color,
+    };
+    return savedText;
+  });
+}
+
 export class AnnotationManager {
   private app: App;
   private file: TFile;
   private saveQueue: Promise<void> = Promise.resolve();
   private debounceTimer: number | null = null;
-  private pendingMap: ElementsMap | null = null;
+  private pendingMap: BoardsMap | null = null;
 
   constructor(app: App, file: TFile) {
     this.app = app;
@@ -39,19 +202,20 @@ export class AnnotationManager {
     this.file = file;
   }
 
-  private cloneElementsMap(map: ElementsMap): ElementsMap {
-    const cloned: ElementsMap = new Map();
-    for (const [k, list] of map.entries()) {
-      cloned.set(
-        k,
-        list.map((el) => ({ ...el }))
-      );
+  private cloneBoardsMap(map: BoardsMap): BoardsMap {
+    const cloned: BoardsMap = new Map();
+    for (const [k, board] of map.entries()) {
+      cloned.set(k, {
+        title: board.title,
+        deleted: board.deleted,
+        elements: board.elements.map((el) => ({ ...el })),
+      });
     }
     return cloned;
   }
 
-  public scheduleSave(elementsMap: ElementsMap, delayMs = 350): void {
-    this.pendingMap = this.cloneElementsMap(elementsMap);
+  public scheduleSave(boardsMap: BoardsMap, delayMs = 350): void {
+    this.pendingMap = this.cloneBoardsMap(boardsMap);
     if (this.debounceTimer !== null) {
       window.clearTimeout(this.debounceTimer);
     }
@@ -60,29 +224,29 @@ export class AnnotationManager {
       const toSave = this.pendingMap;
       this.pendingMap = null;
       if (toSave) {
-        void this.saveElements(toSave);
+        void this.saveBoards(toSave);
       }
     }, delayMs);
   }
 
-  public async flushSave(elementsMap?: ElementsMap): Promise<void> {
+  public async flushSave(boardsMap?: BoardsMap): Promise<void> {
     if (this.debounceTimer !== null) {
       window.clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
-    const mapToSave = elementsMap ?? this.pendingMap;
+    const mapToSave = boardsMap ?? this.pendingMap;
     this.pendingMap = null;
     if (mapToSave) {
-      await this.saveElements(mapToSave);
+      await this.saveBoards(mapToSave);
     } else {
       await this.saveQueue;
     }
   }
 
-  async loadElements(
+  async loadBoards(
     imageWidth: number,
     imageHeight: number
-  ): Promise<ElementsMap> {
+  ): Promise<BoardsMap> {
     const cache = this.app.metadataCache.getFileCache(this.file);
     const frontmatter = cache?.frontmatter ?? {};
 
@@ -95,93 +259,33 @@ export class AnnotationManager {
       unknown
     >;
 
-    const resultMap: ElementsMap = new Map();
+    const resultMap: BoardsMap = new Map();
     let needsMigration = false;
 
-    for (const [imgName, elements] of Object.entries(rawAnnotations)) {
-      if (!Array.isArray(elements)) continue;
-
-      const typedElements: CanvasElement[] = [];
-      for (const rawEl of elements) {
-        if (!rawEl || typeof rawEl !== "object") continue;
-        const el = rawEl as CanvasElement;
-
-        if (el.type === "image") {
-          const rawImg = el as ImageElement;
-          const srcKey =
-            typeof rawImg.srcKey === "string" ? rawImg.srcKey.trim() : "";
-          if (!srcKey) continue;
-          const w = Math.max(20, roundFinite(rawImg.width, 480));
-          const h = Math.max(20, roundFinite(rawImg.height, 320));
-          const ratio =
-            isFiniteNumber(rawImg.aspectRatio) && rawImg.aspectRatio > 0
-              ? Number(rawImg.aspectRatio.toFixed(4))
-              : Number((w / h).toFixed(4));
-          const imageEl: ImageElement = {
-            id:
-              rawImg.id ||
-              `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            type: "image",
-            x: roundFinite(rawImg.x, 0),
-            y: roundFinite(rawImg.y, 0),
-            width: w,
-            height: h,
-            srcKey,
-            aspectRatio: ratio,
-          };
-          typedElements.push(imageEl);
-        } else if (el.type === "arrow") {
-          const arrow: ArrowElement = {
-            ...el,
-            x1: roundFinite(el.x1, 0),
-            y1: roundFinite(el.y1, 0),
-            x2: roundFinite(el.x2, 100),
-            y2: roundFinite(el.y2, 100),
-            routing: el.routing ?? "straight",
-            startHead: el.startHead ?? "none",
-            endHead: el.endHead ?? "arrow",
-            stroke: el.stroke || "#e5a158",
-            strokeWidth: isFiniteNumber(el.strokeWidth) ? el.strokeWidth : 2,
-          };
-          if (isFiniteNumber(el.cx1)) arrow.cx1 = roundFinite(el.cx1);
-          else delete arrow.cx1;
-          if (isFiniteNumber(el.cy1)) arrow.cy1 = roundFinite(el.cy1);
-          else delete arrow.cy1;
-          if (isFiniteNumber(el.cx2)) arrow.cx2 = roundFinite(el.cx2);
-          else delete arrow.cx2;
-          if (isFiniteNumber(el.cy2)) arrow.cy2 = roundFinite(el.cy2);
-          else delete arrow.cy2;
-
-          typedElements.push(arrow);
-        } else if (el.type === "rect") {
-          const rect: RectElement = {
-            ...el,
-            x: roundFinite(el.x, 0),
-            y: roundFinite(el.y, 0),
-            width: Math.max(10, roundFinite(el.width, 100)),
-            height: Math.max(10, roundFinite(el.height, 60)),
-            stroke: el.stroke || "#e5a158",
-            strokeWidth: isFiniteNumber(el.strokeWidth) ? el.strokeWidth : 2,
-            fill: el.fill || "rgba(229, 161, 88, 0.1)",
-            borderRadius: isFiniteNumber(el.borderRadius) ? el.borderRadius : 0,
-          };
-          typedElements.push(rect);
-        } else if (el.type === "text") {
-          const textEl: TextElement = {
-            ...el,
-            x: roundFinite(el.x, 0),
-            y: roundFinite(el.y, 0),
-            width: Math.max(40, roundFinite(el.width, 200)),
-            height: Math.max(24, roundFinite(el.height, 48)),
-            text: typeof el.text === "string" ? el.text : "",
-            fontSize: isFiniteNumber(el.fontSize) ? Math.max(8, el.fontSize) : 16,
-            color: el.color || "#ffffff",
-          };
-          typedElements.push(textEl);
+    for (const [canvasKey, rawEntry] of Object.entries(rawAnnotations)) {
+      if (Array.isArray(rawEntry)) {
+        resultMap.set(canvasKey, {
+          elements: parseRawElementsArray(rawEntry),
+        });
+      } else if (rawEntry && typeof rawEntry === "object") {
+        const rec = rawEntry as Record<string, unknown>;
+        if (rec["deleted"] === true) {
+          resultMap.set(canvasKey, {
+            elements: [],
+            deleted: true,
+          });
+          continue;
         }
+        const customTitle =
+          typeof rec["title"] === "string" && rec["title"].trim().length > 0
+            ? rec["title"].trim()
+            : undefined;
+        const rawList = Array.isArray(rec["elements"]) ? rec["elements"] : [];
+        resultMap.set(canvasKey, {
+          title: customTitle,
+          elements: parseRawElementsArray(rawList),
+        });
       }
-
-      resultMap.set(imgName, typedElements);
     }
 
     if (Object.keys(rawPins).length > 0) {
@@ -201,14 +305,16 @@ export class AnnotationManager {
               color: "#e5a158",
             };
           });
-          resultMap.set(imgName, migratedElements);
+          resultMap.set(imgName, {
+            elements: migratedElements,
+          });
           needsMigration = true;
         }
       }
     }
 
     if (needsMigration) {
-      await this.saveElements(resultMap);
+      await this.saveBoards(resultMap);
       await this.app.fileManager.processFrontMatter(
         this.file,
         (fm: Record<string, unknown>) => {
@@ -221,87 +327,33 @@ export class AnnotationManager {
     return resultMap;
   }
 
-  async saveElements(elementsMap: ElementsMap): Promise<void> {
+  async saveBoards(boardsMap: BoardsMap): Promise<void> {
     const targetFile = this.file;
-    const rawToSave: Record<string, CanvasElement[]> = {};
+    const rawToSave: Record<
+      string,
+      | CanvasElement[]
+      | { title: string; elements: CanvasElement[] }
+      | { deleted: true }
+    > = {};
 
-    for (const [imgName, list] of elementsMap.entries()) {
-      if (list.length === 0) continue;
+    for (const [canvasKey, board] of boardsMap.entries()) {
+      if (board.deleted) {
+        rawToSave[canvasKey] = { deleted: true };
+        continue;
+      }
 
-      rawToSave[imgName] = list.map((el): CanvasElement => {
-        if (el.type === "image") {
-          const w = Math.max(20, roundFinite(el.width, 200));
-          const h = Math.max(20, roundFinite(el.height, 150));
-          const savedImg: ImageElement = {
-            id: el.id,
-            type: "image",
-            x: roundFinite(el.x),
-            y: roundFinite(el.y),
-            width: w,
-            height: h,
-            srcKey: el.srcKey,
-            aspectRatio:
-              isFiniteNumber(el.aspectRatio) && el.aspectRatio > 0
-                ? Number(el.aspectRatio.toFixed(4))
-                : Number((w / h).toFixed(4)),
-          };
-          return savedImg;
-        }
+      const serializedElements = serializeElementsArray(board.elements);
+      const customTitle = board.title?.trim();
 
-        if (el.type === "arrow") {
-          const savedArrow: ArrowElement = {
-            id: el.id,
-            type: "arrow",
-            x1: roundFinite(el.x1),
-            y1: roundFinite(el.y1),
-            x2: roundFinite(el.x2),
-            y2: roundFinite(el.y2),
-            routing: el.routing,
-            startHead: el.startHead,
-            endHead: el.endHead,
-            stroke: el.stroke,
-            strokeWidth: roundFinite(el.strokeWidth, 2),
-          };
-          if (isFiniteNumber(el.cx1)) savedArrow.cx1 = roundFinite(el.cx1);
-          if (isFiniteNumber(el.cy1)) savedArrow.cy1 = roundFinite(el.cy1);
-          if (isFiniteNumber(el.cx2)) savedArrow.cx2 = roundFinite(el.cx2);
-          if (isFiniteNumber(el.cy2)) savedArrow.cy2 = roundFinite(el.cy2);
-          if (el.startElementId) savedArrow.startElementId = el.startElementId;
-          if (el.startAnchor) savedArrow.startAnchor = el.startAnchor;
-          if (el.endElementId) savedArrow.endElementId = el.endElementId;
-          if (el.endAnchor) savedArrow.endAnchor = el.endAnchor;
-          return savedArrow;
-        }
-
-        if (el.type === "rect") {
-          const savedRect: RectElement = {
-            id: el.id,
-            type: "rect",
-            x: roundFinite(el.x),
-            y: roundFinite(el.y),
-            width: Math.max(10, roundFinite(el.width, 20)),
-            height: Math.max(10, roundFinite(el.height, 20)),
-            stroke: el.stroke,
-            strokeWidth: roundFinite(el.strokeWidth, 2),
-            fill: el.fill,
-            borderRadius: roundFinite(el.borderRadius ?? 0, 0),
-          };
-          return savedRect;
-        }
-
-        const savedText: TextElement = {
-          id: el.id,
-          type: "text",
-          x: roundFinite(el.x),
-          y: roundFinite(el.y),
-          width: Math.max(40, roundFinite(el.width, 100)),
-          height: Math.max(24, roundFinite(el.height, 40)),
-          text: el.text,
-          fontSize: Math.max(8, roundFinite(el.fontSize, 16)),
-          color: el.color,
+      // Если пользовательское имя не задано — пишем просто массив элементов (без имени по умолчанию в YAML)
+      if (customTitle) {
+        rawToSave[canvasKey] = {
+          title: customTitle,
+          elements: serializedElements,
         };
-        return savedText;
-      });
+      } else {
+        rawToSave[canvasKey] = serializedElements;
+      }
     }
 
     this.saveQueue = this.saveQueue
