@@ -1,3 +1,4 @@
+// C:\Users\user\dev\my-study-compiler\src\schema-view.ts
 import { App, FuzzySuggestModal, Notice, TFile, setIcon } from "obsidian";
 import {
   AnchorType,
@@ -88,6 +89,10 @@ export class ProjectSchemaView {
   private panY = 0;
   private naturalW = DEFAULT_BOARD_W;
   private naturalH = DEFAULT_BOARD_H;
+  private resizeObserver: ResizeObserver | null = null;
+  private lastViewportW = 0;
+  private lastViewportH = 0;
+  private userAdjustedViewport = false;
 
   private activePointers: Map<number, Point> = new Map();
   private prevPinchDistance: number | null = null;
@@ -231,7 +236,10 @@ export class ProjectSchemaView {
       attr: { type: "button", title: "Вписать схему в окно" },
     });
     setIcon(fitBtn, "maximize");
-    fitBtn.onclick = () => this.fitToScreen();
+    fitBtn.onclick = () => {
+      this.userAdjustedViewport = false;
+      this.fitToScreen();
+    };
 
     // Выдвижная строка ввода внешнего URL
     this.urlDrawerEl = this.container.createDiv("my-sc-schema-url-bar is-hidden");
@@ -289,6 +297,26 @@ export class ProjectSchemaView {
     this.bindPointerEvents(this.viewportEl);
     this.bindKeyboardAndPasteEvents();
     this.setTool("pan");
+
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        if (w <= 0 || h <= 0) return;
+        const sizeChanged =
+          Math.abs(w - this.lastViewportW) > 2 || Math.abs(h - this.lastViewportH) > 2;
+        if (!sizeChanged) return;
+        const wasZero = this.lastViewportW === 0 || this.lastViewportH === 0;
+        this.lastViewportW = w;
+        this.lastViewportH = h;
+        if (wasZero || !this.userAdjustedViewport) {
+          this.fitToScreen();
+        }
+      });
+      this.resizeObserver.observe(this.viewportEl);
+    }
   }
 
   public async update(
@@ -413,6 +441,7 @@ export class ProjectSchemaView {
       this.naturalH = this.imgEl.naturalHeight || DEFAULT_BOARD_H;
     }
 
+    this.userAdjustedViewport = false;
     this.renderer.syncLayersSize(this.naturalW, this.naturalH);
     this.elementsByMediaKey = await this.manager.loadElements(
       this.naturalW,
@@ -877,6 +906,8 @@ export class ProjectSchemaView {
   public fitToScreen(): void {
     const rect = this.viewportEl.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
+    this.lastViewportW = Math.round(rect.width);
+    this.lastViewportH = Math.round(rect.height);
     const fit = CanvasEngine.computeFitTransform(
       rect.width,
       rect.height,
@@ -1378,6 +1409,7 @@ export class ProjectSchemaView {
         const moveDy = e.clientY - this.startPanPoint.y;
         this.panX = this.startTransform.x + moveDx;
         this.panY = this.startTransform.y + moveDy;
+        this.userAdjustedViewport = true;
         this.applyTransform();
         return;
       }
@@ -1685,6 +1717,7 @@ export class ProjectSchemaView {
     this.scale = next.scale;
     this.panX = next.panX;
     this.panY = next.panY;
+    this.userAdjustedViewport = true;
     this.applyTransform();
   }
 
@@ -1705,6 +1738,10 @@ export class ProjectSchemaView {
   }
 
   public destroy(): void {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     if (this.keyHandler) {
       window.removeEventListener("keydown", this.keyHandler);
       this.keyHandler = undefined;

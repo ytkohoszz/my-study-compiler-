@@ -1,3 +1,4 @@
+// C:\Users\user\dev\my-study-compiler\src\graph.ts
 import { setIcon } from "obsidian";
 import type { DeadlineTone, StudyNoteItem } from "./types";
 import {
@@ -108,6 +109,10 @@ export class ProjectGraphView {
   private k = 1;
   private pendingFit = false;
   private animTimer: number | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private lastViewportW = 0;
+  private lastViewportH = 0;
+  private userMovedViewport = false;
 
   private pointers = new Map<number, Point>();
   private downPos: Point = { x: 0, y: 0 };
@@ -144,11 +149,15 @@ export class ProjectGraphView {
     };
     addCtrl("plus", "Приблизить", () => this.zoomByCenter(1.3));
     addCtrl("minus", "Отдалить", () => this.zoomByCenter(1 / 1.3));
-    addCtrl("maximize", "Показать всё", () => this.fit(true));
+    addCtrl("maximize", "Показать всё", () => {
+      this.userMovedViewport = false;
+      this.fit(true);
+    });
     this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", () => {
       if (this.collapsed.size > 0) this.collapsed.clear();
       else this.collapseDeep();
       this.rebuild();
+      this.userMovedViewport = false;
       this.fit(true);
     });
 
@@ -195,6 +204,27 @@ export class ProjectGraphView {
 
     this.svg.addEventListener("pointerdown", this.onPointerDown);
     container.addEventListener("wheel", this.onWheel, { passive: false });
+
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        if (w <= 0 || h <= 0) return;
+        const sizeChanged =
+          Math.abs(w - this.lastViewportW) > 2 || Math.abs(h - this.lastViewportH) > 2;
+        if (!sizeChanged && !this.pendingFit) return;
+        const wasZero = this.lastViewportW === 0 || this.lastViewportH === 0;
+        this.lastViewportW = w;
+        this.lastViewportH = h;
+        if (this.pendingFit || wasZero || !this.userMovedViewport) {
+          this.pendingFit = false;
+          this.fit(false);
+        }
+      });
+      this.resizeObserver.observe(this.container);
+    }
   }
 
   update(
@@ -209,6 +239,7 @@ export class ProjectGraphView {
     if (resetView) {
       this.collapsed.clear();
       this.selectedPath = null;
+      this.userMovedViewport = false;
       this.pendingFit = true;
     }
     this.rebuild();
@@ -227,6 +258,10 @@ export class ProjectGraphView {
   destroy(): void {
     this.detachDocListeners();
     this.pointers.clear();
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     if (this.animTimer !== null) {
       window.clearTimeout(this.animTimer);
       this.animTimer = null;
@@ -552,6 +587,8 @@ export class ProjectGraphView {
     const w = this.svg.clientWidth;
     const h = this.svg.clientHeight;
     if (w <= 0 || h <= 0) return;
+    this.lastViewportW = w;
+    this.lastViewportH = h;
     const pad = 28;
     const b = this.bounds;
     const wFit = (w - pad * 2) / b.w;
@@ -592,6 +629,7 @@ export class ProjectGraphView {
     this.tx = px - (px - this.tx) * ratio;
     this.ty = py - (py - this.ty) * ratio;
     this.k = nextK;
+    this.userMovedViewport = true;
     this.applyTransform(animate);
   }
 
@@ -640,6 +678,7 @@ export class ProjectGraphView {
       if (this.moved) {
         this.tx += cur.x - prev.x;
         this.ty += cur.y - prev.y;
+        this.userMovedViewport = true;
         this.applyTransform();
       }
       this.pointers.set(e.pointerId, cur);
