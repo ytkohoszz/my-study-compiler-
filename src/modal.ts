@@ -1,8 +1,10 @@
+// C:\Users\user\dev\my-study-compiler\src\modal.ts
 import { App, FuzzySuggestModal, Menu, Modal, Notice, normalizePath, setIcon } from "obsidian";
 import type MyStudyCompilerPlugin from "./main";
 import {
   CustomPropertyDraft,
   KEYS,
+  Point,
   ProjectGroupTab,
   QuickFilterMode,
   ROOT_STATUS_ACTIVE,
@@ -379,6 +381,24 @@ export class StudyCompilerModal extends Modal {
           if (r) this.setFocusBranch(r, p);
         },
         onOpenSchema: (p) => this.openSchemaForNode(p),
+        getSavedPositions: (graphKey: string) =>
+          this.plugin.settings.graphNodePositions[graphKey] ?? {},
+        onSaveNodePosition: (graphKey: string, nodePath: string, pos: Point) => {
+          if (!this.plugin.settings.graphNodePositions[graphKey]) {
+            this.plugin.settings.graphNodePositions[graphKey] = {};
+          }
+          this.plugin.settings.graphNodePositions[graphKey]![nodePath] = {
+            x: Math.round(pos.x),
+            y: Math.round(pos.y),
+          };
+          this.plugin.requestSaveSettings();
+        },
+        onResetNodePositions: (graphKey: string) => {
+          if (this.plugin.settings.graphNodePositions[graphKey]) {
+            delete this.plugin.settings.graphNodePositions[graphKey];
+            this.plugin.requestSaveSettings();
+          }
+        },
       });
       this.lastGraphRootPath = "";
     }
@@ -429,7 +449,6 @@ export class StudyCompilerModal extends Modal {
       this.refreshTimer = null;
       if (this.closed) return;
 
-      // Если пользователь прямо сейчас вводит текст внутри холста схемы, не перебиваем ввод
       if (
         this.viewMode === "schema" &&
         document.activeElement instanceof HTMLTextAreaElement &&
@@ -726,7 +745,6 @@ export class StudyCompilerModal extends Modal {
 
     const branchRoot = this.getActiveBranchRoot(root);
 
-    // Ряд 1: выбор проекта + кнопка меню проекта
     const topRow = this.barEl.createDiv("my-sc-top-row");
     const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
     this.workSelectEl = sel;
@@ -776,7 +794,6 @@ export class StudyCompilerModal extends Modal {
     setIcon(moreBtn, "more-horizontal");
     moreBtn.onclick = (e) => this.openProjectMenu(e, root, branchRoot);
 
-    // Ряд 2: сводка слева · сегмент «Дерево | Граф | Схема» и кнопки справа
     const descendants = collectDescendants(branchRoot.path, this.scan);
     let mediaNodesCount =
       branchRoot.mediaItems.length > 0 || branchRoot.annotationCount > 0 ? 1 : 0;
@@ -1532,7 +1549,6 @@ export class StudyCompilerModal extends Modal {
     const right = row.createDiv("my-sc-tree-right");
     this.renderDeadline(right, item);
 
-    // Кнопка-индикатор схемы/медиа на строке узла
     if (item.mediaItems.length > 0 || item.annotationCount > 0) {
       const mediaPill = right.createEl("button", {
         cls: "my-sc-media-pill",

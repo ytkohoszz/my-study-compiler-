@@ -1,3 +1,4 @@
+// C:\Users\user\dev\my-study-compiler\src\types.ts
 import type { TFile } from "obsidian";
 
 export const KEYS = {
@@ -79,6 +80,11 @@ export interface VaultPropertySchema {
   valuesByKey: Map<string, string[]>;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
@@ -93,6 +99,7 @@ export interface StudyCompilerSettings {
   expandedPaths: string[];
   lastWorkPath: string;
   focusedBranchByWork: Record<string, string>;
+  graphNodePositions: Record<string, Record<string, Point>>;
 }
 
 export const DEFAULT_SETTINGS: StudyCompilerSettings = {
@@ -119,6 +126,7 @@ export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   expandedPaths: [],
   lastWorkPath: "",
   focusedBranchByWork: {},
+  graphNodePositions: {},
 };
 
 export interface WorkMetaBadge {
@@ -148,11 +156,6 @@ export type ToolType = "pan" | "select" | "text" | "rect" | "arrow";
 
 export type ResizeHandleType = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 export type ArrowHandleType = "start" | "end" | "curve1" | "curve2";
-
-export interface Point {
-  x: number;
-  y: number;
-}
 
 export interface BoundingBox {
   x: number;

@@ -1,6 +1,8 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
+// C:\Users\user\dev\my-study-compiler\src\main.ts
+import { App, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile } from "obsidian";
 import {
   DEFAULT_SETTINGS,
+  Point,
   ProjectGroupTab,
   StudyCompilerSettings,
 } from "./types";
@@ -21,6 +23,37 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
   if (s.focusedBranchByWork && typeof s.focusedBranchByWork === "object") {
     for (const [k, v] of Object.entries(s.focusedBranchByWork as Record<string, unknown>)) {
       if (typeof v === "string" && v.trim()) focusedBranchByWork[k] = v;
+    }
+  }
+
+  const graphNodePositions: Record<string, Record<string, Point>> = {};
+  if (
+    s.graphNodePositions &&
+    typeof s.graphNodePositions === "object" &&
+    !Array.isArray(s.graphNodePositions)
+  ) {
+    for (const [graphKey, nodesMap] of Object.entries(
+      s.graphNodePositions as Record<string, unknown>
+    )) {
+      if (!graphKey || !nodesMap || typeof nodesMap !== "object" || Array.isArray(nodesMap)) {
+        continue;
+      }
+      const cleanMap: Record<string, Point> = {};
+      for (const [nodePath, pos] of Object.entries(nodesMap as Record<string, unknown>)) {
+        if (!nodePath || !pos || typeof pos !== "object") continue;
+        const p = pos as { x?: unknown; y?: unknown };
+        if (
+          typeof p.x === "number" &&
+          Number.isFinite(p.x) &&
+          typeof p.y === "number" &&
+          Number.isFinite(p.y)
+        ) {
+          cleanMap[nodePath] = { x: Math.round(p.x), y: Math.round(p.y) };
+        }
+      }
+      if (Object.keys(cleanMap).length > 0) {
+        graphNodePositions[graphKey] = cleanMap;
+      }
     }
   }
 
@@ -64,6 +97,7 @@ function migrateSettings(raw: unknown): StudyCompilerSettings {
     expandedPaths: strList(s.expandedPaths, []),
     lastWorkPath: typeof s.lastWorkPath === "string" ? s.lastWorkPath : "",
     focusedBranchByWork,
+    graphNodePositions,
   };
 }
 
@@ -265,7 +299,58 @@ export default class MyStudyCompilerPlugin extends Plugin {
           this.scheduleAutoInheritSync(1000);
         })
       );
+      this.registerEvent(
+        this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
+          this.handlePathRename(oldPath, file.path);
+        })
+      );
     });
+  }
+
+  private handlePathRename(oldPath: string, newPath: string): void {
+    let changed = false;
+
+    if (this.settings.lastWorkPath === oldPath) {
+      this.settings.lastWorkPath = newPath;
+      changed = true;
+    }
+
+    const expIdx = this.settings.expandedPaths.indexOf(oldPath);
+    if (expIdx !== -1) {
+      this.settings.expandedPaths[expIdx] = newPath;
+      changed = true;
+    }
+
+    if (this.settings.focusedBranchByWork[oldPath] !== undefined) {
+      this.settings.focusedBranchByWork[newPath] =
+        this.settings.focusedBranchByWork[oldPath]!;
+      delete this.settings.focusedBranchByWork[oldPath];
+      changed = true;
+    }
+    for (const [k, v] of Object.entries(this.settings.focusedBranchByWork)) {
+      if (v === oldPath) {
+        this.settings.focusedBranchByWork[k] = newPath;
+        changed = true;
+      }
+    }
+
+    if (this.settings.graphNodePositions[oldPath] !== undefined) {
+      this.settings.graphNodePositions[newPath] =
+        this.settings.graphNodePositions[oldPath]!;
+      delete this.settings.graphNodePositions[oldPath];
+      changed = true;
+    }
+    for (const map of Object.values(this.settings.graphNodePositions)) {
+      if (map && map[oldPath] !== undefined) {
+        map[newPath] = map[oldPath]!;
+        delete map[oldPath];
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.requestSaveSettings();
+    }
   }
 
   scheduleAutoInheritSync(delayMs = 1000): void {

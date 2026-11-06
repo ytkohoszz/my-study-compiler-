@@ -1,6 +1,6 @@
 /* C:\Users\user\dev\my-study-compiler\styles.css */
 /* ============================================================
-   Конструктор учебных проектов (v0.5.0+)
+   Конструктор учебных проектов (v0.5.1+)
    Дерево | Граф | Интерактивные схемы и аннотации
    Фиксированный полноэкранный размер (96vw × 92dvh) во всех режимах
    ============================================================ */
@@ -909,8 +909,18 @@ button.my-sc-row-more:hover {
 }
 
 .my-sc-gnode {
-  cursor: pointer;
+  cursor: grab;
   transition: opacity 0.15s ease;
+}
+
+.my-sc-gnode.is-dragging {
+  cursor: grabbing;
+}
+
+.my-sc-gnode.is-dragging .my-sc-gnode-body {
+  stroke: var(--interactive-accent);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
 }
 
 .my-sc-gnode.is-dim {
@@ -1003,7 +1013,10 @@ button.my-sc-row-more:hover {
   top: var(--my-sc-s2);
   right: var(--my-sc-s2);
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--my-sc-s1);
+  z-index: 5;
 }
 
 button.my-sc-graph-ctrl {
@@ -1023,11 +1036,41 @@ button.my-sc-graph-ctrl {
   cursor: pointer;
 }
 
+button.my-sc-graph-ctrl:hover {
+  background: var(--background-modifier-hover) !important;
+}
+
+button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset {
+  width: auto !important;
+  padding: 0 10px !important;
+  gap: 6px !important;
+  font-size: var(--my-sc-fs-xs) !important;
+  font-weight: 500 !important;
+}
+
+button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
+  border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border)) !important;
+  color: var(--interactive-accent) !important;
+}
+
+.my-sc-graph-ctrl-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.my-sc-graph-ctrl-icon svg.svg-icon {
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px !important;
+  min-height: 15px !important;
+}
+
 .my-sc-graph-info {
   position: absolute;
   top: var(--my-sc-s2);
   left: var(--my-sc-s2);
-  right: 180px;
+  right: 290px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1036,6 +1079,7 @@ button.my-sc-graph-ctrl {
   border-radius: 10px;
   background: var(--background-primary);
   border: 1px solid var(--interactive-accent);
+  z-index: 5;
 }
 
 .my-sc-graph-info.is-hidden {
@@ -1661,7 +1705,8 @@ button.my-sc-graph-ctrl {
     padding: 12px !important;
   }
 
-  .my-sc-type-name {
+  .my-sc-type-name,
+  .my-sc-graph-ctrl-label {
     display: none;
   }
 }
