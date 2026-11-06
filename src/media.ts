@@ -1,3 +1,4 @@
+// C:\Users\user\dev\my-study-compiler\src\media.ts
 import { App, TFile, normalizePath } from "obsidian";
 import { KEYS, StudyMediaItem } from "./types";
 
@@ -25,11 +26,11 @@ const YAML_MEDIA_KEYS = [
   "media",
 ];
 
-function isExternalImageUrl(raw: string): boolean {
+export function isExternalImageUrl(raw: string): boolean {
   return /^https?:\/\/\S+/i.test(raw.trim());
 }
 
-function cleanWikiTarget(raw: string): string {
+export function cleanWikiTarget(raw: string): string {
   let s = raw.trim();
   if (s.startsWith("!")) s = s.slice(1).trim();
   if (s.startsWith("[[")) s = s.slice(2);
@@ -51,6 +52,70 @@ function flattenUnknownStrings(val: unknown): string[] {
   return [];
 }
 
+export function isVirtualBoardKey(key: string): boolean {
+  return key === VIRTUAL_BOARD_KEY || /^__board_\d+__$/.test(key) || /^холст[_\s-]*\d+$/i.test(key);
+}
+
+export function formatBoardLabel(key: string, indexFallback?: number): string {
+  if (key === VIRTUAL_BOARD_KEY) return "Холст 1";
+  const m = /^__board_(\d+)__$/.exec(key);
+  if (m && m[1]) return `Холст ${m[1]}`;
+  if (/^холст/i.test(key)) return key;
+  return indexFallback !== undefined ? `Холст ${indexFallback}` : key;
+}
+
+/**
+ * Разрешает строковый ключ картинки (имя файла в хранилище, вики-ссылку или внешний URL)
+ * в пригодный для <img src="..."> адрес.
+ */
+export function resolveImageSource(
+  app: App,
+  rawKey: string,
+  notePath: string
+): { src: string; label: string; file?: TFile } {
+  const trimmed = String(rawKey ?? "").trim();
+  if (!trimmed) return { src: "", label: "Картинка" };
+
+  if (
+    isExternalImageUrl(trimmed) ||
+    trimmed.startsWith("app://") ||
+    trimmed.startsWith("data:image/")
+  ) {
+    let shortLabel = "Веб-схема";
+    try {
+      const u = new URL(trimmed);
+      const lastSeg = u.pathname.split("/").filter(Boolean).pop() || u.hostname;
+      shortLabel = decodeURIComponent(lastSeg).slice(0, 28) || "Веб-схема";
+    } catch {
+      shortLabel = "Веб-схема";
+    }
+    return { src: trimmed, label: shortLabel };
+  }
+
+  const cleaned = cleanWikiTarget(trimmed);
+  if (!cleaned) return { src: "", label: "Картинка" };
+
+  const direct = app.vault.getAbstractFileByPath(cleaned);
+  if (direct instanceof TFile && IMAGE_EXTENSIONS.has(direct.extension.toLowerCase())) {
+    return {
+      src: app.vault.adapter.getResourcePath(direct.path),
+      label: direct.basename,
+      file: direct,
+    };
+  }
+
+  const dest = app.metadataCache.getFirstLinkpathDest(cleaned, notePath || "");
+  if (dest instanceof TFile && IMAGE_EXTENSIONS.has(dest.extension.toLowerCase())) {
+    return {
+      src: app.vault.adapter.getResourcePath(dest.path),
+      label: dest.basename,
+      file: dest,
+    };
+  }
+
+  return { src: "", label: cleaned };
+}
+
 /**
  * Синхронно собирает все прикреплённые изображения и холсты схем для учебной заметки
  * (из cache.embeds, YAML-свойств и уже сохранённых ключей `схемы_аннотации`).
@@ -65,8 +130,8 @@ export function extractMediaAndAnnotationMeta(
   const mediaItems: StudyMediaItem[] = [];
   const seenKeys = new Set<string>();
 
-  const addVaultImage = (target: TFile) => {
-    const key = target.name;
+  const addVaultImage = (target: TFile, customKey?: string) => {
+    const key = customKey || target.name;
     if (seenKeys.has(key)) return;
     seenKeys.add(key);
     mediaItems.push({
@@ -139,33 +204,42 @@ export function extractMediaAndAnnotationMeta(
     }
   }
 
-  // 3. Подсчёт фигур в `схемы_аннотации` и восстановление холстов (включая чистый холст `__board__` или внешние URL)
+  // 3. Подсчёт элементов в `схемы_аннотации` и восстановление всех сохранённых холстов
   let annotationCount = 0;
   const rawAnnotations = fm?.[KEYS.annotations];
   if (rawAnnotations && typeof rawAnnotations === "object" && !Array.isArray(rawAnnotations)) {
-    for (const [imgKey, list] of Object.entries(rawAnnotations as Record<string, unknown>)) {
-      if (!Array.isArray(list) || list.length === 0) continue;
+    let boardIdx = 1;
+    for (const [canvasKey, list] of Object.entries(rawAnnotations as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
       annotationCount += list.length;
 
-      if (seenKeys.has(imgKey)) continue;
+      if (seenKeys.has(canvasKey)) continue;
 
-      if (imgKey === VIRTUAL_BOARD_KEY) {
-        seenKeys.add(VIRTUAL_BOARD_KEY);
+      if (isVirtualBoardKey(canvasKey)) {
+        seenKeys.add(canvasKey);
         mediaItems.push({
-          key: VIRTUAL_BOARD_KEY,
-          label: "Чистый холст",
+          key: canvasKey,
+          label: formatBoardLabel(canvasKey, boardIdx++),
           src: "",
           kind: "board",
         });
-      } else if (isExternalImageUrl(imgKey)) {
-        addExternalUrl(imgKey);
+      } else if (isExternalImageUrl(canvasKey)) {
+        addExternalUrl(canvasKey);
       } else {
-        const dest = app.metadataCache.getFirstLinkpathDest(imgKey, file.path);
+        const dest = app.metadataCache.getFirstLinkpathDest(canvasKey, file.path);
         if (
           dest instanceof TFile &&
           IMAGE_EXTENSIONS.has(dest.extension.toLowerCase())
         ) {
-          addVaultImage(dest);
+          addVaultImage(dest, canvasKey);
+        } else {
+          seenKeys.add(canvasKey);
+          mediaItems.push({
+            key: canvasKey,
+            label: canvasKey,
+            src: "",
+            kind: "board",
+          });
         }
       }
     }
@@ -210,8 +284,7 @@ export function extractWikiLinksFromAnnotations(
 }
 
 /**
- * Прикрепляет существующий в хранилище файл изображения или внешний URL к заметке:
- * дописывает embed в конец заметки (или в YAML для внешних URL), чтобы изображение сразу появилось в схеме.
+ * Прикрепляет существующий в хранилище файл изображения или внешний URL к заметке.
  */
 export async function attachImageToNote(
   app: App,
@@ -251,17 +324,20 @@ export async function attachImageToNote(
 }
 
 /**
- * Сохраняет бинарный буфер изображения (например, из буфера обмена на iPad/ПК) в папку вложений
- * и прикрепляет его к целевой заметке.
+ * Сохраняет бинарный буфер изображения (из буфера обмена или drag-and-drop) в папку вложений
+ * без принудительного создания нового слайда в теле заметки.
  */
-export async function saveClipboardImageAndAttach(
+export async function saveBinaryImageToVault(
   app: App,
   noteFile: TFile,
   buffer: ArrayBuffer,
-  mimeType: string,
+  mimeTypeOrExt: string,
   mediaFolder: string
 ): Promise<TFile> {
-  const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+  const rawExt = mimeTypeOrExt.includes("/")
+    ? mimeTypeOrExt.split("/")[1] || "png"
+    : mimeTypeOrExt.replace(/^\./, "") || "png";
+  const ext = rawExt.toLowerCase().replace("jpeg", "jpg");
   const folder = normalizePath(mediaFolder || "Знания/Вложения");
 
   let cur = "";
@@ -276,14 +352,23 @@ export async function saveClipboardImageAndAttach(
     }
   }
 
-  const safeBase = noteFile.basename.replace(/[\\/:*?"<>|]/g, "").slice(0, 32) || "scheme";
+  const safeBase =
+    noteFile.basename.replace(/[\\/:*?"<>|]/g, "").slice(0, 32) || "scheme";
   const fileName = `${safeBase}_${Date.now()}.${ext}`;
   const fullPath = normalizePath(`${folder}/${fileName}`);
 
-  const createdFile = await app.vault.createBinary(fullPath, buffer);
-  await attachImageToNote(app, noteFile, {
-    type: "vault",
-    imageFile: createdFile,
-  });
-  return createdFile;
+  return await app.vault.createBinary(fullPath, buffer);
+}
+
+/**
+ * Сохраняет изображение из буфера обмена и прикрепляет к заметке (оставлено для обратной совместимости).
+ */
+export async function saveClipboardImageAndAttach(
+  app: App,
+  noteFile: TFile,
+  buffer: ArrayBuffer,
+  mimeType: string,
+  mediaFolder: string
+): Promise<TFile> {
+  return await saveBinaryImageToVault(app, noteFile, buffer, mimeType, mediaFolder);
 }

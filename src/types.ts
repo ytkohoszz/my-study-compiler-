@@ -142,11 +142,11 @@ export interface WorkMetaBadge {
 export type StudyMediaKind = "vault" | "external" | "board";
 
 export interface StudyMediaItem {
-  /** Ключ для записи в YAML `схемы_аннотации[key]` (имя файла, URL или `__board__`) */
+  /** Ключ холста в YAML `схемы_аннотации[key]` */
   key: string;
-  /** Отображаемое название на переключателе слайдов */
+  /** Отображаемое название на переключателе холстов */
   label: string;
-  /** Ресурсный URL для тега <img> (пустая строка для чистого холста `board`) */
+  /** Ресурсный URL фонового изображения (для старых одиночных холстов до миграции) */
   src: string;
   kind: StudyMediaKind;
   file?: TFile;
@@ -166,7 +166,19 @@ export interface BoundingBox {
 
 export interface CanvasElementBase {
   id: string;
-  type: "text" | "rect" | "arrow";
+  type: "image" | "text" | "rect" | "arrow";
+}
+
+export interface ImageElement extends CanvasElementBase {
+  type: "image";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Имя/путь файла в хранилище или внешний URL картинки */
+  srcKey: string;
+  /** Соотношение сторон width / height для сохранения пропорций */
+  aspectRatio?: number;
 }
 
 export interface TextElement extends CanvasElementBase {
@@ -219,7 +231,9 @@ export interface ArrowElement extends CanvasElementBase {
   endAnchor?: AnchorType;
 }
 
-export type CanvasElement = TextElement | RectElement | ArrowElement;
+export type CanvasElement = ImageElement | TextElement | RectElement | ArrowElement;
+
+export type BoxCanvasElement = ImageElement | TextElement | RectElement;
 
 export type ElementDragSnapshot =
   | {
@@ -245,6 +259,7 @@ export interface ResizeSnapshot {
   w: number;
   h: number;
   fontSize: number;
+  aspectRatio?: number;
 }
 
 export interface SnapAnchorMatch {

@@ -8,6 +8,7 @@ import {
   ArrowRouting,
   CanvasElement,
   ElementDragSnapshot,
+  ImageElement,
   Point,
   RectElement,
   ResizeHandleType,
@@ -23,15 +24,17 @@ import { CanvasRenderer } from "./canvas-renderer";
 import {
   IMAGE_EXTENSIONS,
   VIRTUAL_BOARD_KEY,
-  attachImageToNote,
   extractMediaAndAnnotationMeta,
-  saveClipboardImageAndAttach,
+  formatBoardLabel,
+  resolveImageSource,
+  saveBinaryImageToVault,
 } from "./media";
 import { ScanResult, flattenVisibleTree, buildNestedFilteredTree } from "./scanner";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const DEFAULT_BOARD_W = 1280;
-const DEFAULT_BOARD_H = 800;
+const DEFAULT_BOARD_W = 1400;
+const DEFAULT_BOARD_H = 900;
+const DOUBLE_TAP_MS = 340;
 const QUICK_COLORS: readonly string[] = [
   "#e5a158",
   "#4aab80",
@@ -47,7 +50,7 @@ class VaultImagePickerModal extends FuzzySuggestModal<TFile> {
   constructor(app: App, onChoose: (file: TFile) => void) {
     super(app);
     this.onChoose = onChoose;
-    this.setPlaceholder("Выбери картинку или схему из хранилища…");
+    this.setPlaceholder("Выбери картинку из хранилища для добавления на текущий холст…");
   }
 
   getItems(): TFile[] {
@@ -100,10 +103,13 @@ export class ProjectSchemaView {
   private startPanPoint: Point = { x: 0, y: 0 };
   private startTransform: Point = { x: 0, y: 0 };
 
-  private currentTool: ToolType = "pan";
+  private currentTool: ToolType = "select";
   private elementsByMediaKey: Map<string, CanvasElement[]> = new Map();
   private selectedElementIds: Set<string> = new Set();
   private lastSelectedId: string | null = null;
+
+  private lastTapTextId: string | null = null;
+  private lastTapTextAt = 0;
 
   private isDrawing = false;
   private drawStartPoint: Point = { x: 0, y: 0 };
@@ -126,6 +132,7 @@ export class ProjectSchemaView {
     w: 0,
     h: 0,
     fontSize: 16,
+    aspectRatio: 1,
   };
 
   private dragStartPoint: Point = { x: 0, y: 0 };
@@ -148,6 +155,8 @@ export class ProjectSchemaView {
   private elementsLayerEl!: HTMLElement;
   private toolbarEl!: HTMLElement;
   private propertiesPanelEl!: HTMLElement;
+  private bringFrontBtn!: HTMLButtonElement;
+  private sendBackBtn!: HTMLButtonElement;
   private deleteBtn!: HTMLButtonElement;
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
@@ -170,7 +179,6 @@ export class ProjectSchemaView {
     this.container.empty();
     this.container.addClass("my-sc-schema-host");
 
-    // Верхняя панель: выбор узла проекта + прикрепление медиа + Undo/Redo/Fit
     this.headerBarEl = this.container.createDiv("my-sc-schema-header");
 
     const leftControls = this.headerBarEl.createDiv("my-sc-schema-header-left");
@@ -185,30 +193,42 @@ export class ProjectSchemaView {
 
     this.slidesBarEl = leftControls.createDiv("my-sc-schema-slides");
 
+    const newBoardBtn = leftControls.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "＋ Холст",
+      attr: {
+        type: "button",
+        title: "Создать новый отдельный холст для этой заметки",
+      },
+    });
+    newBoardBtn.onclick = () => {
+      void this.createNewBoardSlide();
+    };
+
     const rightControls = this.headerBarEl.createDiv("my-sc-schema-header-right");
 
-    const attachVaultBtn = rightControls.createEl("button", {
+    const addVaultImgBtn = rightControls.createEl("button", {
       cls: "my-sc-chip-btn",
-      text: "🖼 Из хранилища",
-      attr: { type: "button", title: "Прикрепить существующую картинку из хранилища к этой заметке" },
+      text: "🖼 Картинка",
+      attr: {
+        type: "button",
+        title: "Добавить картинку из хранилища на текущий открытый холст",
+      },
     });
-    attachVaultBtn.onclick = () => {
+    addVaultImgBtn.onclick = () => {
       if (!this.currentNote) return;
       new VaultImagePickerModal(this.app, async (pickedFile) => {
-        if (!this.currentNote) return;
-        await attachImageToNote(this.app, this.currentNote.file, {
-          type: "vault",
-          imageFile: pickedFile,
-        });
-        new Notice(`Прикреплено: ${pickedFile.name}`);
-        await this.reloadCurrentNoteMedia(pickedFile.name);
+        await this.addImageElementToCurrentCanvas(pickedFile.path);
       }).open();
     };
 
     const attachUrlBtn = rightControls.createEl("button", {
       cls: "my-sc-chip-btn",
       text: "🌐 URL",
-      attr: { type: "button", title: "Прикрепить изображение из интернета по прямой ссылке" },
+      attr: {
+        type: "button",
+        title: "Добавить изображение по прямой ссылке на текущий холст",
+      },
     });
     attachUrlBtn.onclick = () => {
       this.urlDrawerEl.toggleClass(
@@ -241,52 +261,48 @@ export class ProjectSchemaView {
       this.fitToScreen();
     };
 
-    // Выдвижная строка ввода внешнего URL
     this.urlDrawerEl = this.container.createDiv("my-sc-schema-url-bar is-hidden");
     const urlInput = this.urlDrawerEl.createEl("input", {
       cls: "my-sc-input",
       attr: {
         type: "url",
-        placeholder: "Вставь прямую ссылку на картинку (https://...) или нажми Ctrl+V на холсте…",
+        placeholder:
+          "Вставь прямую ссылку на картинку (https://...) или нажми Ctrl+V на холсте…",
       },
     });
     const urlAddBtn = this.urlDrawerEl.createEl("button", {
       cls: "mod-cta my-sc-chip-btn",
-      text: "Прикрепить URL",
+      text: "Добавить на холст",
       attr: { type: "button" },
     });
     urlAddBtn.onclick = async () => {
       const rawUrl = urlInput.value.trim();
       if (!rawUrl || !this.currentNote) return;
-      await attachImageToNote(this.app, this.currentNote.file, {
-        type: "url",
-        url: rawUrl,
-      });
       urlInput.value = "";
       this.urlDrawerEl.addClass("is-hidden");
-      new Notice("Изображение по ссылке прикреплено к заметке.");
-      await this.reloadCurrentNoteMedia(rawUrl);
+      await this.addImageElementToCurrentCanvas(rawUrl);
     };
 
-    // Рабочая область холста
     this.stageWrapEl = this.container.createDiv("mni-container my-sc-schema-stage");
     this.viewportEl = this.stageWrapEl.createDiv({ cls: "mni-viewport" });
     this.layerEl = this.viewportEl.createDiv({ cls: "mni-canvas-layer" });
 
-    this.boardBgEl = this.layerEl.createDiv({ cls: "my-sc-board-surface is-hidden" });
-    this.imgEl = this.layerEl.createEl("img", { cls: "mni-image" });
-    this.svgLayerEl = document.createElementNS(SVG_NS, "svg");
-    this.svgLayerEl.classList.add("mni-svg-layer");
-    this.layerEl.appendChild(this.svgLayerEl);
+    this.boardBgEl = this.layerEl.createDiv({ cls: "my-sc-board-surface" });
+    this.imgEl = this.layerEl.createEl("img", { cls: "mni-image is-hidden" });
     this.elementsLayerEl = this.layerEl.createDiv({
       cls: "mni-elements-layer",
     });
+    this.svgLayerEl = document.createElementNS(SVG_NS, "svg");
+    this.svgLayerEl.classList.add("mni-svg-layer");
+    this.layerEl.appendChild(this.svgLayerEl);
 
     this.renderer = new CanvasRenderer(
       this.elementsLayerEl,
       this.svgLayerEl,
       "",
-      (linkHref, newLeaf) => this.handleInternalWikiLink(linkHref, newLeaf)
+      (linkHref, newLeaf) => this.handleInternalWikiLink(linkHref, newLeaf),
+      (srcKey) =>
+        resolveImageSource(this.app, srcKey, this.currentNote?.path ?? "").src
     );
 
     this.renderToolbar(this.stageWrapEl);
@@ -295,8 +311,9 @@ export class ProjectSchemaView {
     });
 
     this.bindPointerEvents(this.viewportEl);
+    this.bindDragAndDropEvents(this.viewportEl);
     this.bindKeyboardAndPasteEvents();
-    this.setTool("pan");
+    this.setTool("select");
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver((entries) => {
@@ -325,6 +342,10 @@ export class ProjectSchemaView {
     targetNote: StudyNoteItem
   ): Promise<void> {
     const noteChanged = this.currentNote?.path !== targetNote.path;
+    if (noteChanged && this.manager) {
+      await this.manager.flushSave(this.elementsByMediaKey);
+    }
+
     this.scan = scan;
     this.projectRoot = projectRoot;
     this.currentNote = targetNote;
@@ -371,17 +392,35 @@ export class ProjectSchemaView {
   private async reloadCurrentNoteMedia(preferKey?: string): Promise<void> {
     if (!this.currentNote || !this.manager) return;
 
+    this.elementsByMediaKey = await this.manager.loadElements(
+      DEFAULT_BOARD_W,
+      DEFAULT_BOARD_H
+    );
+
     const { mediaItems } = extractMediaAndAnnotationMeta(
       this.app,
       this.currentNote.file
     );
 
-    const hasBoard = mediaItems.some((m) => m.key === VIRTUAL_BOARD_KEY);
     this.slides = [...mediaItems];
-    if (!hasBoard) {
+
+    // Добавляем все сохранённые холсты из elementsByMediaKey, если их ещё нет в списке
+    let boardIdx = this.slides.length + 1;
+    for (const key of this.elementsByMediaKey.keys()) {
+      if (!this.slides.some((s) => s.key === key)) {
+        this.slides.push({
+          key,
+          label: formatBoardLabel(key, boardIdx++),
+          src: "",
+          kind: "board",
+        });
+      }
+    }
+
+    if (this.slides.length === 0) {
       this.slides.push({
         key: VIRTUAL_BOARD_KEY,
-        label: "Чистый холст",
+        label: "Холст 1",
         src: "",
         kind: "board",
       });
@@ -390,7 +429,7 @@ export class ProjectSchemaView {
     if (preferKey) {
       const idx = this.slides.findIndex((s) => s.key === preferKey);
       this.activeSlideIndex = idx >= 0 ? idx : 0;
-    } else {
+    } else if (this.activeSlideIndex >= this.slides.length) {
       this.activeSlideIndex = 0;
     }
 
@@ -398,6 +437,39 @@ export class ProjectSchemaView {
     this.lastSelectedId = null;
     this.renderSlidesChips();
     await this.loadActiveSlide();
+  }
+
+  private async createNewBoardSlide(): Promise<void> {
+    if (!this.currentNote || !this.manager) return;
+
+    let n = 1;
+    let nextKey = VIRTUAL_BOARD_KEY;
+    const existingKeys = new Set([
+      ...this.slides.map((s) => s.key),
+      ...this.elementsByMediaKey.keys(),
+    ]);
+    while (existingKeys.has(nextKey)) {
+      n++;
+      nextKey = `__board_${n}__`;
+    }
+
+    const label = `Холст ${this.slides.length + 1}`;
+    this.slides.push({
+      key: nextKey,
+      label,
+      src: "",
+      kind: "board",
+    });
+    if (!this.elementsByMediaKey.has(nextKey)) {
+      this.elementsByMediaKey.set(nextKey, []);
+    }
+
+    this.activeSlideIndex = this.slides.length - 1;
+    this.selectedElementIds.clear();
+    this.lastSelectedId = null;
+    this.renderSlidesChips();
+    await this.loadActiveSlide();
+    new Notice(`Создан новый холст: ${label}`);
   }
 
   private renderSlidesChips(): void {
@@ -409,7 +481,7 @@ export class ProjectSchemaView {
       const chip = this.slidesBarEl.createEl("button", {
         cls: `my-sc-filter-chip ${isAct ? "is-active" : ""}`,
         text: `${icon} ${slide.label}`,
-        attr: { type: "button", title: slide.key },
+        attr: { type: "button", title: `Холст: ${slide.label}` },
       });
       chip.onclick = async () => {
         if (this.activeSlideIndex === idx) return;
@@ -422,32 +494,63 @@ export class ProjectSchemaView {
     });
   }
 
+  private syncBoardSurfaceBounds(): void {
+    const list = this.getCurrentElements();
+    let maxRight = DEFAULT_BOARD_W;
+    let maxBottom = DEFAULT_BOARD_H;
+
+    for (const el of list) {
+      const bbox = CanvasEngine.getElementBBox(el);
+      maxRight = Math.max(maxRight, Math.round(bbox.x + bbox.width + 160));
+      maxBottom = Math.max(maxBottom, Math.round(bbox.y + bbox.height + 160));
+    }
+
+    this.naturalW = maxRight;
+    this.naturalH = maxBottom;
+    this.boardBgEl.style.width = `${this.naturalW}px`;
+    this.boardBgEl.style.height = `${this.naturalH}px`;
+    this.renderer.syncLayersSize(this.naturalW, this.naturalH);
+  }
+
   private async loadActiveSlide(): Promise<void> {
     const slide = this.slides[this.activeSlideIndex];
     if (!slide || !this.manager) return;
 
-    if (slide.kind === "board") {
-      this.imgEl.addClass("is-hidden");
-      this.boardBgEl.removeClass("is-hidden");
-      this.naturalW = DEFAULT_BOARD_W;
-      this.naturalH = DEFAULT_BOARD_H;
-      this.boardBgEl.style.width = `${this.naturalW}px`;
-      this.boardBgEl.style.height = `${this.naturalH}px`;
-    } else {
-      this.boardBgEl.addClass("is-hidden");
-      this.imgEl.removeClass("is-hidden");
-      await this.setImageSrc(slide.src);
-      this.naturalW = this.imgEl.naturalWidth || DEFAULT_BOARD_W;
-      this.naturalH = this.imgEl.naturalHeight || DEFAULT_BOARD_H;
+    this.imgEl.addClass("is-hidden");
+    this.boardBgEl.removeClass("is-hidden");
+
+    const list = [...(this.elementsByMediaKey.get(slide.key) ?? [])];
+
+    // Автоматическая миграция старого холста с одиночной фоновой картинкой в полноценный элемент ImageElement
+    const hasImageElement = list.some((el) => el.type === "image");
+    if (
+      !hasImageElement &&
+      (slide.kind === "vault" || slide.kind === "external") &&
+      slide.src
+    ) {
+      const dims = await this.probeImageDimensions(slide.src);
+      const w = dims.width || 800;
+      const h = dims.height || 600;
+      const migratedImg: ImageElement = {
+        id: `img_migrated_${Date.now()}`,
+        type: "image",
+        x: 0,
+        y: 0,
+        width: w,
+        height: h,
+        srcKey: slide.key,
+        aspectRatio: Number((w / Math.max(1, h)).toFixed(4)),
+      };
+      list.unshift(migratedImg);
+      this.elementsByMediaKey.set(slide.key, list);
+      this.manager.scheduleSave(this.elementsByMediaKey);
+    } else if (!this.elementsByMediaKey.has(slide.key)) {
+      this.elementsByMediaKey.set(slide.key, list);
     }
 
     this.userAdjustedViewport = false;
-    this.renderer.syncLayersSize(this.naturalW, this.naturalH);
-    this.elementsByMediaKey = await this.manager.loadElements(
-      this.naturalW,
-      this.naturalH
-    );
     CanvasEngine.syncArrowsToBlocks(this.getCurrentElements());
+    this.syncBoardSurfaceBounds();
     this.resetHistory();
     this.updatePropertiesPanel();
     this.updateDeleteButton();
@@ -455,30 +558,119 @@ export class ProjectSchemaView {
     window.requestAnimationFrame(() => this.fitToScreen());
   }
 
-  private setImageSrc(src: string): Promise<void> {
-    return new Promise<void>((resolve) => {
-      const cleanup = () => {
-        this.imgEl.removeEventListener("load", onLoad);
-        this.imgEl.removeEventListener("error", onError);
+  private probeImageDimensions(
+    src: string
+  ): Promise<{ width: number; height: number }> {
+    return new Promise((resolve) => {
+      if (!src) {
+        resolve({ width: 640, height: 420 });
+        return;
+      }
+      const probe = new Image();
+      const done = (w: number, h: number) => {
+        probe.onload = null;
+        probe.onerror = null;
+        resolve({ width: w, height: h });
       };
-      const onLoad = () => {
-        cleanup();
-        resolve();
+      probe.onload = () => {
+        done(probe.naturalWidth || 640, probe.naturalHeight || 420);
       };
-      const onError = () => {
-        cleanup();
-        resolve();
+      probe.onerror = () => {
+        done(640, 420);
       };
-      this.imgEl.addEventListener("load", onLoad, { once: true });
-      this.imgEl.addEventListener("error", onError, { once: true });
-      this.imgEl.src = src;
+      probe.src = src;
     });
+  }
+
+  /**
+   * Добавляет картинку (из файла в хранилище, буфера обмена, перетаскивания или URL)
+   * как выбираемый и масштабируемый элемент на ТЕКУЩИЙ открытый холст.
+   */
+  public async addImageElementToCurrentCanvas(
+    srcKey: string,
+    dropCanvasPoint?: Point
+  ): Promise<void> {
+    if (!this.currentNote) return;
+
+    const resolved = resolveImageSource(
+      this.app,
+      srcKey,
+      this.currentNote.path
+    );
+    const dims = await this.probeImageDimensions(resolved.src);
+    let w = dims.width || 560;
+    let h = dims.height || 380;
+    const ratio = Number((w / Math.max(1, h)).toFixed(4));
+
+    const maxInitialSide = 760;
+    if (w > maxInitialSide || h > maxInitialSide) {
+      if (w >= h) {
+        w = maxInitialSide;
+        h = Math.max(40, Math.round(w / ratio));
+      } else {
+        h = maxInitialSide;
+        w = Math.max(40, Math.round(h * ratio));
+      }
+    }
+
+    const list = this.getCurrentElements();
+    let x = 60;
+    let y = 60;
+
+    if (dropCanvasPoint) {
+      x = Math.max(0, Math.round(dropCanvasPoint.x - w / 2));
+      y = Math.max(0, Math.round(dropCanvasPoint.y - h / 2));
+    } else if (list.length > 0) {
+      const vpRect = this.viewportEl.getBoundingClientRect();
+      if (vpRect.width > 0 && vpRect.height > 0) {
+        const centerPt = CanvasEngine.screenToCanvas(
+          vpRect.left + vpRect.width / 2,
+          vpRect.top + vpRect.height / 2,
+          vpRect,
+          this.panX,
+          this.panY,
+          this.scale
+        );
+        const offset = (list.length % 6) * 28;
+        x = Math.max(20, Math.round(centerPt.x - w / 2 + offset));
+        y = Math.max(20, Math.round(centerPt.y - h / 2 + offset));
+      }
+    }
+
+    const newImg: ImageElement = {
+      id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: "image",
+      x,
+      y,
+      width: w,
+      height: h,
+      srcKey,
+      aspectRatio: ratio,
+    };
+
+    list.push(newImg);
+    this.setCurrentElements(list);
+    this.syncBoardSurfaceBounds();
+
+    this.setTool("select");
+    this.selectedElementIds.clear();
+    this.selectedElementIds.add(newImg.id);
+    this.lastSelectedId = newImg.id;
+    this.updateDeleteButton();
+    this.updatePropertiesPanel();
+    this.commitHistory();
+    this.renderElements(newImg.id);
   }
 
   private getCurrentElements(): CanvasElement[] {
     const slide = this.slides[this.activeSlideIndex];
     if (!slide) return [];
-    return this.elementsByMediaKey.get(slide.key) ?? [];
+    let list = this.elementsByMediaKey.get(slide.key);
+    if (!list) {
+      list = [];
+      this.elementsByMediaKey.set(slide.key, list);
+    }
+    return list;
   }
 
   private setCurrentElements(list: CanvasElement[]): void {
@@ -534,7 +726,7 @@ export class ProjectSchemaView {
         this.historyIndex--;
       }
       if (persist && this.manager) {
-        this.manager.saveElements(this.elementsByMediaKey).catch(() => {});
+        this.manager.scheduleSave(this.elementsByMediaKey);
       }
       this.updateUndoButtons();
     }
@@ -561,9 +753,10 @@ export class ProjectSchemaView {
     this.elementsByMediaKey = new Map(parsed);
     this.selectedElementIds.clear();
     this.lastSelectedId = null;
+    this.syncBoardSurfaceBounds();
     this.updatePropertiesPanel();
     this.renderElements();
-    this.manager?.saveElements(this.elementsByMediaKey).catch(() => {});
+    this.manager?.scheduleSave(this.elementsByMediaKey);
     this.updateUndoButtons();
   }
 
@@ -576,19 +769,48 @@ export class ProjectSchemaView {
   }
 
   private updateDeleteButton(): void {
-    if (!this.deleteBtn) return;
     const has = this.selectedElementIds.size > 0;
-    this.deleteBtn.disabled = !has;
-    this.deleteBtn.classList.toggle("is-disabled", !has);
+    if (this.deleteBtn) {
+      this.deleteBtn.disabled = !has;
+      this.deleteBtn.classList.toggle("is-disabled", !has);
+    }
+    if (this.bringFrontBtn) {
+      this.bringFrontBtn.disabled = !has;
+      this.bringFrontBtn.classList.toggle("is-disabled", !has);
+    }
+    if (this.sendBackBtn) {
+      this.sendBackBtn.disabled = !has;
+      this.sendBackBtn.classList.toggle("is-disabled", !has);
+    }
+  }
+
+  private bringSelectedToFront(): void {
+    if (this.selectedElementIds.size === 0) return;
+    const list = this.getCurrentElements();
+    const unselected = list.filter((el) => !this.selectedElementIds.has(el.id));
+    const selected = list.filter((el) => this.selectedElementIds.has(el.id));
+    this.setCurrentElements([...unselected, ...selected]);
+    this.renderElements();
+    this.commitHistory();
+  }
+
+  private sendSelectedToBack(): void {
+    if (this.selectedElementIds.size === 0) return;
+    const list = this.getCurrentElements();
+    const selected = list.filter((el) => this.selectedElementIds.has(el.id));
+    const unselected = list.filter((el) => !this.selectedElementIds.has(el.id));
+    this.setCurrentElements([...selected, ...unselected]);
+    this.renderElements();
+    this.commitHistory();
   }
 
   private renderToolbar(parent: HTMLElement): void {
     this.toolbarEl = parent.createDiv({ cls: "mni-toolbar" });
     const tools: { id: ToolType; icon: string; label: string; hotkey: string }[] =
       [
-        { id: "pan", icon: "✥", label: "Панорама", hotkey: "H" },
-        { id: "select", icon: "🖐️", label: "Выделение", hotkey: "V" },
-        { id: "rect", icon: "⬜", label: "Прямоугольник", hotkey: "R" },
+        { id: "select", icon: "🖐️", label: "Выделение и перемещение", hotkey: "V" },
+        { id: "pan", icon: "✥", label: "Панорама холста", hotkey: "H" },
+        { id: "rect", icon: "⬜", label: "Прямоугольник (рамка)", hotkey: "R" },
         { id: "arrow", icon: "↗️", label: "Стрелка", hotkey: "A" },
         { id: "text", icon: "T", label: "Текст / [[Ссылка]]", hotkey: "T" },
       ];
@@ -603,18 +825,34 @@ export class ProjectSchemaView {
       btn.onclick = () => this.setTool(t.id);
     });
 
+    this.bringFrontBtn = this.toolbarEl.createEl("button", {
+      cls: "mni-tool-btn mni-tool-layer is-disabled",
+      text: "⬆",
+      attr: { type: "button", title: "На передний план" },
+    });
+    this.bringFrontBtn.onclick = () => this.bringSelectedToFront();
+
+    this.sendBackBtn = this.toolbarEl.createEl("button", {
+      cls: "mni-tool-btn mni-tool-layer is-disabled",
+      text: "⬇",
+      attr: { type: "button", title: "На задний план" },
+    });
+    this.sendBackBtn.onclick = () => this.sendSelectedToBack();
+
     this.deleteBtn = this.toolbarEl.createEl("button", {
       cls: "mni-tool-btn mni-tool-delete is-disabled",
       text: "✖",
-      attr: { type: "button", title: "Удалить выбранное (Delete)" },
+      attr: { type: "button", title: "Удалить выбранное (Delete / Backspace)" },
     });
     this.deleteBtn.onclick = () => this.deleteSelected();
   }
 
   private setTool(tool: ToolType): void {
     this.currentTool = tool;
-    this.selectedElementIds.clear();
-    this.lastSelectedId = null;
+    if (tool !== "select") {
+      this.selectedElementIds.clear();
+      this.lastSelectedId = null;
+    }
     this.updateDeleteButton();
     this.updatePropertiesPanel();
     this.renderer.updateSelectionStates(
@@ -633,7 +871,7 @@ export class ProjectSchemaView {
 
     this.toolbarEl.querySelectorAll(".mni-tool-btn").forEach((btn) => {
       const btnEl = btn as HTMLElement;
-      if (btnEl === this.deleteBtn) return;
+      if (!btnEl.dataset.tool) return;
       btnEl.classList.toggle("is-active", btnEl.dataset.tool === tool);
     });
   }
@@ -656,19 +894,42 @@ export class ProjectSchemaView {
     this.propertiesPanelEl.classList.remove("is-hidden");
 
     const typeLabels: Record<CanvasElement["type"], string> = {
+      image: "🖼 Картинка",
       rect: "⬜ Прямоугольник",
       arrow: "↗️ Стрелка",
       text: "T Текст / Ссылка",
     };
 
     const header = this.propertiesPanelEl.createDiv({ cls: "mni-prop-header" });
-    header.createEl("h4", { text: typeLabels[el.type], cls: "mni-prop-title" });
+    header.createEl("h4", {
+      text:
+        this.selectedElementIds.size > 1
+          ? `Выбрано: ${this.selectedElementIds.size}`
+          : typeLabels[el.type],
+      cls: "mni-prop-title",
+    });
 
     const createSection = (title: string): HTMLElement => {
       const sec = this.propertiesPanelEl.createDiv({ cls: "mni-prop-group" });
       sec.createDiv({ cls: "mni-prop-group-label", text: title });
       return sec;
     };
+
+    const layerGroup = createSection("Слой и действия");
+    const layerRow = layerGroup.createDiv({ cls: "mni-prop-row" });
+    const frontBtn = layerRow.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⬆ Вперёд",
+      attr: { type: "button", title: "На передний план" },
+    });
+    frontBtn.onclick = () => this.bringSelectedToFront();
+
+    const backBtn = layerRow.createEl("button", {
+      cls: "my-sc-chip-btn",
+      text: "⬇ Назад",
+      attr: { type: "button", title: "На задний план" },
+    });
+    backBtn.onclick = () => this.sendSelectedToBack();
 
     const addColorControl = (
       parent: HTMLElement,
@@ -908,11 +1169,28 @@ export class ProjectSchemaView {
     if (rect.width <= 0 || rect.height <= 0) return;
     this.lastViewportW = Math.round(rect.width);
     this.lastViewportH = Math.round(rect.height);
+
+    const list = this.getCurrentElements();
+    let fitW = this.naturalW;
+    let fitH = this.naturalH;
+
+    if (list.length > 0) {
+      let maxR = 400;
+      let maxB = 300;
+      for (const el of list) {
+        const b = CanvasEngine.getElementBBox(el);
+        maxR = Math.max(maxR, b.x + b.width + 60);
+        maxB = Math.max(maxB, b.y + b.height + 60);
+      }
+      fitW = Math.min(this.naturalW, Math.max(600, maxR));
+      fitH = Math.min(this.naturalH, Math.max(450, maxB));
+    }
+
     const fit = CanvasEngine.computeFitTransform(
       rect.width,
       rect.height,
-      this.naturalW,
-      this.naturalH
+      fitW,
+      fitH
     );
     this.scale = fit.scale;
     this.panX = fit.panX;
@@ -922,6 +1200,74 @@ export class ProjectSchemaView {
 
   private applyTransform(): void {
     this.layerEl.style.transform = `translate3d(${this.panX}px, ${this.panY}px, 0) scale(${this.scale})`;
+  }
+
+  private bindDragAndDropEvents(target: HTMLElement): void {
+    target.addEventListener("dragover", (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      target.classList.add("is-drag-over");
+    });
+
+    target.addEventListener("dragleave", () => {
+      target.classList.remove("is-drag-over");
+    });
+
+    target.addEventListener("drop", async (e: DragEvent) => {
+      e.preventDefault();
+      target.classList.remove("is-drag-over");
+      if (!this.currentNote || !e.dataTransfer) return;
+
+      const dropCoords = this.getImageCoords(e.clientX, e.clientY);
+
+      // 1. Файлы, перетащенные из проводника / Finder / iPad Files
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        for (const file of Array.from(e.dataTransfer.files)) {
+          const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+          if (file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(ext)) {
+            const buf = await file.arrayBuffer();
+            const savedFile = await saveBinaryImageToVault(
+              this.app,
+              this.currentNote.file,
+              buf,
+              file.type || ext,
+              this.callbacks.getMediaFolder()
+            );
+            await this.addImageElementToCurrentCanvas(
+              savedFile.path,
+              dropCoords
+            );
+          }
+        }
+        return;
+      }
+
+      // 2. Ссылка или файл, перетащенный из дерева файлов Obsidian
+      const rawText =
+        e.dataTransfer.getData("text/plain") ||
+        e.dataTransfer.getData("text/uri-list") ||
+        "";
+      const clean = rawText.trim();
+      if (!clean) return;
+
+      if (clean.startsWith("obsidian://")) {
+        try {
+          const u = new URL(clean);
+          const fileParam = u.searchParams.get("file");
+          if (fileParam) {
+            await this.addImageElementToCurrentCanvas(
+              decodeURIComponent(fileParam),
+              dropCoords
+            );
+            return;
+          }
+        } catch {
+          // игнорируем
+        }
+      }
+
+      await this.addImageElementToCurrentCanvas(clean, dropCoords);
+    });
   }
 
   private bindKeyboardAndPasteEvents(): void {
@@ -970,15 +1316,15 @@ export class ProjectSchemaView {
           if (!blob) continue;
           e.preventDefault();
           const buf = await blob.arrayBuffer();
-          const savedFile = await saveClipboardImageAndAttach(
+          const savedFile = await saveBinaryImageToVault(
             this.app,
             this.currentNote.file,
             buf,
             item.type,
             this.callbacks.getMediaFolder()
           );
-          new Notice(`Скриншот сохранён и прикреплён: ${savedFile.name}`);
-          await this.reloadCurrentNoteMedia(savedFile.name);
+          new Notice(`Картинка добавлена на текущий холст: ${savedFile.name}`);
+          await this.addImageElementToCurrentCanvas(savedFile.path);
           return;
         }
       }
@@ -1006,14 +1352,16 @@ export class ProjectSchemaView {
     let pointerMoved = false;
 
     target.addEventListener("dblclick", (e: MouseEvent) => {
-      if (this.currentTool !== "select") return;
-      const clickedEl = (e.target as HTMLElement).closest(
+      const clickedTextEl = (e.target as HTMLElement).closest(
         ".mni-el-text"
       ) as HTMLElement | null;
-      if (!clickedEl) return;
+      if (!clickedTextEl) return;
       e.stopPropagation();
-      const id = clickedEl.dataset.id;
-      if (id) this.spawnTextInput(e.clientX, e.clientY, id);
+      const id = clickedTextEl.dataset.id;
+      if (id) {
+        this.setTool("select");
+        this.spawnTextInput(e.clientX, e.clientY, id);
+      }
     });
 
     target.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -1031,63 +1379,85 @@ export class ProjectSchemaView {
       pointerMoved = false;
 
       const elements = this.getCurrentElements();
+      const svgTarget = e.target as SVGElement;
+      const clickedEl = (e.target as HTMLElement).closest(
+        ".mni-el, .mni-el-svg"
+      ) as HTMLElement | SVGElement | null;
 
-      if (this.currentTool === "select") {
-        const svgTarget = e.target as SVGElement;
-        const clickedEl = (e.target as HTMLElement).closest(
-          ".mni-el, .mni-el-svg"
-        ) as HTMLElement | SVGElement | null;
+      // Клик по маркеру изменения размера или стрелки работает всегда
+      if (svgTarget.classList.contains("mni-resize-handle")) {
+        const handleAttr = svgTarget.dataset.handle as
+          | ResizeHandleType
+          | undefined;
+        const targetId = svgTarget.dataset.id;
+        if (!handleAttr || !targetId) return;
 
-        if (svgTarget.classList.contains("mni-resize-handle")) {
-          const handleAttr = svgTarget.dataset.handle as
-            | ResizeHandleType
-            | undefined;
-          const targetId = svgTarget.dataset.id;
-          if (!handleAttr || !targetId) return;
+        this.isResizing = true;
+        this.activeResizeHandle = handleAttr;
+        this.selectedElementIds.clear();
+        this.selectedElementIds.add(targetId);
+        this.lastSelectedId = targetId;
 
-          this.isResizing = true;
-          this.activeResizeHandle = handleAttr;
-          this.selectedElementIds.clear();
-          this.selectedElementIds.add(targetId);
-          this.lastSelectedId = targetId;
-
-          const el = elements.find((x) => x.id === targetId);
-          if (el && el.type !== "arrow") {
-            this.resizeStartBBox = {
-              x: el.x,
-              y: el.y,
-              w: el.width,
-              h: el.height,
-              fontSize: el.type === "text" ? el.fontSize : 16,
-            };
-            this.dragStartPoint = this.getImageCoords(e.clientX, e.clientY);
-          }
-          return;
+        const el = elements.find((x) => x.id === targetId);
+        if (el && el.type !== "arrow") {
+          this.resizeStartBBox = {
+            x: el.x,
+            y: el.y,
+            w: el.width,
+            h: el.height,
+            fontSize: el.type === "text" ? el.fontSize : 16,
+            aspectRatio:
+              el.type === "image"
+                ? el.aspectRatio || el.width / Math.max(1, el.height)
+                : el.width / Math.max(1, el.height),
+          };
+          this.dragStartPoint = this.getImageCoords(e.clientX, e.clientY);
         }
+        return;
+      }
 
-        if (svgTarget.classList.contains("mni-arrow-handle")) {
-          const handleAttr = svgTarget.dataset.handle as
-            | ArrowHandleType
-            | undefined;
-          const targetId = svgTarget.dataset.id;
-          if (!handleAttr || !targetId) return;
+      if (svgTarget.classList.contains("mni-arrow-handle")) {
+        const handleAttr = svgTarget.dataset.handle as
+          | ArrowHandleType
+          | undefined;
+        const targetId = svgTarget.dataset.id;
+        if (!handleAttr || !targetId) return;
 
-          this.isDraggingHandle = true;
-          this.draggedHandleType = handleAttr;
-          this.selectedElementIds.clear();
-          this.selectedElementIds.add(targetId);
-          this.lastSelectedId = targetId;
-          return;
-        }
+        this.isDraggingHandle = true;
+        this.draggedHandleType = handleAttr;
+        this.selectedElementIds.clear();
+        this.selectedElementIds.add(targetId);
+        this.lastSelectedId = targetId;
+        return;
+      }
 
+      // Выделение и перетаскивание элементов (работает в режиме select, а также при клике по элементу в режиме pan)
+      if (
+        (this.currentTool === "select" ||
+          (this.currentTool === "pan" && clickedEl)) &&
+        this.activePointers.size === 1
+      ) {
         if (clickedEl) {
           const clickedId = clickedEl.dataset.id;
           if (clickedId) {
-            if (!this.selectedElementIds.has(clickedId)) {
+            if (this.currentTool === "pan") {
+              this.setTool("select");
+            }
+            if (e.shiftKey) {
+              if (
+                this.selectedElementIds.has(clickedId) &&
+                this.selectedElementIds.size > 1
+              ) {
+                this.selectedElementIds.delete(clickedId);
+              } else {
+                this.selectedElementIds.add(clickedId);
+              }
+            } else if (!this.selectedElementIds.has(clickedId)) {
               this.selectedElementIds.clear();
               this.selectedElementIds.add(clickedId);
             }
-            this.lastSelectedId = clickedId;
+            this.lastSelectedId =
+              Array.from(this.selectedElementIds).pop() ?? null;
             this.updateDeleteButton();
             this.updatePropertiesPanel();
             this.renderer.updateSelectionStates(
@@ -1127,23 +1497,32 @@ export class ProjectSchemaView {
           return;
         }
 
-        this.isMarquee = true;
-        this.marqueeStart = this.getImageCoords(e.clientX, e.clientY);
-        this.selectedElementIds.clear();
-        this.lastSelectedId = null;
-        this.updateDeleteButton();
-        this.updatePropertiesPanel();
-        this.renderer.updateSelectionStates(elements, this.selectedElementIds);
+        if (this.currentTool === "select") {
+          this.isMarquee = true;
+          this.marqueeStart = this.getImageCoords(e.clientX, e.clientY);
+          if (!e.shiftKey) {
+            this.selectedElementIds.clear();
+            this.lastSelectedId = null;
+          }
+          this.updateDeleteButton();
+          this.updatePropertiesPanel();
+          this.renderer.updateSelectionStates(elements, this.selectedElementIds);
 
-        this.marqueeEl = this.elementsLayerEl.createDiv({ cls: "mni-marquee" });
-        this.marqueeEl.style.left = `${this.marqueeStart.x}px`;
-        this.marqueeEl.style.top = `${this.marqueeStart.y}px`;
-        this.marqueeEl.style.width = "0px";
-        this.marqueeEl.style.height = "0px";
-        return;
+          this.marqueeEl = this.elementsLayerEl.createDiv({
+            cls: "mni-marquee",
+          });
+          this.marqueeEl.style.left = `${this.marqueeStart.x}px`;
+          this.marqueeEl.style.top = `${this.marqueeStart.y}px`;
+          this.marqueeEl.style.width = "0px";
+          this.marqueeEl.style.height = "0px";
+          return;
+        }
       }
 
-      if (this.currentTool !== "pan" && this.activePointers.size === 1) {
+      if (
+        (this.currentTool === "rect" || this.currentTool === "arrow") &&
+        this.activePointers.size === 1
+      ) {
         const coords = this.getImageCoords(e.clientX, e.clientY);
         this.drawStartPoint = coords;
         this.drawStartSnap = null;
@@ -1183,6 +1562,18 @@ export class ProjectSchemaView {
         return;
       }
 
+      if (this.activePointers.size === 2) {
+        this.isPanning = false;
+        this.isDraggingEl = false;
+        this.isMarquee = false;
+        if (this.marqueeEl) {
+          this.marqueeEl.remove();
+          this.marqueeEl = null;
+        }
+        this.prevPinchDistance = this.getPinchDistance();
+        return;
+      }
+
       if (
         this.activePointers.size === 1 &&
         !this.isDraggingEl &&
@@ -1194,9 +1585,6 @@ export class ProjectSchemaView {
         target.classList.add("is-dragging");
         this.startPanPoint = { x: e.clientX, y: e.clientY };
         this.startTransform = { x: this.panX, y: this.panY };
-      } else if (this.activePointers.size === 2) {
-        this.isPanning = false;
-        this.prevPinchDistance = this.getPinchDistance();
       }
     });
 
@@ -1221,21 +1609,20 @@ export class ProjectSchemaView {
         const dx = current.x - this.dragStartPoint.x;
         const dy = current.y - this.dragStartPoint.y;
 
+        // Для картинок сохраняем пропорции, для прямоугольника и текста — свободно
+        const lockAspect = el.type === "image";
         const nextGeom = CanvasEngine.computeResizedGeometry(
           this.resizeStartBBox,
           this.activeResizeHandle,
           dx,
           dy,
-          el.type === "text"
+          lockAspect
         );
 
         el.x = nextGeom.x;
         el.y = nextGeom.y;
         el.width = nextGeom.width;
         el.height = nextGeom.height;
-        if (el.type === "text" && nextGeom.fontSize !== undefined) {
-          el.fontSize = nextGeom.fontSize;
-        }
 
         const dirtyIds = CanvasEngine.syncArrowsToBlocks(elements);
         dirtyIds.add(el.id);
@@ -1336,6 +1723,9 @@ export class ProjectSchemaView {
         const current = this.getImageCoords(e.clientX, e.clientY);
         const dx = current.x - this.dragStartPoint.x;
         const dy = current.y - this.dragStartPoint.y;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          pointerMoved = true;
+        }
         const dirtyIds = new Set<string>();
 
         this.selectedElementIds.forEach((id) => {
@@ -1344,22 +1734,22 @@ export class ProjectSchemaView {
           if (!el || !start) return;
 
           if (el.type === "arrow" && start.type === "arrow") {
-            el.x1 = start.x1 + dx;
-            el.y1 = start.y1 + dy;
-            el.x2 = start.x2 + dx;
-            el.y2 = start.y2 + dy;
+            el.x1 = Math.round(start.x1 + dx);
+            el.y1 = Math.round(start.y1 + dy);
+            el.x2 = Math.round(start.x2 + dx);
+            el.y2 = Math.round(start.y2 + dy);
             if (start.cx1 !== undefined && start.cy1 !== undefined) {
-              el.cx1 = start.cx1 + dx;
-              el.cy1 = start.cy1 + dy;
+              el.cx1 = Math.round(start.cx1 + dx);
+              el.cy1 = Math.round(start.cy1 + dy);
             }
             if (start.cx2 !== undefined && start.cy2 !== undefined) {
-              el.cx2 = start.cx2 + dx;
-              el.cy2 = start.cy2 + dy;
+              el.cx2 = Math.round(start.cx2 + dx);
+              el.cy2 = Math.round(start.cy2 + dy);
             }
             dirtyIds.add(el.id);
           } else if (el.type !== "arrow" && start.type === "box") {
-            el.x = start.x + dx;
-            el.y = start.y + dy;
+            el.x = Math.round(start.x + dx);
+            el.y = Math.round(start.y + dy);
             dirtyIds.add(el.id);
           }
         });
@@ -1432,6 +1822,7 @@ export class ProjectSchemaView {
       if (this.isResizing) {
         this.isResizing = false;
         this.activeResizeHandle = null;
+        this.syncBoardSurfaceBounds();
         this.updatePropertiesPanel();
         this.commitHistory();
         return;
@@ -1462,7 +1853,28 @@ export class ProjectSchemaView {
       if (this.isDraggingEl) {
         this.isDraggingEl = false;
         this.groupDragStartPositions.clear();
-        if (pointerMoved) this.commitHistory();
+        if (pointerMoved) {
+          this.syncBoardSurfaceBounds();
+          this.commitHistory();
+        } else {
+          // Поддержка двойного тапа на iPad / двойного клика по текстовому блоку для редактирования
+          const tappedTextEl = (e.target as HTMLElement | null)?.closest(
+            ".mni-el-text"
+          ) as HTMLElement | null;
+          const tappedId = tappedTextEl?.dataset.id ?? null;
+          const now = Date.now();
+          if (
+            tappedId &&
+            this.lastTapTextId === tappedId &&
+            now - this.lastTapTextAt < DOUBLE_TAP_MS
+          ) {
+            this.lastTapTextId = null;
+            this.spawnTextInput(e.clientX, e.clientY, tappedId);
+            return;
+          }
+          this.lastTapTextId = tappedId;
+          this.lastTapTextAt = now;
+        }
         return;
       }
 
@@ -1481,10 +1893,10 @@ export class ProjectSchemaView {
             const newRect: RectElement = {
               id: `rect_${Date.now()}`,
               type: "rect",
-              x: left,
-              y: top,
-              width,
-              height,
+              x: Math.round(left),
+              y: Math.round(top),
+              width: Math.round(width),
+              height: Math.round(height),
               stroke: "#e5a158",
               strokeWidth: 2,
               fill: "rgba(229, 161, 88, 0.1)",
@@ -1507,10 +1919,10 @@ export class ProjectSchemaView {
             const newArrow: ArrowElement = {
               id: `arrow_${Date.now()}`,
               type: "arrow",
-              x1: this.drawStartPoint.x,
-              y1: this.drawStartPoint.y,
-              x2: finalX,
-              y2: finalY,
+              x1: Math.round(this.drawStartPoint.x),
+              y1: Math.round(this.drawStartPoint.y),
+              x2: Math.round(finalX),
+              y2: Math.round(finalY),
               routing: "straight",
               startHead: "none",
               endHead: "arrow",
@@ -1532,6 +1944,8 @@ export class ProjectSchemaView {
         this.drawStartSnap = null;
 
         if (createdId) {
+          this.syncBoardSurfaceBounds();
+          this.setTool("select");
           this.selectedElementIds.clear();
           this.selectedElementIds.add(createdId);
           this.lastSelectedId = createdId;
@@ -1582,8 +1996,8 @@ export class ProjectSchemaView {
 
     let initialText = "";
     let coords = this.getImageCoords(clientX, clientY);
-    let initialFontSize = Math.max(12, Math.round(16 / this.scale));
-    let initialWidth = Math.max(140, Math.round(220 / this.scale));
+    let initialFontSize = 16;
+    let initialWidth = 240;
 
     if (editElementId) {
       const existing = list.find((el) => el.id === editElementId);
@@ -1598,9 +2012,9 @@ export class ProjectSchemaView {
     const wrapper = this.elementsLayerEl.createDiv({
       cls: "mni-el-input-wrapper",
     });
-    wrapper.style.left = `${coords.x}px`;
-    wrapper.style.top = `${coords.y}px`;
-    wrapper.style.width = `${initialWidth}px`;
+    wrapper.style.left = `${Math.round(coords.x)}px`;
+    wrapper.style.top = `${Math.round(coords.y)}px`;
+    wrapper.style.width = `${Math.round(initialWidth)}px`;
 
     const textarea = wrapper.createEl("textarea", {
       cls: "mni-text-input",
@@ -1614,7 +2028,7 @@ export class ProjectSchemaView {
 
     const syncHeight = () => {
       textarea.style.height = "auto";
-      const nextH = Math.max(40, textarea.scrollHeight);
+      const nextH = Math.max(42, textarea.scrollHeight);
       textarea.style.height = `${nextH}px`;
       wrapper.style.height = `${nextH}px`;
     };
@@ -1631,7 +2045,7 @@ export class ProjectSchemaView {
 
       const text = textarea.value.trim();
       const finalWidth = Math.max(60, wrapper.offsetWidth || initialWidth);
-      const finalHeight = Math.max(32, wrapper.offsetHeight || 42);
+      const finalHeight = Math.max(34, wrapper.offsetHeight || 42);
       wrapper.remove();
 
       if (cancelled) {
@@ -1653,16 +2067,16 @@ export class ProjectSchemaView {
         const existing = list.find((el) => el.id === editElementId);
         if (existing && existing.type === "text") {
           existing.text = text;
-          existing.width = finalWidth;
-          existing.height = finalHeight;
+          existing.width = Math.max(existing.width, finalWidth);
+          existing.height = Math.max(existing.height, finalHeight);
           targetId = existing.id;
         }
       } else {
         const newText: TextElement = {
           id: `text_${Date.now()}`,
           type: "text",
-          x: coords.x,
-          y: coords.y,
+          x: Math.round(coords.x),
+          y: Math.round(coords.y),
           width: finalWidth,
           height: finalHeight,
           text,
@@ -1674,6 +2088,15 @@ export class ProjectSchemaView {
       }
 
       this.setCurrentElements(list);
+      this.syncBoardSurfaceBounds();
+      this.setTool("select");
+      if (targetId) {
+        this.selectedElementIds.clear();
+        this.selectedElementIds.add(targetId);
+        this.lastSelectedId = targetId;
+      }
+      this.updateDeleteButton();
+      this.updatePropertiesPanel();
       this.commitHistory();
       this.renderElements(targetId);
     };
@@ -1751,7 +2174,7 @@ export class ProjectSchemaView {
       this.pasteHandler = undefined;
     }
     this.renderer?.destroy();
-    this.manager?.saveElements(this.elementsByMediaKey).catch(() => {});
+    void this.manager?.flushSave(this.elementsByMediaKey);
     this.container.empty();
   }
 }

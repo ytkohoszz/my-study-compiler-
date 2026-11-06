@@ -1,6 +1,6 @@
 /* C:\Users\user\dev\my-study-compiler\styles.css */
 /* ============================================================
-   Конструктор учебных проектов (v0.5.1+)
+   Конструктор учебных проектов (v0.6.0)
    Дерево | Граф | Интерактивные схемы и аннотации
    Фиксированный полноэкранный размер (96vw × 92dvh) во всех режимах
    ============================================================ */
@@ -1254,6 +1254,12 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   cursor: grab;
 }
 
+.mni-viewport.is-drag-over {
+  outline: 2px dashed #e5a158;
+  outline-offset: -4px;
+  background: rgba(229, 161, 88, 0.08);
+}
+
 .mni-viewport.is-pan-mode { cursor: grab; }
 .mni-viewport.is-rect-mode { cursor: crosshair; }
 .mni-viewport.is-arrow-mode { cursor: crosshair; }
@@ -1319,16 +1325,17 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   color: #e5a158;
 }
 
-.mni-tool-delete {
-  color: #ff5c5c !important;
-  font-size: 1.2rem !important;
-  font-weight: bold;
-}
-
+.mni-tool-layer.is-disabled,
 .mni-tool-delete.is-disabled {
   opacity: 0.22;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.mni-tool-delete {
+  color: #ff5c5c !important;
+  font-size: 1.2rem !important;
+  font-weight: bold;
 }
 
 @keyframes mni-pop-in {
@@ -1341,6 +1348,7 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   top: 0;
   left: 0;
   pointer-events: none;
+  z-index: 10;
 }
 
 .mni-el {
@@ -1354,7 +1362,8 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   animation: mni-pop-in 0.18s cubic-bezier(0.2, 0.85, 0.25, 1.15);
 }
 
-.is-select-mode .mni-el {
+.is-select-mode .mni-el,
+.is-pan-mode .mni-el {
   pointer-events: auto;
   cursor: move;
 }
@@ -1362,7 +1371,38 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
 .mni-el.is-selected {
   outline: 2px dashed #e5a158;
   outline-offset: 4px;
-  box-shadow: 0 0 0 4px rgba(229, 161, 88, 0.12);
+  box-shadow: 0 0 0 4px rgba(229, 161, 88, 0.14);
+}
+
+.mni-el-image {
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  background: rgba(14, 16, 20, 0.55);
+}
+
+.mni-el-image-content {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.mni-el-image-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 6px;
 }
 
 .mni-el-rect {
@@ -1377,13 +1417,14 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
 
 .mni-el-text {
   padding: 6px 10px;
-  background: rgba(18, 20, 26, 0.76);
+  background: rgba(18, 20, 26, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   line-height: 1.35;
   word-break: break-word;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -1429,7 +1470,7 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   top: 0;
   left: 0;
   pointer-events: none;
-  z-index: 10;
+  z-index: 20;
   overflow: visible;
 }
 
@@ -1691,6 +1732,10 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   .mni-tool-btn {
     width: 44px;
     height: 44px;
+  }
+
+  .mni-resize-handle {
+    r: 8px;
   }
 }
 

@@ -1,12 +1,12 @@
+// C:\Users\user\dev\my-study-compiler\src\canvas-renderer.ts
 import { Component, MarkdownRenderer } from "obsidian";
 import {
   ArrowElement,
   ArrowHandleType,
+  BoxCanvasElement,
   CanvasElement,
   Point,
-  RectElement,
   ResizeHandleType,
-  TextElement,
 } from "./types";
 import { CanvasEngine } from "./canvas-engine";
 
@@ -30,6 +30,7 @@ export class CanvasRenderer {
   private snapIndicatorEl: SVGCircleElement;
   private notePath: string;
   private onInternalLinkClick?: (linkHref: string, newLeaf: boolean) => void;
+  private resolveImageSrc?: (srcKey: string) => string;
 
   private htmlNodeMap: Map<string, HTMLElement> = new Map();
   private svgPathMap: Map<string, SVGPathElement> = new Map();
@@ -39,12 +40,14 @@ export class CanvasRenderer {
     elementsLayerEl: HTMLElement,
     svgLayerEl: SVGSVGElement,
     notePath: string,
-    onInternalLinkClick?: (linkHref: string, newLeaf: boolean) => void
+    onInternalLinkClick?: (linkHref: string, newLeaf: boolean) => void,
+    resolveImageSrc?: (srcKey: string) => string
   ) {
     this.elementsLayerEl = elementsLayerEl;
     this.svgLayerEl = svgLayerEl;
     this.notePath = notePath;
     this.onInternalLinkClick = onInternalLinkClick;
+    this.resolveImageSrc = resolveImageSrc;
 
     this.initSvgDefsAndLayers();
     this.arrowsGroupEl = this.svgLayerEl.querySelector(
@@ -272,7 +275,7 @@ export class CanvasRenderer {
   }
 
   private createBoxHtmlElement(
-    el: RectElement | TextElement,
+    el: BoxCanvasElement,
     isSelected: boolean,
     isFresh: boolean
   ): HTMLElement {
@@ -283,7 +286,24 @@ export class CanvasRenderer {
 
     this.applyBoxStyles(wrapper, el, isSelected);
 
-    if (el.type === "text") {
+    if (el.type === "image") {
+      const resolvedSrc = this.resolveImageSrc
+        ? this.resolveImageSrc(el.srcKey)
+        : el.srcKey;
+      if (resolvedSrc) {
+        const img = document.createElement("img");
+        img.className = "mni-el-image-content";
+        img.src = resolvedSrc;
+        img.alt = el.srcKey;
+        img.draggable = false;
+        wrapper.appendChild(img);
+      } else {
+        const fallback = document.createElement("div");
+        fallback.className = "mni-el-image-fallback";
+        fallback.textContent = `🖼 ${el.srcKey}`;
+        wrapper.appendChild(fallback);
+      }
+    } else if (el.type === "text") {
       const comp = new Component();
       comp.load();
       this.mdComponents.set(el.id, comp);
@@ -308,7 +328,7 @@ export class CanvasRenderer {
 
   private applyBoxStyles(
     node: HTMLElement,
-    el: RectElement | TextElement,
+    el: BoxCanvasElement,
     isSelected: boolean
   ): void {
     node.classList.toggle("is-selected", isSelected);
@@ -378,7 +398,7 @@ export class CanvasRenderer {
     createEndpointHandle(el.x2, el.y2, "end");
   }
 
-  private appendBoxResizeHandles(el: RectElement | TextElement): void {
+  private appendBoxResizeHandles(el: BoxCanvasElement): void {
     for (const h of RESIZE_HANDLES) {
       let cx = el.x;
       let cy = el.y;
@@ -392,7 +412,7 @@ export class CanvasRenderer {
       const circle = document.createElementNS(SVG_NS, "circle");
       circle.setAttribute("cx", String(cx));
       circle.setAttribute("cy", String(cy));
-      circle.setAttribute("r", "5.5");
+      circle.setAttribute("r", "6");
       circle.classList.add("mni-resize-handle");
       circle.dataset.handle = h;
       circle.dataset.id = el.id;

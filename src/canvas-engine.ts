@@ -1,10 +1,11 @@
+// C:\Users\user\dev\my-study-compiler\src\canvas-engine.ts
 import {
   AnchorType,
   ArrowElement,
   BoundingBox,
+  BoxCanvasElement,
   CanvasElement,
   Point,
-  RectElement,
   ResizeHandleType,
   ResizeSnapshot,
   SnapAnchorMatch,
@@ -67,16 +68,16 @@ export class CanvasEngine {
     return { scale: nextScale, panX, panY };
   }
 
-  static getAnchorPoint(rect: RectElement, anchor: AnchorType): Point {
+  static getAnchorPoint(box: BoxCanvasElement, anchor: AnchorType): Point {
     switch (anchor) {
       case "top":
-        return { x: rect.x + rect.width / 2, y: rect.y };
+        return { x: box.x + box.width / 2, y: box.y };
       case "bottom":
-        return { x: rect.x + rect.width / 2, y: rect.y + rect.height };
+        return { x: box.x + box.width / 2, y: box.y + box.height };
       case "left":
-        return { x: rect.x, y: rect.y + rect.height / 2 };
+        return { x: box.x, y: box.y + box.height / 2 };
       case "right":
-        return { x: rect.x + rect.width, y: rect.y + rect.height / 2 };
+        return { x: box.x + box.width, y: box.y + box.height / 2 };
     }
   }
 
@@ -89,7 +90,7 @@ export class CanvasEngine {
     let bestMatch: SnapAnchorMatch | null = null;
 
     for (const el of elements) {
-      if (el.type !== "rect") continue;
+      if (el.type === "arrow") continue;
       for (const anchor of ANCHOR_SIDES) {
         const pt = this.getAnchorPoint(el, anchor);
         const dist = Math.hypot(point.x - pt.x, point.y - pt.y);
@@ -105,11 +106,11 @@ export class CanvasEngine {
 
   static syncArrowsToBlocks(elements: CanvasElement[]): Set<string> {
     const updatedArrowIds = new Set<string>();
-    const rectMap = new Map<string, RectElement>();
+    const boxMap = new Map<string, BoxCanvasElement>();
 
     for (const el of elements) {
-      if (el.type === "rect") {
-        rectMap.set(el.id, el);
+      if (el.type !== "arrow") {
+        boxMap.set(el.id, el);
       }
     }
 
@@ -118,7 +119,7 @@ export class CanvasEngine {
       let changed = false;
 
       if (el.startElementId && el.startAnchor) {
-        const target = rectMap.get(el.startElementId);
+        const target = boxMap.get(el.startElementId);
         if (target) {
           const pt = this.getAnchorPoint(target, el.startAnchor);
           const dx = pt.x - el.x1;
@@ -136,7 +137,7 @@ export class CanvasEngine {
       }
 
       if (el.endElementId && el.endAnchor) {
-        const target = rectMap.get(el.endElementId);
+        const target = boxMap.get(el.endElementId);
         if (target) {
           const pt = this.getAnchorPoint(target, el.endAnchor);
           const dx = pt.x - el.x2;
@@ -235,15 +236,22 @@ export class CanvasEngine {
     );
   }
 
+  /**
+   * Вычисляет геометрию при изменении размера:
+   * - для картинок (`lockAspect = true`) строго сохраняет пропорции (aspectRatio);
+   * - для прямоугольников и текста (`lockAspect = false`) меняет ширину и высоту свободно.
+   */
   static computeResizedGeometry(
     start: ResizeSnapshot,
     handle: ResizeHandleType,
     dx: number,
     dy: number,
-    isTextElement: boolean
-  ): { x: number; y: number; width: number; height: number; fontSize?: number } {
+    lockAspect = false
+  ): { x: number; y: number; width: number; height: number } {
     const rightEdge = start.x + start.w;
     const bottomEdge = start.y + start.h;
+    const centerX = start.x + start.w / 2;
+    const centerY = start.y + start.h / 2;
 
     let x = start.x;
     let y = start.y;
@@ -264,24 +272,35 @@ export class CanvasEngine {
       height = Math.max(MIN_BOX_HEIGHT, start.h + dy);
     }
 
-    if (isTextElement && handle.length === 2) {
-      const scaleX = width / Math.max(1, start.w);
-      const scaleY = height / Math.max(1, start.h);
-      const uniformScale = Math.max(0.4, Math.max(scaleX, scaleY));
+    if (lockAspect) {
+      const ratio =
+        start.aspectRatio && start.aspectRatio > 0.01
+          ? start.aspectRatio
+          : start.w / Math.max(1, start.h);
 
-      const nextFontSize = Math.max(
-        10,
-        Math.min(96, Math.round(start.fontSize * uniformScale))
-      );
-      width = Math.max(MIN_BOX_WIDTH, Math.round(start.w * uniformScale));
-      height = Math.max(MIN_BOX_HEIGHT, Math.round(start.h * uniformScale));
-
-      if (handle.includes("w")) x = rightEdge - width;
-      if (handle.includes("n")) y = bottomEdge - height;
-
-      return { x, y, width, height, fontSize: nextFontSize };
+      if (handle.length === 2) {
+        const scaleW = width / Math.max(1, start.w);
+        const scaleH = height / Math.max(1, start.h);
+        const s =
+          Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
+        width = Math.max(MIN_BOX_WIDTH, Math.round(start.w * s));
+        height = Math.max(MIN_BOX_HEIGHT, Math.round(width / ratio));
+        if (handle.includes("w")) x = rightEdge - width;
+        if (handle.includes("n")) y = bottomEdge - height;
+      } else if (handle === "e" || handle === "w") {
+        height = Math.max(MIN_BOX_HEIGHT, Math.round(width / ratio));
+        y = Math.round(centerY - height / 2);
+      } else if (handle === "n" || handle === "s") {
+        width = Math.max(MIN_BOX_WIDTH, Math.round(height * ratio));
+        x = Math.round(centerX - width / 2);
+      }
     }
 
-    return { x, y, width, height };
+    return {
+      x: Math.round(x),
+      y: Math.round(y),
+      width: Math.round(width),
+      height: Math.round(height),
+    };
   }
 }

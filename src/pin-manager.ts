@@ -1,7 +1,9 @@
+// C:\Users\user\dev\my-study-compiler\src\pin-manager.ts
 import { App, TFile, Notice } from "obsidian";
 import {
   ArrowElement,
   CanvasElement,
+  ImageElement,
   KEYS,
   NodePin,
   RectElement,
@@ -22,6 +24,8 @@ export class AnnotationManager {
   private app: App;
   private file: TFile;
   private saveQueue: Promise<void> = Promise.resolve();
+  private debounceTimer: number | null = null;
+  private pendingMap: ElementsMap | null = null;
 
   constructor(app: App, file: TFile) {
     this.app = app;
@@ -29,7 +33,50 @@ export class AnnotationManager {
   }
 
   public setFile(file: TFile): void {
+    if (this.file.path !== file.path && this.pendingMap) {
+      void this.flushSave();
+    }
     this.file = file;
+  }
+
+  private cloneElementsMap(map: ElementsMap): ElementsMap {
+    const cloned: ElementsMap = new Map();
+    for (const [k, list] of map.entries()) {
+      cloned.set(
+        k,
+        list.map((el) => ({ ...el }))
+      );
+    }
+    return cloned;
+  }
+
+  public scheduleSave(elementsMap: ElementsMap, delayMs = 350): void {
+    this.pendingMap = this.cloneElementsMap(elementsMap);
+    if (this.debounceTimer !== null) {
+      window.clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = window.setTimeout(() => {
+      this.debounceTimer = null;
+      const toSave = this.pendingMap;
+      this.pendingMap = null;
+      if (toSave) {
+        void this.saveElements(toSave);
+      }
+    }, delayMs);
+  }
+
+  public async flushSave(elementsMap?: ElementsMap): Promise<void> {
+    if (this.debounceTimer !== null) {
+      window.clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    const mapToSave = elementsMap ?? this.pendingMap;
+    this.pendingMap = null;
+    if (mapToSave) {
+      await this.saveElements(mapToSave);
+    } else {
+      await this.saveQueue;
+    }
   }
 
   async loadElements(
@@ -59,7 +106,31 @@ export class AnnotationManager {
         if (!rawEl || typeof rawEl !== "object") continue;
         const el = rawEl as CanvasElement;
 
-        if (el.type === "arrow") {
+        if (el.type === "image") {
+          const rawImg = el as ImageElement;
+          const srcKey =
+            typeof rawImg.srcKey === "string" ? rawImg.srcKey.trim() : "";
+          if (!srcKey) continue;
+          const w = Math.max(20, roundFinite(rawImg.width, 480));
+          const h = Math.max(20, roundFinite(rawImg.height, 320));
+          const ratio =
+            isFiniteNumber(rawImg.aspectRatio) && rawImg.aspectRatio > 0
+              ? Number(rawImg.aspectRatio.toFixed(4))
+              : Number((w / h).toFixed(4));
+          const imageEl: ImageElement = {
+            id:
+              rawImg.id ||
+              `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            type: "image",
+            x: roundFinite(rawImg.x, 0),
+            y: roundFinite(rawImg.y, 0),
+            width: w,
+            height: h,
+            srcKey,
+            aspectRatio: ratio,
+          };
+          typedElements.push(imageEl);
+        } else if (el.type === "arrow") {
           const arrow: ArrowElement = {
             ...el,
             x1: roundFinite(el.x1, 0),
@@ -158,6 +229,25 @@ export class AnnotationManager {
       if (list.length === 0) continue;
 
       rawToSave[imgName] = list.map((el): CanvasElement => {
+        if (el.type === "image") {
+          const w = Math.max(20, roundFinite(el.width, 200));
+          const h = Math.max(20, roundFinite(el.height, 150));
+          const savedImg: ImageElement = {
+            id: el.id,
+            type: "image",
+            x: roundFinite(el.x),
+            y: roundFinite(el.y),
+            width: w,
+            height: h,
+            srcKey: el.srcKey,
+            aspectRatio:
+              isFiniteNumber(el.aspectRatio) && el.aspectRatio > 0
+                ? Number(el.aspectRatio.toFixed(4))
+                : Number((w / h).toFixed(4)),
+          };
+          return savedImg;
+        }
+
         if (el.type === "arrow") {
           const savedArrow: ArrowElement = {
             id: el.id,
