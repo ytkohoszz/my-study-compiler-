@@ -1,5 +1,5 @@
 // C:\Users\user\dev\my-study-compiler\src\media.ts
-import { App, TFile, normalizePath } from "obsidian";
+import { App, TFile, TFolder, normalizePath } from "obsidian";
 import { KEYS, StudyMediaItem } from "./types";
 
 export const IMAGE_EXTENSIONS = new Set([
@@ -402,19 +402,33 @@ export async function saveBinaryImageToVault(
   let cur = "";
   for (const part of folder.split("/").filter(Boolean)) {
     cur = cur ? `${cur}/${part}` : part;
-    if (!app.vault.getAbstractFileByPath(cur)) {
+    const existing = app.vault.getAbstractFileByPath(cur);
+    if (existing instanceof TFolder) continue;
+    if (existing) {
+      throw new Error(`Путь папки вложений занят файлом: ${cur}`);
+    }
+    if (!existing) {
       try {
         await app.vault.createFolder(cur);
-      } catch {
-        // папка уже существует
+      } catch (error: unknown) {
+        if (!(app.vault.getAbstractFileByPath(cur) instanceof TFolder)) {
+          throw error;
+        }
       }
     }
   }
 
   const safeBase =
     noteFile.basename.replace(/[\\/:*?"<>|]/g, "").slice(0, 32) || "scheme";
-  const fileName = `${safeBase}_${Date.now()}.${ext}`;
-  const fullPath = normalizePath(`${folder}/${fileName}`);
+  const suffix = Math.random().toString(36).slice(2, 8);
+  let fullPath = normalizePath(`${folder}/${safeBase}_${Date.now()}_${suffix}.${ext}`);
+  let attempt = 1;
+  while (app.vault.getAbstractFileByPath(fullPath)) {
+    fullPath = normalizePath(
+      `${folder}/${safeBase}_${Date.now()}_${suffix}_${attempt}.${ext}`
+    );
+    attempt++;
+  }
 
   return await app.vault.createBinary(fullPath, buffer);
 }

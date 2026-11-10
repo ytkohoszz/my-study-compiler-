@@ -1,4 +1,4 @@
-/* C:\Users\user\dev\my-study-compiler\styles.css */
+﻿/* C:\Users\user\dev\my-study-compiler\styles.css */
 /* ============================================================
    Конструктор учебных проектов
    Дерево | Граф | Интерактивные схемы и аннотации
@@ -1184,7 +1184,7 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
 .my-sc-schema-empty-box,
 .my-sc-schema-placeholder,
 .my-sc-schema-no-boards,
-.my-sc-schema-host > :not(.my-sc-schema-header):not(.my-sc-schema-url-bar):not(.my-sc-schema-stage) {
+.my-sc-schema-host > :not(.my-sc-schema-header):not(.my-sc-schema-url-bar):not(.my-sc-schema-stage):not(.my-sc-canvas-project-root) {
   display: none !important;
 }
 
@@ -2032,5 +2032,804 @@ button.my-sc-zoom-pct-btn:hover {
   .my-sc-type-name,
   .my-sc-graph-ctrl-label {
     display: none;
+  }
+}
+/* ============================================================
+   ItemView Layout (my-study-compiler-workspace), Popout & Fullscreen
+   ============================================================ */
+.workspace-leaf-content[data-type="my-study-compiler-workspace"] {
+padding: 0 !important;
+overflow: hidden !important;
+}
+
+.workspace-leaf-content[data-type="my-study-compiler-workspace"] > .view-content.my-sc-view-content {
+padding: 0 !important;
+margin: 0 !important;
+width: 100% !important;
+height: 100% !important;
+max-width: 100% !important;
+max-height: 100% !important;
+overflow: hidden !important;
+display: flex !important;
+flex-direction: column !important;
+}
+
+.my-sc-workspace-root {
+--my-sc-s1: 4px;
+--my-sc-s2: 8px;
+--my-sc-s3: 12px;
+--my-sc-s4: 16px;
+--my-sc-fs: 0.9rem;
+--my-sc-fs-sm: 0.78rem;
+--my-sc-fs-xs: 0.72rem;
+--my-sc-hit: 32px;
+--my-sc-row-h: 36px;
+--my-sc-rail: var(--background-modifier-border);
+}
+
+.my-sc-workspace-root.my-sc-modal {
+position: relative;
+display: flex !important;
+flex-direction: column !important;
+flex: 1 1 0% !important;
+width: 100% !important;
+height: 100% !important;
+min-width: 0 !important;
+min-height: 0 !important;
+max-height: 100% !important;
+margin: 0 !important;
+padding: var(--my-sc-s3) var(--my-sc-s4) !important;
+background: var(--background-primary);
+overflow: hidden !important;
+gap: var(--my-sc-s2);
+outline: none !important;
+box-sizing: border-box !important;
+}
+
+.my-sc-workspace-root:fullscreen,
+.my-sc-workspace-root.is-fullscreen {
+width: 100vw !important;
+height: 100vh !important;
+height: 100dvh !important;
+max-width: 100vw !important;
+max-height: 100dvh !important;
+padding: var(--my-sc-s3) var(--my-sc-s4) !important;
+background: var(--background-primary) !important;
+}
+
+.my-sc-workspace-stage {
+position: relative;
+display: flex;
+flex-direction: column;
+flex: 1 1 0%;
+min-width: 0;
+min-height: 0;
+width: 100%;
+height: 100%;
+overflow: hidden;
+}
+
+.my-sc-workspace-root.is-focus-mode {
+padding: var(--my-sc-s2) !important;
+}
+
+.my-sc-workspace-root.is-focus-mode > .my-sc-project-bar,
+.my-sc-workspace-root.is-focus-mode > .my-sc-search-panel,
+.my-sc-workspace-root.is-focus-mode > .my-sc-crumbs-bar,
+.my-sc-workspace-root.is-focus-mode > .my-sc-form-wrap {
+display: none !important;
+}
+
+.my-sc-focus-floating-bar {
+position: absolute;
+top: 12px;
+right: 12px;
+z-index: 60;
+display: inline-flex;
+align-items: center;
+gap: 6px;
+padding: 4px 6px;
+border-radius: 10px;
+background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+border: 1px solid var(--background-modifier-border);
+box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+backdrop-filter: blur(8px);
+}
+
+.my-sc-focus-floating-bar.is-hidden {
+display: none !important;
+}
+
+.my-sc-workspace-root .my-sc-top-row {
+padding-right: 0 !important;
+}
+
+.my-sc-top-actions {
+display: inline-flex;
+align-items: center;
+gap: 6px;
+flex-shrink: 0;
+}
+
+button.my-sc-icon-btn.is-active {
+color: var(--interactive-accent) !important;
+border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border)) !important;
+background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary)) !important;
+}
+
+.my-sc-canvas-project-root {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: var(--my-sc-s2, 8px);
+}
+
+.my-sc-canvas-project-header {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.msc-tree-select {
+  position: relative;
+  z-index: 20;
+  flex: 0 1 440px;
+  min-width: min(280px, 100%);
+  max-width: min(560px, 48vw);
+}
+
+.msc-tree-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--my-sc-hit, 32px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-weight: 600;
+  text-align: left;
+}
+
+.msc-tree-trigger:hover,
+.msc-tree-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border));
+  background: var(--background-modifier-hover);
+}
+
+.msc-tree-trigger-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msc-tree-trigger-icon {
+  flex: 0 0 16px;
+  color: var(--text-muted);
+  text-align: center;
+  transition: transform 140ms ease;
+}
+
+.msc-tree-trigger-icon.is-open {
+  transform: rotate(180deg);
+}
+
+.msc-tree-popover {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(580px, calc(100vw - 24px));
+  max-height: 70vh;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-secondary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+}
+
+.msc-tree-popover.is-hidden {
+  display: none !important;
+}
+
+.msc-tree-list {
+  max-height: 70vh;
+  padding-bottom: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent;
+}
+
+.msc-tree-list:focus {
+  outline: none;
+}
+
+.msc-tree-node {
+  min-width: 0;
+}
+
+.msc-tree-node[data-depth="1"] {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.msc-tree-children > .msc-tree-node[data-depth="1"]:first-child {
+  margin-top: 8px;
+}
+
+.msc-tree-children {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--msc-branch-color) 35%, transparent);
+}
+
+.msc-tree-row {
+  --msc-branch-color: var(--interactive-accent);
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 31px;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 2px;
+  padding: 4px 8px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.msc-tree-node[data-branch-color="root"] {
+  --msc-branch-color: #599ed6;
+}
+
+.msc-tree-node[data-branch-color="0"] {
+  --msc-branch-color: #599ed6;
+}
+
+.msc-tree-node[data-branch-color="1"] {
+  --msc-branch-color: #9c83e8;
+}
+
+.msc-tree-node[data-branch-color="2"] {
+  --msc-branch-color: #4aab80;
+}
+
+.msc-tree-node[data-branch-color="3"] {
+  --msc-branch-color: #e5a158;
+}
+
+.msc-tree-node[data-branch-color="4"] {
+  --msc-branch-color: #e06c75;
+}
+
+.msc-tree-node[data-branch-color="5"] {
+  --msc-branch-color: #69b5aa;
+}
+
+.msc-tree-row[data-depth="0"] {
+  min-height: 34px;
+  background: color-mix(in srgb, var(--msc-branch-color) 20%, transparent);
+}
+
+.msc-tree-row.is-branch {
+  background: color-mix(in srgb, var(--msc-branch-color) 10%, transparent);
+}
+
+.msc-tree-row.is-leaf {
+  background: transparent;
+}
+
+.msc-tree-row:hover {
+  background: color-mix(in srgb, var(--msc-branch-color) 8%, transparent);
+}
+
+.msc-tree-row.is-selected,
+.msc-tree-row[aria-selected="true"] {
+  border-left-color: var(--msc-branch-color);
+  background: color-mix(in srgb, var(--msc-branch-color) 18%, transparent);
+  color: var(--text-normal);
+}
+
+.msc-tree-row.is-focused {
+  outline: 2px solid color-mix(in srgb, var(--msc-branch-color) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.msc-tree-row[data-depth="0"] .msc-tree-title {
+  font-size: calc(var(--font-ui-small, 0.85rem) + 1px);
+  font-weight: 700;
+}
+
+.msc-tree-row.is-branch .msc-tree-title {
+  font-weight: 650;
+}
+
+.msc-tree-row.is-leaf .msc-tree-title {
+  color: var(--text-normal);
+  font-weight: 400;
+}
+
+.msc-tree-expander {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--msc-branch-color) 18%, transparent);
+  color: var(--msc-branch-color);
+  cursor: pointer;
+}
+
+.msc-tree-expander:hover {
+  background: color-mix(in srgb, var(--msc-branch-color) 28%, transparent);
+}
+
+.msc-tree-expander-glyph {
+  display: block;
+  font-size: 10px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+
+.msc-tree-expander.is-collapsed .msc-tree-expander-glyph {
+  transform: rotate(-90deg);
+}
+
+.msc-tree-leaf-dot {
+  width: 5px;
+  height: 5px;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--msc-branch-color);
+}
+
+.msc-tree-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msc-tree-count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--msc-branch-color) 8%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .msc-tree-select {
+    flex-basis: 100%;
+    max-width: min(480px, 80vw);
+  }
+
+  .msc-tree-popover {
+    width: min(520px, calc(100vw - 24px));
+  }
+}
+
+.my-sc-canvas-project-board-actions {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.my-sc-canvas-slide {
+  max-width: 180px;
+  min-height: var(--my-sc-hit, 32px);
+  overflow: hidden;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-sc-canvas-slide.is-active {
+  border-color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+  color: var(--text-normal);
+}
+
+.my-sc-canvas-board-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: 220px;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-secondary);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+}
+
+.my-sc-canvas-board-menu.is-hidden {
+  display: none !important;
+}
+
+.my-sc-canvas-board-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+}
+
+.my-sc-canvas-board-menu-item:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+}
+
+.my-sc-canvas-board-menu-item:disabled {
+  opacity: 0.45;
+}
+
+.my-sc-canvas-project-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: var(--background-primary);
+}
+
+.my-sc-canvas-editor-host {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.my-sc-canvas-editor-host.is-hidden,
+.my-sc-canvas-empty.is-hidden {
+  display: none !important;
+}
+
+.my-sc-canvas-editor-host.is-loading {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.my-sc-canvas-editor {
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background-primary);
+  outline: none;
+}
+
+.my-sc-canvas-toolbar {
+  z-index: 2;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.my-sc-canvas-tool,
+.my-sc-canvas-control,
+.my-sc-canvas-lock,
+.my-sc-canvas-menu-trigger {
+  display: inline-flex;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.my-sc-canvas-tool:hover,
+.my-sc-canvas-control:hover,
+.my-sc-canvas-lock:hover,
+.my-sc-canvas-menu-trigger:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.my-sc-canvas-tool.is-active,
+.my-sc-canvas-lock.is-active {
+  border-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-secondary));
+  color: var(--interactive-accent);
+}
+
+.my-sc-canvas-workspace {
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.my-sc-canvas-properties {
+  z-index: 3;
+  display: flex;
+  width: 250px;
+  min-width: 220px;
+  flex: 0 0 250px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+  border-right: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.my-sc-canvas-properties.is-hidden {
+  display: none !important;
+}
+
+.my-sc-canvas-properties h4 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.my-sc-canvas-property {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.my-sc-canvas-property input,
+.my-sc-canvas-property select {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 6px;
+}
+
+.my-sc-canvas-property-check {
+  flex-direction: row;
+  align-items: center;
+}
+
+.my-sc-canvas-property-check input {
+  width: auto;
+  min-height: auto;
+}
+
+.my-sc-canvas-property-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.my-sc-canvas-property-actions .my-sc-canvas-control,
+.my-sc-canvas-property-actions .my-sc-canvas-project-button {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+}
+
+.my-sc-canvas-wrap {
+  position: relative;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #16181d;
+  touch-action: none;
+}
+
+.my-sc-canvas-surface {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.my-sc-canvas-hint {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  left: 50%;
+  max-width: calc(100% - 24px);
+  transform: translateX(-50%);
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 17, 22, 0.72);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  pointer-events: none;
+  text-align: center;
+}
+
+.my-sc-canvas-controls {
+  position: absolute;
+  z-index: 4;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.my-sc-canvas-controls-left,
+.my-sc-canvas-controls-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 9px;
+  background: var(--background-secondary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+.my-sc-canvas-zoom-label {
+  width: auto;
+  min-width: 54px;
+  padding: 0 5px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.my-sc-canvas-menu {
+  position: absolute;
+  z-index: 6;
+  bottom: 58px;
+  left: 10px;
+  pointer-events: auto;
+}
+
+.my-sc-canvas-menu-panel {
+  display: flex;
+  width: 260px;
+  max-height: min(70vh, 640px);
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-secondary);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+}
+
+.my-sc-canvas-menu-panel.is-hidden {
+  display: none !important;
+}
+
+.my-sc-canvas-menu-item,
+.my-sc-canvas-menu-toggle {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+}
+
+.my-sc-canvas-menu-item:hover,
+.my-sc-canvas-menu-toggle:hover {
+  background: var(--background-modifier-hover);
+}
+
+.my-sc-canvas-menu-item svg {
+  width: 16px;
+  height: 16px;
+}
+
+.my-sc-canvas-menu-toggle input {
+  margin: 0;
+}
+
+.my-sc-canvas-text-editor {
+  position: absolute;
+  z-index: 10;
+  box-sizing: border-box;
+  resize: none;
+  padding: 6px 8px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 4px;
+  outline: 2px solid color-mix(in srgb, var(--interactive-accent) 26%, transparent);
+  color: var(--text-normal);
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.my-sc-canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.my-sc-canvas-empty .my-sc-canvas-project-button {
+  width: auto;
+  min-width: 120px;
+  padding: 0 12px;
+}
+
+@media (max-width: 720px) {
+  .my-sc-canvas-toolbar {
+    justify-content: flex-start;
+  }
+
+  .my-sc-canvas-properties {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(250px, 72vw);
+    min-width: 0;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.28);
+  }
+
+  .my-sc-canvas-controls {
+    right: 6px;
+    bottom: 6px;
+    left: 6px;
   }
 }

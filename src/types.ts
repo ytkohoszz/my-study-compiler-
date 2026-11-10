@@ -1,4 +1,3 @@
-// C:\Users\user\dev\my-study-compiler\src\types.ts
 import type { TFile } from "obsidian";
 
 export const KEYS = {
@@ -55,12 +54,13 @@ export const LEGACY_MATERIAL_TYPES: readonly string[] = [
 ];
 
 export type ProjectGroupTab = "active" | "completed";
-
 export type QuickFilterMode = "all" | "orphans";
-
 export type DeadlineTone = "none" | "far" | "soon" | "overdue";
-
 export type CustomPropValueKind = "auto" | "list";
+export type DefaultOpenLocation = "tab" | "current" | "sidebar" | "window";
+export type ViewMode = "tree" | "graph" | "schema";
+
+export const VIEW_TYPE_STUDY_COMPILER = "my-study-compiler-workspace";
 
 export interface CustomPropertyDraft {
   id: string;
@@ -85,10 +85,39 @@ export interface Point {
   y: number;
 }
 
+export interface CameraState {
+  scale: number;
+  panX: number;
+  panY: number;
+}
+
+export interface OpenOptions {
+  rootPath?: string;
+  addUnder?: string;
+  schemaNotePath?: string;
+  activeCanvasKey?: string;
+  viewMode?: ViewMode;
+  location?: DefaultOpenLocation;
+}
+
+export interface StudyCompilerViewState {
+  [key: string]: unknown;
+  projectPath?: string;
+  focusBranchPath?: string;
+  viewMode?: ViewMode;
+  schemaNotePath?: string;
+  activeCanvasKey?: string;
+  camera?: CameraState | null;
+  graphCamera?: CameraState | null;
+  isFocusMode?: boolean;
+  addUnder?: string;
+}
+
 export interface StudyCompilerSettings {
   studyAreaName: string;
   newNoteFolder: string;
   mediaFolder: string;
+  defaultOpenLocation: DefaultOpenLocation;
   projectGroupTab: ProjectGroupTab;
   lastUsedMaterialType: string;
   autoInheritFromLinks: boolean;
@@ -106,6 +135,7 @@ export const DEFAULT_SETTINGS: StudyCompilerSettings = {
   studyAreaName: "Учёба",
   newNoteFolder: "Знания",
   mediaFolder: "Знания/Вложения",
+  defaultOpenLocation: "tab",
   projectGroupTab: "active",
   lastUsedMaterialType: "Термин",
   autoInheritFromLinks: true,
@@ -135,27 +165,18 @@ export interface WorkMetaBadge {
   label: string;
 }
 
-// ============================================================
-// ТИПЫ МЕДИА И ИНТЕРАКТИВНЫХ СХЕМ (ИНТЕГРАЦИЯ В КОНСТРУКТОР)
-// ============================================================
-
 export type StudyMediaKind = "vault" | "external" | "board";
 
 export interface StudyMediaItem {
-  /** Ключ холста в YAML `схемы_аннотации[key]` */
   key: string;
-  /** Отображаемое название на переключателе холстов */
   label: string;
-  /** Пользовательское название холста (если было явно задано переименованием) */
   customTitle?: string;
-  /** Ресурсный URL фонового изображения (для старых одиночных холстов до миграции) */
   src: string;
   kind: StudyMediaKind;
   file?: TFile;
 }
 
 export type ToolType = "pan" | "select" | "text" | "rect" | "arrow";
-
 export type ResizeHandleType = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 export type ArrowHandleType = "start" | "end" | "curve1" | "curve2";
 
@@ -177,9 +198,7 @@ export interface ImageElement extends CanvasElementBase {
   y: number;
   width: number;
   height: number;
-  /** Имя/путь файла в хранилище или внешний URL картинки */
   srcKey: string;
-  /** Соотношение сторон width / height для сохранения пропорций */
   aspectRatio?: number;
 }
 
@@ -220,13 +239,11 @@ export interface ArrowElement extends CanvasElementBase {
   cy1?: number;
   cx2?: number;
   cy2?: number;
-
   routing: ArrowRouting;
   startHead: ArrowHead;
   endHead: ArrowHead;
   stroke: string;
   strokeWidth: number;
-
   startElementId?: string;
   startAnchor?: AnchorType;
   endElementId?: string;
@@ -234,14 +251,11 @@ export interface ArrowElement extends CanvasElementBase {
 }
 
 export type CanvasElement = ImageElement | TextElement | RectElement | ArrowElement;
-
 export type BoxCanvasElement = ImageElement | TextElement | RectElement;
 
 export interface CanvasBoardData {
-  /** Пользовательское имя холста; если не задано — в YAML не пишется */
   title?: string;
   elements: CanvasElement[];
-  /** Флаг скрытия удалённого холста, если исходная картинка осталась в тексте заметки */
   deleted?: boolean;
 }
 
@@ -285,10 +299,6 @@ export interface NodePin {
   y: number;
   text: string;
 }
-
-// ============================================================
-// МОДЕЛЬ УЗЛА ДЕРЕВА И ГРАФА
-// ============================================================
 
 export interface StudyNoteItem {
   file: TFile;
