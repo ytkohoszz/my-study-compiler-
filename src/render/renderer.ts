@@ -11,7 +11,9 @@ import {
 	ROTATE_HANDLE_OFFSET_PX,
 	aabbIntersects,
 	getElementAABB,
+	getElementFrameBox,
 	getSelectionAABB,
+	getSelectionFrameElements,
 	getTransformHandles,
 	rotatePoint,
 } from "../hit/hitTest";
@@ -25,6 +27,8 @@ export interface RenderFramePayload {
 	snapGuides: readonly SnapGuideLine[];
 	bindingHighlightElement: SceneElement | null;
 	eraserTrail: readonly ScenePoint[];
+	/** Пока элемент создаётся (рисование штриха, протяжка фигуры), рамка и ручки выделения скрыты. */
+	isDrawing: boolean;
 }
 
 /**
@@ -187,6 +191,7 @@ export class SceneCanvasRenderer {
 				},
 				boundTextElement: boundText,
 				isEditingText: isEditing,
+				theme,
 			});
 		}
 
@@ -221,11 +226,15 @@ export class SceneCanvasRenderer {
 			ctx.restore();
 		}
 
-		// 7. Рамка и ручки выделенных элементов
-		const selectedElements = scene.elements.filter(
-			(el) => !el.isDeleted && selectedIds.has(el.id)
+		// 7. Рамка и ручки выделенных элементов (скрыты, пока элемент создаётся или правится его текст)
+		const selectedElements = getSelectionFrameElements(
+			scene.elements.filter((el) => !el.isDeleted && selectedIds.has(el.id))
 		);
-		if (selectedElements.length > 0) {
+		if (
+			selectedElements.length > 0 &&
+			!payload.isDrawing &&
+			editingElementId === null
+		) {
 			this.drawSelectionOverlay(ctx, selectedElements, safeZoom);
 		}
 
@@ -319,8 +328,9 @@ export class SceneCanvasRenderer {
 		if (selectedElements.length === 1) {
 			const el = selectedElements[0]!;
 			if (el.type !== "arrow" && el.type !== "line") {
-				const cx = el.x + el.width / 2;
-				const cy = el.y + el.height / 2;
+				const box = getElementFrameBox(el);
+				const cx = box.x + box.width / 2;
+				const cy = box.y + box.height / 2;
 				ctx.save();
 				if (el.angle) {
 					ctx.translate(cx, cy);
@@ -329,16 +339,16 @@ export class SceneCanvasRenderer {
 				}
 				const pad = 4 * inv;
 				ctx.strokeRect(
-					el.x - pad,
-					el.y - pad,
-					el.width + pad * 2,
-					el.height + pad * 2
+					box.x - pad,
+					box.y - pad,
+					box.width + pad * 2,
+					box.height + pad * 2
 				);
 				if (!el.locked) {
 					// Линия к ручке вращения
 					ctx.beginPath();
-					ctx.moveTo(cx, el.y - pad);
-					ctx.lineTo(cx, el.y - ROTATE_HANDLE_OFFSET_PX * inv);
+					ctx.moveTo(cx, box.y - pad);
+					ctx.lineTo(cx, box.y - ROTATE_HANDLE_OFFSET_PX * inv);
 					ctx.stroke();
 				}
 				ctx.restore();

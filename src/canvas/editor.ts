@@ -2,6 +2,7 @@ import { Notice, setIcon } from "obsidian";
 import {
 	AABB,
 	CanvasToolId,
+	DEFAULT_ELEMENT_STYLE,
 	ElementStyleDefaults,
 	HandleDescriptor,
 	Scene,
@@ -23,9 +24,12 @@ import {
 	getElementAABB,
 	getElementAtPoint,
 	getSelectionAABB,
+	getSelectionFrameElements,
 	getTransformHandles,
 	hitTestHandles,
+	normalizeElementBounds,
 } from "../hit/hitTest";
+import { isResizeHandle, resizeBoxFromHandle } from "../hit/transform";
 import {
 	CanvasPoint,
 	canvasPointToWorld,
@@ -44,9 +48,24 @@ import {
 	getElementTypeForTool,
 	updateElementFromDrag,
 } from "../tools/createElement";
-import { CanvasTextEditor, TextEditorRect } from "../text/editor";
+import { CanvasTextEditor, TextEditorCloseReason, TextEditorLayout } from "../text/editor";
+import {
+	TextAnchor,
+	fitTextElementToContent,
+	getAnchoredTextX,
+	getContainerTextBox,
+	getDefaultTextColor,
+	getMeasureContext,
+	getTextAnchor,
+	getTextWrapWidth,
+	measureTextBlock,
+} from "../text/metrics";
+import {
+	TextGeometry,
+	resizeTextFromHandle,
+	scaleTextWithGroup,
+} from "../text/resize";
 import { RenderFramePayload, SceneCanvasRenderer } from "../render/renderer";
-import { getCanvasFontFamily, wrapMultilineText } from "../render/shapes";
 import { CameraState } from "../types";
 
 export interface CanvasEditorCallbacks {
@@ -130,9 +149,9 @@ type PointerInteraction =
 
 interface TextEditSession {
 	elementId: string;
-	originalElement: SceneElement | null;
-	originalContainer: SceneElement | null;
 	isNew: boolean;
+	/** Мировые X-якоря рамки в начале правки: выравнивание решает, какой край остаётся на месте при росте текста. */
+	anchor: TextAnchor;
 }
 
 interface MenuAction {
@@ -142,7 +161,6 @@ interface MenuAction {
 }
 
 const SCENE_CLIPBOARD_PREFIX = "MY_STUDY_COMPILER_SCENE:";
-const HANDLE_TO_AXIS = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw"]);
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
@@ -176,6 +194,25 @@ function getMaxZIndex(elements: readonly SceneElement[]): number {
 
 function getTextValue(element: SceneElement): string {
 	return typeof element.text === "string" ? element.text : "";
+}
+
+/** Фигуры, внутри которых можно разместить привязанную подпись. */
+function isTextContainer(element: SceneElement): boolean {
+	return (
+		element.type === "rectangle" ||
+		element.type === "diamond" ||
+		element.type === "ellipse"
+	);
+}
+
+function getTextOffsetY(
+	align: SceneElement["verticalAlign"],
+	boxHeight: number,
+	textHeight: number
+): number {
+	if (align === "bottom") return boxHeight - textHeight;
+	if (align === "middle") return (boxHeight - textHeight) / 2;
+	return 0;
 }
 
 export class CanvasSceneEditor {
@@ -295,6 +332,8 @@ export class CanvasSceneEditor {
 	}
 
 	public setScene(scene: Scene, camera?: CameraState | null): void {
+		// Незавершённый текст сохраняется в старую сцену, пока редактор ещё привязан к её ключу
+		if (this.textEditor.isOpen()) this.textEditor.close(true);
 		this.scene = scene;
 		this.selectedIds.clear();
 		this.history.clear();
@@ -314,6 +353,7 @@ export class CanvasSceneEditor {
 		this.scene.appState.zoom = zoom;
 		this.scene.appState.scrollX = camera.panX / zoom;
 		this.scene.appState.scrollY = camera.panY / zoom;
+		this.positionTextEditor();
 		this.renderFrame();
 		if (notify) this.notifySceneAndCameraChanged();
 	}
@@ -589,7 +629,9 @@ export class CanvasSceneEditor {
 			"Светлая тема",
 			this.scene.appState.theme === "light",
 			(value) => {
-				this.scene.appState.theme = value ? "light" : "dark";
+				const nextTheme = value ? "light" : "dark";
+				this.recolorDefaultText(this.scene.appState.theme, nextTheme);
+				this.scene.appState.theme = nextTheme;
 				this.notifySceneAndCameraChanged();
 				this.renderFrame();
 			}
@@ -708,6 +750,7 @@ export class CanvasSceneEditor {
 			snapGuides: this.snapGuides,
 			bindingHighlightElement: this.bindingHighlightElement,
 			eraserTrail: this.eraserTrail,
+			isDrawing: this.interaction?.kind === "create",
 		};
 		this.renderer.scheduleRender(payload);
 		this.updateZoomLabel();
@@ -804,7 +847,9 @@ export class CanvasSceneEditor {
 	}
 
 	private handlePointerDown(event: PointerEvent): void {
-		if (this.destroyed || this.textEditor.isOpen()) return;
+		if (this.destroyed) return;
+		// Клик по холсту завершает правку текста и затем обрабатывается как обычно
+		if (this.textEditor.isOpen()) this.textEditor.close(true);
 		if (event.button === 2) return;
 		event.preventDefault();
 		const screen = getCanvasPoint(event, this.canvasEl);
@@ -846,28 +891,21 @@ export class CanvasSceneEditor {
 			return;
 		}
 		if (this.activeTool === "text") {
-			const hit = getElementAtPoint(
-				this.scene.elements,
-				world,
-				this.scene.appState.zoom
-			);
-			if (hit && (hit.type === "text" || hit.type === "note")) {
-				this.beginTextEditing(hit, false);
-			} else {
-				this.createTextElement(world);
-			}
+			this.beginTextAtPoint(world);
 			return;
 		}
 		if (this.activeTool === "eraser") {
-			this.interaction = {
-				kind: "erase",
+			const eraseInteraction = {
+				kind: "erase" as const,
 				pointerId: event.pointerId,
 				startScreen: screen,
 				startWorld: world,
 				didErase: false,
 			};
+			this.interaction = eraseInteraction;
 			this.eraserTrail = [world];
-			this.eraseAt(world);
+			// Без этого стирание одиночным кликом не попадало в историю и не сохранялось
+			eraseInteraction.didErase = this.eraseAt(world);
 			this.renderFrame();
 			return;
 		}
@@ -1020,7 +1058,7 @@ export class CanvasSceneEditor {
 			return;
 		}
 
-		if (!HANDLE_TO_AXIS.has(handle.kind)) return;
+		if (!isResizeHandle(handle.kind)) return;
 		const bounds = getSelectionAABB(this.getSelectedElements());
 		if (!bounds) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
@@ -1052,7 +1090,12 @@ export class CanvasSceneEditor {
 			element.points = [{ x: 0, y: 0, pressure: world.pressure }];
 		}
 		this.scene.elements.push(element);
-		this.selectOnly(element.id);
+		if (type === "freedraw") {
+			// Штрих карандаша не выделяется: рамка появляется только при выборе инструментом «Выбор»
+			this.selectedIds = new Set<string>();
+		} else {
+			this.selectOnly(element.id);
+		}
 		this.interaction = {
 			kind: "create",
 			pointerId: event.pointerId,
@@ -1091,15 +1134,28 @@ export class CanvasSceneEditor {
 			this.interaction = null;
 			return;
 		} else if (current.kind !== "marquee" && current.kind !== "pan") {
+			if (current.kind === "create") this.finalizeCreatedElement(current);
 			this.commitHistory();
 		}
 		this.interaction = null;
 	}
 
+	private finalizeCreatedElement(
+		interaction: Extract<PointerInteraction, { kind: "create" }>
+	): void {
+		const element = this.getElementById(interaction.elementId);
+		if (element) {
+			finalizeElementSize(element, interaction.startWorld, interaction.didMove);
+		}
+	}
+
 	private handlePointerMove(event: PointerEvent): void {
 		if (this.destroyed) return;
 		const screen = getCanvasPoint(event, this.canvasEl);
-		this.activePointers.set(event.pointerId, screen);
+		// Наведённые, но не нажатые указатели (мышь/перо в зоне hover) не учитываем: иначе они ложно запускают pinch
+		if (this.activePointers.has(event.pointerId)) {
+			this.activePointers.set(event.pointerId, screen);
+		}
 		if (this.activePointers.size >= 2 && this.pinchState) {
 			this.updatePinch();
 			return;
@@ -1201,9 +1257,13 @@ export class CanvasSceneEditor {
 		this.snapGuides = [];
 		this.bindingHighlightElement = null;
 		this.eraserTrail = [];
+		// Карандаш остаётся активным, чтобы сразу рисовать следующий штрих
+		const keepsPencil =
+			current.kind === "create" && this.activeTool === "freedraw";
 		if (
 			(current.kind === "create" || current.kind === "erase") &&
-			!this.scene.appState.keepToolActive
+			!this.scene.appState.keepToolActive &&
+			!keepsPencil
 		) {
 			this.setTool("select");
 		}
@@ -1223,6 +1283,7 @@ export class CanvasSceneEditor {
 		this.scene.appState.scrollX -= event.deltaX / zoom;
 		this.scene.appState.scrollY -= event.deltaY / zoom;
 		this.notifySceneAndCameraChanged();
+		this.positionTextEditor();
 		this.renderFrame();
 	}
 
@@ -1308,7 +1369,7 @@ export class CanvasSceneEditor {
 				if (this.menuPanelEl && !this.menuPanelEl.classList.contains("is-hidden")) {
 					this.hideActionMenu();
 				} else if (this.textEditor.isOpen()) {
-					this.textEditor.close(false);
+					this.textEditor.close(true);
 				} else if (this.interaction?.kind === "create") {
 					const current = this.interaction;
 					this.scene.elements = this.scene.elements.filter(
@@ -1327,6 +1388,8 @@ export class CanvasSceneEditor {
 					this.setTool("select");
 				} else {
 					this.selectedIds.clear();
+					// Escape выводит из любого инструмента рисования, в том числе из закреплённого карандаша
+					if (this.activeTool !== "select") this.setTool("select");
 					this.updatePropertiesPanel();
 					this.renderFrame();
 				}
@@ -1400,7 +1463,7 @@ export class CanvasSceneEditor {
 		}
 		if (plainText.trim()) {
 			event.preventDefault();
-			this.createTextElement(this.getViewportCenterWorld(), plainText);
+			this.addTextFromString(plainText, this.getViewportCenterWorld(), true);
 		}
 	}
 
@@ -1513,11 +1576,13 @@ export class CanvasSceneEditor {
 			const title = text.replace(/\\/g, "/").split("/").pop()?.replace(/\.md$/i, "");
 			if (title) this.addNoteLink(title, `[[${title}]]`, point);
 		} else if (text) {
-			this.createTextElement(point, text);
+			this.addTextFromString(text, point, false);
 		}
 	}
 
 	private handleDoubleClick(event: MouseEvent): void {
+		if (this.destroyed || this.textEditor.isOpen()) return;
+		if (this.activeTool !== "select" && this.activeTool !== "text") return;
 		const point = canvasPointToWorld(
 			{ x: event.offsetX, y: event.offsetY },
 			this.scene.appState
@@ -1532,31 +1597,12 @@ export class CanvasSceneEditor {
 			return;
 		}
 		if (element.type === "text" || element.type === "note") {
+			this.selectOnlyGroup(element.id);
+			this.updatePropertiesPanel();
 			this.beginTextEditing(element, false);
 			return;
 		}
-		const boundText = element.boundTextId
-			? this.getElementById(element.boundTextId)
-			: this.scene.elements.find((item) => item.containerId === element.id);
-		if (boundText) {
-			this.beginTextEditing(boundText, false);
-			return;
-		}
-
-		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		const text = createSceneElement(
-			"text",
-			{ x: element.x, y: element.y },
-			this.scene.appState.currentStyle,
-			this.getNextZIndex()
-		);
-		text.containerId = element.id;
-		text.width = Math.max(24, element.width - 24);
-		text.height = Math.max(20, element.height - 24);
-		element.boundTextId = text.id;
-		this.scene.elements.push(text);
-		this.selectOnly(text.id);
-		this.beginTextEditing(text, true, true);
+		if (isTextContainer(element)) this.beginContainerTextEditing(element);
 	}
 
 	private handleContextMenu(event: MouseEvent): void {
@@ -1587,6 +1633,103 @@ export class CanvasSceneEditor {
 		this.updateCursor();
 	}
 
+	private getMeasureCtx(): CanvasRenderingContext2D | null {
+		return getMeasureContext(this.doc);
+	}
+
+	/** Цвет нового текста: выбранный пользователем, иначе контрастный к теме холста. */
+	private getNewTextColor(): string {
+		const style = this.scene.appState.currentStyle;
+		if (
+			style.strokeColor &&
+			style.strokeColor !== DEFAULT_ELEMENT_STYLE.strokeColor
+		) {
+			return style.strokeColor;
+		}
+		return getDefaultTextColor(this.scene.appState.theme);
+	}
+
+	private getTextColor(element: SceneElement): string {
+		const fallback = getDefaultTextColor(this.scene.appState.theme);
+		return element.type === "text" ? element.strokeColor || fallback : fallback;
+	}
+
+	/** Фигура, внутри которой рисуется текст: контейнер привязанной подписи или сама заметка; у свободного текста её нет. */
+	private getTextContainer(element: SceneElement): SceneElement | null {
+		if (element.type !== "text") return element;
+		return element.containerId
+			? this.getElementById(element.containerId) ?? null
+			: null;
+	}
+
+	private makeTextElement(point: ScenePoint): SceneElement {
+		const element = createSceneElement(
+			"text",
+			point,
+			this.scene.appState.currentStyle,
+			this.getNextZIndex()
+		);
+		element.strokeColor = this.getNewTextColor();
+		element.text = "";
+		return element;
+	}
+
+	private beginTextAtPoint(world: ScenePoint): void {
+		const hit = getElementAtPoint(
+			this.scene.elements,
+			world,
+			this.scene.appState.zoom
+		);
+		if (hit && (hit.type === "text" || hit.type === "note")) {
+			this.selectOnlyGroup(hit.id);
+			this.updatePropertiesPanel();
+			this.beginTextEditing(hit, false);
+		} else if (hit && isTextContainer(hit)) {
+			this.beginContainerTextEditing(hit);
+		} else {
+			this.createTextElement(world);
+		}
+	}
+
+	/** Правка подписи фигуры: существующий привязанный текст либо новая подпись по центру фигуры. */
+	private beginContainerTextEditing(container: SceneElement): void {
+		const bound = container.boundTextId
+			? this.getElementById(container.boundTextId)
+			: this.scene.elements.find(
+					(item) => !item.isDeleted && item.containerId === container.id
+			  );
+		if (bound && !bound.isDeleted) {
+			this.selectOnlyGroup(container.id);
+			this.updatePropertiesPanel();
+			this.beginTextEditing(bound, false);
+			return;
+		}
+		if (container.text) {
+			this.selectOnlyGroup(container.id);
+			this.updatePropertiesPanel();
+			this.beginTextEditing(container, false);
+			return;
+		}
+
+		this.history.beginTransaction(this.scene.elements, this.selectedIds);
+		const text = this.makeTextElement({ x: container.x, y: container.y });
+		const box = getContainerTextBox(container);
+		text.containerId = container.id;
+		text.textAlign = "center";
+		text.verticalAlign = "middle";
+		text.autoResize = false;
+		text.x = box.x;
+		text.y = box.y;
+		text.width = box.width;
+		text.height = box.height;
+		text.angle = container.angle;
+		container.boundTextId = text.id;
+		this.scene.elements.push(text);
+		this.selectOnlyGroup(container.id);
+		this.updatePropertiesPanel();
+		this.beginTextEditing(text, true, true);
+	}
+
 	private beginTextEditing(
 		element: SceneElement,
 		isNew: boolean,
@@ -1596,43 +1739,134 @@ export class CanvasSceneEditor {
 		if (!transactionAlreadyStarted) {
 			this.history.beginTransaction(this.scene.elements, this.selectedIds);
 		}
-		const originalElement = isNew ? null : cloneSceneElement(element);
-		const container = element.containerId
-			? this.getElementById(element.containerId)
-			: undefined;
-		const originalContainer = container ? cloneSceneElement(container) : null;
 		this.textEditSession = {
 			elementId: element.id,
-			originalElement,
-			originalContainer,
 			isNew,
+			anchor: getTextAnchor(element),
 		};
 		this.editingElementId = element.id;
-		this.positionTextEditor();
-		this.textEditor.open(
-			element,
-			this.getTextEditorRect(element),
-			(value) => this.finishTextEditing(value),
-			() => this.cancelTextEditing()
-		);
+		this.textEditor.open({
+			initialText: getTextValue(element),
+			fontFamily: element.fontFamily,
+			textAlign: element.textAlign,
+			color: this.getTextColor(element),
+			computeLayout: (value) => this.computeTextEditorLayout(element.id, value),
+			onCommit: (value, reason) => this.finishTextEditing(value, reason),
+			onWheel: (event) => this.handleWheel(event),
+		});
 		this.renderFrame();
 	}
 
-	private createTextElement(point: ScenePoint, initialText = ""): void {
+	/** Свободный текст появляется там, где кликнули: каретка встаёт ровно в точку клика. */
+	private createTextElement(point: ScenePoint): void {
+		if (this.textEditor.isOpen()) this.textEditor.close(true);
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		const element = createSceneElement(
-			"text",
-			point,
-			this.scene.appState.currentStyle,
-			this.getNextZIndex()
-		);
-		element.text = initialText;
+		const element = this.makeTextElement(point);
+		element.width = 0;
+		element.x = point.x;
+		element.y = point.y - element.height / 2;
 		this.scene.elements.push(element);
 		this.selectOnly(element.id);
 		this.beginTextEditing(element, true, true);
 	}
 
-	private finishTextEditing(value: string): void {
+	/** Вставка или перетаскивание текста создаёт элемент сразу, без редактора. */
+	private addTextFromString(
+		text: string,
+		point: ScenePoint,
+		centered: boolean
+	): void {
+		const value = text.replace(/\r\n?/g, "\n");
+		const ctx = this.getMeasureCtx();
+		if (!value.trim() || !ctx) return;
+		if (this.textEditor.isOpen()) this.textEditor.close(true);
+		this.history.beginTransaction(this.scene.elements, this.selectedIds);
+		const element = this.makeTextElement(point);
+		element.text = value;
+		this.updateLinkFromText(element);
+		fitTextElementToContent(ctx, element);
+		element.x = centered ? point.x - element.width / 2 : point.x;
+		element.y = centered ? point.y - element.height / 2 : point.y;
+		this.scene.elements.push(element);
+		this.selectOnly(element.id);
+		this.commitHistory();
+	}
+
+	/**
+	 * Положение `<textarea>` в экранных координатах строится из тех же формул, что и отрисовка на холсте,
+	 * поэтому текст при вводе лежит ровно поверх будущего результата.
+	 */
+	private computeTextEditorLayout(
+		elementId: string,
+		value: string
+	): TextEditorLayout | null {
+		const element = this.getElementById(elementId);
+		const ctx = this.getMeasureCtx();
+		if (!element || !ctx) return null;
+		const { scrollX, scrollY } = this.scene.appState;
+		const zoom = Math.max(0.1, this.scene.appState.zoom);
+		const container = this.getTextContainer(element);
+
+		if (!container) {
+			const wrapWidth =
+				element.autoResize === true ? null : getTextWrapWidth(element.width);
+			const metrics = measureTextBlock(
+				ctx,
+				value,
+				element.fontSize,
+				element.fontFamily,
+				wrapWidth
+			);
+			const session = this.textEditSession;
+			const x =
+				wrapWidth === null && session
+					? getAnchoredTextX(session.anchor, element.textAlign, metrics.width)
+					: element.x;
+			const offsetY = getTextOffsetY(
+				element.verticalAlign,
+				wrapWidth === null ? metrics.height : element.height,
+				metrics.height
+			);
+			return {
+				left: (x + scrollX) * zoom,
+				top: (element.y + offsetY + scrollY) * zoom,
+				width: metrics.width * zoom,
+				height: metrics.height * zoom,
+				fontSize: metrics.fontSize * zoom,
+				wrap: wrapWidth !== null,
+				angle: element.angle || 0,
+			};
+		}
+
+		const box = getContainerTextBox(container);
+		const metrics = measureTextBlock(
+			ctx,
+			value,
+			element.fontSize,
+			element.fontFamily,
+			box.width
+		);
+		const offsetY = getTextOffsetY(
+			element.verticalAlign,
+			box.height,
+			metrics.height
+		);
+		const left = (box.x + scrollX) * zoom;
+		const top = (box.y + offsetY + scrollY) * zoom;
+		return {
+			left,
+			top,
+			width: box.width * zoom,
+			height: metrics.height * zoom,
+			fontSize: metrics.fontSize * zoom,
+			wrap: true,
+			angle: container.angle || 0,
+			originX: (container.x + container.width / 2 + scrollX) * zoom - left,
+			originY: (container.y + container.height / 2 + scrollY) * zoom - top,
+		};
+	}
+
+	private finishTextEditing(value: string, reason: TextEditorCloseReason): void {
 		const session = this.textEditSession;
 		if (!session) return;
 		const element = this.getElementById(session.elementId);
@@ -1643,41 +1877,60 @@ export class CanvasSceneEditor {
 			this.renderFrame();
 			return;
 		}
-		if (session.isNew && !value.trim()) {
+
+		if (element.type === "text" && !value.trim()) {
+			// Пустой текст не оставляет на сцене невидимых рамок
 			this.removeElementAndUnbind(element);
+			if (session.isNew) this.history.cancelTransaction();
+			else this.commitHistory();
+		} else if (!session.isNew && value === getTextValue(element)) {
+			// Ничего не изменилось: без записи в историю и без лишнего сохранения
 			this.history.cancelTransaction();
-			this.updatePropertiesPanel();
-			this.renderFrame();
-			return;
+		} else {
+			element.text = value;
+			this.updateLinkFromText(element);
+			const ctx = this.getMeasureCtx();
+			if (ctx) fitTextElementToContent(ctx, element, session.anchor);
+			element.updated = Date.now();
+			updateBoundElements(this.scene.elements);
+			this.updateFrameMembership();
+			this.commitHistory();
 		}
-		element.text = value;
-		this.updateLinkFromText(element);
-		this.resizeTextElement(element);
-		element.updated = Date.now();
-		updateBoundElements(this.scene.elements);
-		this.updateFrameMembership();
-		this.commitHistory();
+		this.updatePropertiesPanel();
 		if (!this.scene.appState.keepToolActive) this.setTool("select");
 		else this.renderFrame();
+		// После Escape и Ctrl+Enter фокус возвращается на холст, иначе горячие клавиши молчат до следующего клика
+		if (reason === "keyboard" && !this.destroyed) {
+			this.root.focus({ preventScroll: true });
+		}
 	}
 
-	private cancelTextEditing(): void {
-		const session = this.textEditSession;
-		if (!session) return;
-		this.editingElementId = null;
-		this.textEditSession = null;
-		if (session.isNew) {
-			const element = this.getElementById(session.elementId);
-			if (element) this.removeElementAndUnbind(element);
-		} else if (session.originalElement) {
-			this.replaceElement(session.originalElement);
-			if (session.originalContainer) {
-				this.replaceElement(session.originalContainer);
+	/** При смене темы текст с цветом по умолчанию переключается на контрастный, иначе он «пропадает» на холсте. */
+	private recolorDefaultText(
+		from: "dark" | "light",
+		to: "dark" | "light"
+	): void {
+		if (from === to) return;
+		const previous = getDefaultTextColor(from).toLowerCase();
+		const next = getDefaultTextColor(to);
+		for (const element of this.scene.elements) {
+			if (
+				element.type === "text" &&
+				element.strokeColor?.toLowerCase() === previous
+			) {
+				element.strokeColor = next;
 			}
 		}
-		this.history.cancelTransaction();
-		this.updatePropertiesPanel();
-		this.renderFrame();
+	}
+
+	private applyTextGeometry(element: SceneElement, geometry: TextGeometry): void {
+		element.x = geometry.x;
+		element.y = geometry.y;
+		element.width = geometry.width;
+		element.height = geometry.height;
+		element.fontSize = geometry.fontSize;
+		element.autoResize = geometry.autoResize;
+		element.updated = Date.now();
 	}
 
 	private removeElementAndUnbind(element: SceneElement): void {
@@ -1691,51 +1944,8 @@ export class CanvasSceneEditor {
 		this.selectedIds.delete(element.id);
 	}
 
-	private replaceElement(replacement: SceneElement): void {
-		const index = this.scene.elements.findIndex(
-			(element) => element.id === replacement.id
-		);
-		if (index >= 0) this.scene.elements[index] = cloneSceneElement(replacement);
-	}
-
-	private getTextEditorRect(element: SceneElement): TextEditorRect {
-		const zoom = Math.max(0.1, this.scene.appState.zoom);
-		return {
-			x: (element.x + this.scene.appState.scrollX) * zoom,
-			y: (element.y + this.scene.appState.scrollY) * zoom,
-			width: Math.max(120, element.width * zoom),
-			height: Math.max(32, element.height * zoom),
-		};
-	}
-
 	private positionTextEditor(): void {
-		const textarea = this.textEditor.getElement();
-		if (!textarea || !this.editingElementId) return;
-		const element = this.getElementById(this.editingElementId);
-		if (!element) return;
-		const rect = this.getTextEditorRect(element);
-		textarea.style.left = `${rect.x}px`;
-		textarea.style.top = `${rect.y}px`;
-		textarea.style.width = `${rect.width}px`;
-		textarea.style.minHeight = `${rect.height}px`;
-	}
-
-	private resizeTextElement(element: SceneElement): void {
-		if (element.containerId) return;
-		const context = this.canvasEl.getContext("2d");
-		if (!context) return;
-		context.font = `${Math.max(8, element.fontSize)}px ${getCanvasFontFamily(element.fontFamily)}`;
-		const lines = wrapMultilineText(
-			context,
-			getTextValue(element),
-			Math.max(60, element.width - 16)
-		);
-		let maxWidth = 0;
-		for (const line of lines) {
-			maxWidth = Math.max(maxWidth, context.measureText(line).width);
-		}
-		element.width = Math.max(100, maxWidth + 24);
-		element.height = Math.max(40, lines.length * element.fontSize * 1.32 + 16);
+		this.textEditor.reposition();
 	}
 
 	private updateLinkFromText(element: SceneElement): void {
@@ -1791,6 +2001,7 @@ export class CanvasSceneEditor {
 		}
 		if (element.type === "freedraw") {
 			appendFreedrawPoint(element, world);
+			normalizeElementBounds(element);
 		} else if (element.type === "arrow" || element.type === "line") {
 			if (!interaction.didMove) {
 				finalizeElementSize(element, interaction.startWorld, false);
@@ -1822,6 +2033,7 @@ export class CanvasSceneEditor {
 					this.scene.appState.currentStyle.endArrowhead;
 			}
 			updateBoundElements(this.scene.elements);
+			normalizeElementBounds(element);
 		} else {
 			finalizeElementSize(element, interaction.startWorld, interaction.didMove);
 		}
@@ -1970,57 +2182,88 @@ export class CanvasSceneEditor {
 		world: ScenePoint,
 		keepRatio: boolean
 	): void {
-		const start = interaction.startBounds;
-		const handle = interaction.handle.kind;
-		const selectedAtStart = Array.from(interaction.startElements.values());
-		const singleImage =
-			selectedAtStart.length === 1 && selectedAtStart[0]?.type === "image";
-		const preserveRatio = keepRatio || singleImage;
-		let left = start.minX;
-		let right = start.maxX;
-		let top = start.minY;
-		let bottom = start.maxY;
-		if (handle.includes("w")) left = Math.min(world.x, right - 4);
-		if (handle.includes("e")) right = Math.max(world.x, left + 4);
-		if (handle.includes("n")) top = Math.min(world.y, bottom - 4);
-		if (handle.includes("s")) bottom = Math.max(world.y, top + 4);
+		const handle = interaction.handle;
+		if (!isResizeHandle(handle.kind)) return;
+		const kind = handle.kind;
+		// Ручку берут не точно за центр: сохраняем смещение курсора, чтобы край не «прыгал» при первом движении
+		const pointer: ScenePoint = {
+			x: world.x + (handle.x - interaction.startWorld.x),
+			y: world.y + (handle.y - interaction.startWorld.y),
+		};
+		const frameElements = getSelectionFrameElements(
+			Array.from(interaction.startElements.values())
+		);
+		const single = frameElements.length === 1 ? frameElements[0] : undefined;
 
-		if (preserveRatio) {
-			const ratio = singleImage
-				? selectedAtStart[0]?.aspectRatio ||
-					selectedAtStart[0]!.width / Math.max(1, selectedAtStart[0]!.height)
-				: start.width / Math.max(1, start.height);
-			const width = right - left;
-			const height = bottom - top;
-			if (handle === "n" || handle === "s") {
-				const nextWidth = height * ratio;
-				left = start.cx - nextWidth / 2;
-				right = start.cx + nextWidth / 2;
-			} else if (handle === "e" || handle === "w") {
-				const nextHeight = width / ratio;
-				top = start.cy - nextHeight / 2;
-				bottom = start.cy + nextHeight / 2;
-			} else if (width / Math.max(1, height) > ratio) {
-				const nextHeight = width / ratio;
-				if (handle.includes("n")) top = bottom - nextHeight;
-				else bottom = top + nextHeight;
-			} else {
-				const nextWidth = height * ratio;
-				if (handle.includes("w")) left = right - nextWidth;
-				else right = left + nextWidth;
+		if (single && single.type === "text" && !single.containerId) {
+			// Угловые и верхняя/нижняя ручки масштабируют шрифт, боковые меняют ширину блока
+			const element = this.getElementById(single.id);
+			const ctx = this.getMeasureCtx();
+			if (element && ctx && !element.locked) {
+				this.applyTextGeometry(
+					element,
+					resizeTextFromHandle(ctx, single, kind, pointer)
+				);
 			}
-		}
-
-		const sx = (right - left) / Math.max(1, start.width);
-		const sy = (bottom - top) / Math.max(1, start.height);
-		const anchorX = handle.includes("w") ? start.maxX : start.minX;
-		const anchorY = handle.includes("n") ? start.maxY : start.minY;
-		if (handle === "n" || handle === "s") {
-			this.transformSelectionScale(interaction.startElements, start.cx, anchorY, 1, sy);
-		} else if (handle === "e" || handle === "w") {
-			this.transformSelectionScale(interaction.startElements, anchorX, start.cy, sx, 1);
+		} else if (single && !single.points) {
+			// Одиночная фигура (в том числе повёрнутая) меняется в собственной системе координат
+			const element = this.getElementById(single.id);
+			if (element && !element.locked) {
+				const isImage = single.type === "image";
+				const next = resizeBoxFromHandle(
+					{
+						x: single.x,
+						y: single.y,
+						width: single.width,
+						height: single.height,
+					},
+					single.angle || 0,
+					kind,
+					pointer,
+					{
+						keepRatio: keepRatio || isImage,
+						ratio: isImage
+							? single.aspectRatio || single.width / Math.max(1, single.height)
+							: undefined,
+					}
+				);
+				element.x = next.x;
+				element.y = next.y;
+				element.width = next.width;
+				element.height = next.height;
+				element.updated = Date.now();
+			}
 		} else {
-			this.transformSelectionScale(interaction.startElements, anchorX, anchorY, sx, sy);
+			const start = interaction.startBounds;
+			const next = resizeBoxFromHandle(
+				{
+					x: start.minX,
+					y: start.minY,
+					width: start.width,
+					height: start.height,
+				},
+				0,
+				kind,
+				pointer,
+				{ keepRatio }
+			);
+			const anchorX = kind.includes("w")
+				? start.maxX
+				: kind.includes("e")
+					? start.minX
+					: start.cx;
+			const anchorY = kind.includes("n")
+				? start.maxY
+				: kind.includes("s")
+					? start.minY
+					: start.cy;
+			this.transformSelectionScale(
+				interaction.startElements,
+				anchorX,
+				anchorY,
+				next.width / Math.max(1, start.width),
+				next.height / Math.max(1, start.height)
+			);
 		}
 		updateBoundElements(this.scene.elements);
 		this.updateFrameMembership();
@@ -2049,6 +2292,14 @@ export class CanvasSceneEditor {
 					pressure: point.pressure,
 				}));
 				this.setPathWorldPoints(element, points);
+			} else if (element.type === "text" && !element.containerId) {
+				const ctx = this.getMeasureCtx();
+				if (ctx) {
+					this.applyTextGeometry(
+						element,
+						scaleTextWithGroup(ctx, snapshot, scaleX, scaleY, anchorX, anchorY)
+					);
+				}
 			} else {
 				const x1 = anchorX + (snapshot.x - anchorX) * scaleX;
 				const y1 = anchorY + (snapshot.y - anchorY) * scaleY;
@@ -2075,7 +2326,16 @@ export class CanvasSceneEditor {
 				world.y - interaction.center.y,
 				world.x - interaction.center.x
 			) - interaction.startAngle;
-		if (snapAngle) delta = Math.round(delta / (Math.PI / 12)) * (Math.PI / 12);
+		if (snapAngle) {
+			const step = Math.PI / 12;
+			const frameElements = getSelectionFrameElements(
+				Array.from(interaction.startElements.values())
+			);
+			const only = frameElements.length === 1 ? frameElements[0] : undefined;
+			// У одиночной фигуры к шагу привязывается итоговый угол, а не только приращение
+			const base = only && !only.points ? only.angle || 0 : 0;
+			delta = Math.round((base + delta) / step) * step - base;
+		}
 		const cos = Math.cos(delta);
 		const sin = Math.sin(delta);
 		for (const [id, snapshot] of interaction.startElements.entries()) {
@@ -2170,13 +2430,7 @@ export class CanvasSceneEditor {
 	}
 
 	private updatePathBounds(element: SceneElement): void {
-		if (!element.points || element.points.length === 0) return;
-		const worldPoints = element.points.map((point) => ({
-			x: element.x + point.x,
-			y: element.y + point.y,
-			pressure: point.pressure,
-		}));
-		this.setPathWorldPoints(element, worldPoints);
+		normalizeElementBounds(element);
 	}
 
 	private setPathWorldPoints(
@@ -2184,19 +2438,12 @@ export class CanvasSceneEditor {
 		worldPoints: readonly ScenePoint[]
 	): void {
 		if (worldPoints.length === 0) return;
-		const minX = Math.min(...worldPoints.map((point) => point.x));
-		const minY = Math.min(...worldPoints.map((point) => point.y));
-		const maxX = Math.max(...worldPoints.map((point) => point.x));
-		const maxY = Math.max(...worldPoints.map((point) => point.y));
-		element.x = minX;
-		element.y = minY;
-		element.width = Math.max(1, maxX - minX);
-		element.height = Math.max(1, maxY - minY);
 		element.points = worldPoints.map((point) => ({
-			x: point.x - minX,
-			y: point.y - minY,
+			x: point.x - element.x,
+			y: point.y - element.y,
 			pressure: point.pressure,
 		}));
+		normalizeElementBounds(element);
 	}
 
 	private finishMarquee(
@@ -2221,10 +2468,12 @@ export class CanvasSceneEditor {
 	}
 
 	private eraseAt(point: ScenePoint): boolean {
+		// Ластик стирает только то, чего касается (линию, заливку, текст), а не пустое нутро контура
 		const element = getElementAtPoint(
 			this.scene.elements,
 			point,
-			this.scene.appState.zoom
+			this.scene.appState.zoom,
+			false
 		);
 		if (!element || element.locked) return false;
 		if (!this.history.hasPendingTransaction()) {
@@ -2245,10 +2494,7 @@ export class CanvasSceneEditor {
 			(current.kind !== "move" || current.started) &&
 			this.history.hasPendingTransaction()
 		) {
-			if (current.kind === "create") {
-				const element = this.getElementById(current.elementId);
-				if (element) finalizeElementSize(element, current.startWorld, current.didMove);
-			}
+			if (current.kind === "create") this.finalizeCreatedElement(current);
 			this.commitHistory();
 		} else if (this.history.hasPendingTransaction()) {
 			this.history.cancelTransaction();
@@ -2265,6 +2511,7 @@ export class CanvasSceneEditor {
 		this.scene.appState.scrollX += dx / zoom;
 		this.scene.appState.scrollY += dy / zoom;
 		this.notifySceneAndCameraChanged();
+		this.positionTextEditor();
 		this.renderFrame();
 	}
 
@@ -3077,8 +3324,12 @@ export class CanvasSceneEditor {
 		const selected = this.getSelectedElements();
 		if (selected.length === 0) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
+		const ctx = this.getMeasureCtx();
 		for (const element of selected) {
+			const anchor = getTextAnchor(element);
 			updateElement(element);
+			// Смена шрифта, размера или выравнивания пересчитывает рамку текста, а привязанный край остаётся на месте
+			if (ctx) fitTextElementToContent(ctx, element, anchor);
 			element.updated = Date.now();
 		}
 		updateStyle(this.scene.appState.currentStyle);

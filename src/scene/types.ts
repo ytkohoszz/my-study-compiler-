@@ -81,6 +81,8 @@ export interface SceneElement {
 	fontSize: number;
 	textAlign: TextAlignType;
 	verticalAlign: VerticalAlignType;
+	/** Только для свободного текста: true — ширина подгоняется под самую длинную строку, false — ширина зафиксирована и строки переносятся */
+	autoResize?: boolean;
 	/** ID фигуры-контейнера, если это привязанный текст внутри фигуры, либо ID текстового элемента у фигуры */
 	containerId?: string | null;
 	boundTextId?: string | null;
@@ -199,8 +201,8 @@ export const DEFAULT_ELEMENT_STYLE: ElementStyleDefaults = {
 	opacity: 100,
 	roundness: 8,
 	fontFamily: "normal",
-	fontSize: 18,
-	textAlign: "center",
+	fontSize: 20,
+	textAlign: "left",
 	verticalAlign: "middle",
 	startArrowhead: "none",
 	endArrowhead: "arrow",

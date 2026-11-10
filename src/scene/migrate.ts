@@ -20,9 +20,16 @@ import {
 	generateElementId,
 	hashStringSeed,
 } from "./types";
+import { isPathElement, normalizeElementBounds } from "../hit/hitTest";
 
 function isFiniteNum(v: unknown): v is number {
 	return typeof v === "number" && Number.isFinite(v);
+}
+
+/** Штрихи и линии, сохранённые до исправления рамки, получают корректный AABB при загрузке. */
+function withNormalizedGeometry(el: SceneElement): SceneElement {
+	if (isPathElement(el)) normalizeElementBounds(el);
+	return el;
 }
 
 function toNum(v: unknown, fallback = 0): number {
@@ -282,6 +289,8 @@ function normalizeElementV2(
 	// Автоизвлечение [[Вики-ссылки]] в поле link, если оно ещё не задано
 	let link = typeof raw["link"] === "string" ? raw["link"] : null;
 	const textVal = typeof raw["text"] === "string" ? raw["text"] : undefined;
+	// Пустой текст остался от прежнего редактора: на холсте он невидим, поэтому в сцену не переносится
+	if (type === "text" && !textVal?.trim()) return null;
 	if (!link && textVal) {
 		const wikiMatch = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/.exec(
 			textVal
@@ -321,6 +330,8 @@ function normalizeElementV2(
 		fontSize: Math.max(8, toNum(raw["fontSize"], 18)),
 		textAlign,
 		verticalAlign,
+		autoResize:
+			typeof raw["autoResize"] === "boolean" ? raw["autoResize"] : undefined,
 		containerId:
 			typeof raw["containerId"] === "string" ? raw["containerId"] : null,
 		boundTextId:
@@ -395,7 +406,7 @@ export function migrateLegacy(rawBoard: unknown): {
 					files
 				);
 				if (parsed && !parsed.isDeleted) {
-					elements.push(parsed);
+					elements.push(withNormalizedGeometry(parsed));
 				}
 			}
 		});
@@ -476,7 +487,7 @@ export function migrateLegacy(rawBoard: unknown): {
 				idx,
 				files
 			);
-			if (parsed) migratedElements.push(parsed);
+			if (parsed) migratedElements.push(withNormalizedGeometry(parsed));
 		}
 	});
 

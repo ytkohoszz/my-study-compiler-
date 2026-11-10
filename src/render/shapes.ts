@@ -1,7 +1,6 @@
 // C:\Users\user\dev\my-study-compiler\src\render\shapes.ts
 import {
 	ArrowheadType,
-	FontFamilyType,
 	SceneElement,
 	ScenePoint,
 	StrokeStyle,
@@ -13,17 +12,18 @@ import {
 	renderFreedrawStroke,
 	renderPatternFill,
 } from "./rough";
-
-export function getCanvasFontFamily(family: FontFamilyType): string {
-	switch (family) {
-		case "hand":
-			return '"Virgil", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive, sans-serif';
-		case "mono":
-			return '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace';
-		default:
-			return '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif';
-	}
-}
+import {
+	TEXT_LINE_HEIGHT,
+	clampFontSize,
+	getCanvasFontFamily,
+	getContainerTextBox,
+	getDefaultTextColor,
+	getTextDisplayString,
+	getTextFont,
+	getTextWrapWidth,
+	isAutoSizeText,
+	wrapMultilineText,
+} from "../text/metrics";
 
 export function applyStrokeDash(
 	ctx: CanvasRenderingContext2D,
@@ -127,55 +127,6 @@ function drawArrowhead(
 	ctx.restore();
 }
 
-export function wrapMultilineText(
-	ctx: CanvasRenderingContext2D,
-	text: string,
-	maxWidth: number
-): string[] {
-	const rawLines = text.split(/\r?\n/);
-	const out: string[] = [];
-
-	if (maxWidth <= 20) {
-		return rawLines;
-	}
-
-	for (const paragraph of rawLines) {
-		if (!paragraph) {
-			out.push("");
-			continue;
-		}
-		const words = paragraph.split(/\s+/);
-		let currentLine = "";
-
-		for (const word of words) {
-			const candidate = currentLine ? `${currentLine} ${word}` : word;
-			if (ctx.measureText(candidate).width <= maxWidth) {
-				currentLine = candidate;
-			} else {
-				if (currentLine) out.push(currentLine);
-				// Если одно слово длиннее ширины контейнера — режем посимвольно
-				if (ctx.measureText(word).width > maxWidth) {
-					let chunk = "";
-					for (const ch of Array.from(word)) {
-						if (ctx.measureText(chunk + ch).width > maxWidth && chunk) {
-							out.push(chunk);
-							chunk = ch;
-						} else {
-							chunk += ch;
-						}
-					}
-					currentLine = chunk;
-				} else {
-					currentLine = word;
-				}
-			}
-		}
-		if (currentLine) out.push(currentLine);
-	}
-
-	return out.length > 0 ? out : [""];
-}
-
 export function renderTextContent(
 	ctx: CanvasRenderingContext2D,
 	el: SceneElement,
@@ -188,42 +139,38 @@ export function renderTextContent(
 ): void {
 	if (!textStr) return;
 
-	// Отображаем [[Заметка|Алиас]] аккуратно, сохраняя индикатор ссылки
-	const displayStr = textStr.replace(
-		/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g,
-		(_m, target: string, alias?: string) => `🔗 ${(alias || target).trim()}`
-	);
-
 	ctx.save();
-	const fontPx = Math.max(8, el.fontSize || 18);
-	const lineHeight = fontPx * 1.32;
-	ctx.font = `500 ${fontPx}px ${getCanvasFontFamily(el.fontFamily)}`;
+	const fontPx = clampFontSize(el.fontSize || 20);
+	const lineHeight = fontPx * TEXT_LINE_HEIGHT;
+	ctx.font = getTextFont(fontPx, el.fontFamily);
 	ctx.fillStyle = colorOverride || el.strokeColor || "#ffffff";
 	ctx.textBaseline = "middle";
 
-	const lines = wrapMultilineText(ctx, displayStr, Math.max(30, boxW - 8));
+	const displayStr = getTextDisplayString(textStr);
+	const lines = isAutoSizeText(el)
+		? displayStr.split(/\r?\n/)
+		: wrapMultilineText(ctx, displayStr, getTextWrapWidth(boxW));
 	const totalH = lines.length * lineHeight;
 
-	let startY = boxY + lineHeight / 2;
+	let startY = boxY;
 	if (el.verticalAlign === "middle") {
-		startY = boxY + (boxH - totalH) / 2 + lineHeight / 2;
+		startY = boxY + (boxH - totalH) / 2;
 	} else if (el.verticalAlign === "bottom") {
-		startY = boxY + boxH - totalH + lineHeight / 2;
+		startY = boxY + boxH - totalH;
 	}
 
+	let tx = boxX;
+	if (el.textAlign === "center") {
+		ctx.textAlign = "center";
+		tx = boxX + boxW / 2;
+	} else if (el.textAlign === "right") {
+		ctx.textAlign = "right";
+		tx = boxX + boxW;
+	} else {
+		ctx.textAlign = "left";
+	}
 	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i]!;
-		let tx = boxX + 4;
-		if (el.textAlign === "center") {
-			ctx.textAlign = "center";
-			tx = boxX + boxW / 2;
-		} else if (el.textAlign === "right") {
-			ctx.textAlign = "right";
-			tx = boxX + boxW - 4;
-		} else {
-			ctx.textAlign = "left";
-		}
-		ctx.fillText(line, tx, startY + i * lineHeight);
+		ctx.fillText(lines[i]!, tx, startY + i * lineHeight + lineHeight / 2);
 	}
 
 	ctx.restore();
@@ -236,6 +183,7 @@ export function renderSceneElement(
 		getImage: (el: SceneElement) => HTMLImageElement | null;
 		boundTextElement?: SceneElement | null;
 		isEditingText?: boolean;
+		theme?: "dark" | "light";
 	}
 ): void {
 	if (el.isDeleted) return;
@@ -518,7 +466,8 @@ export function renderSceneElement(
 				el.y,
 				el.width,
 				el.height,
-				el.text ?? ""
+				el.text ?? "",
+				el.strokeColor || getDefaultTextColor(opts.theme ?? "dark")
 			);
 		}
 	}
@@ -533,16 +482,18 @@ export function renderSceneElement(
 	) {
 		const textSource = opts.boundTextElement ?? (el.text ? el : null);
 		if (textSource && textSource.text) {
-			const pad = el.type === "diamond" ? Math.min(24, el.width * 0.18) : 12;
+			const box = getContainerTextBox(el);
 			renderTextContent(
 				ctx,
 				textSource,
-				el.x + pad,
-				el.y + pad,
-				Math.max(20, el.width - pad * 2),
-				Math.max(20, el.height - pad * 2),
+				box.x,
+				box.y,
+				box.width,
+				box.height,
 				textSource.text,
-				opts.boundTextElement ? opts.boundTextElement.strokeColor : "#ffffff"
+				opts.boundTextElement
+					? opts.boundTextElement.strokeColor
+					: getDefaultTextColor(opts.theme ?? "dark")
 			);
 		}
 	}

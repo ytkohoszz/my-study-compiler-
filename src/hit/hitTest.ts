@@ -69,6 +69,40 @@ export function getElementWorldPoints(el: SceneElement): ScenePoint[] {
 	}));
 }
 
+export function isPathElement(el: SceneElement): boolean {
+	return el.type === "arrow" || el.type === "line" || el.type === "freedraw";
+}
+
+/**
+ * Приводит линию, стрелку или штрих к каноничной геометрии: `x`/`y` — левый верхний угол
+ * реального AABB по всем мировым точкам, `width`/`height` — его размеры,
+ * а `points` хранятся относительно этого угла (без отрицательных координат).
+ */
+export function normalizeElementBounds(el: SceneElement): void {
+	if (!el.points || el.points.length === 0) return;
+	const worldPoints = getElementWorldPoints(el);
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	for (const p of worldPoints) {
+		if (p.x < minX) minX = p.x;
+		if (p.y < minY) minY = p.y;
+		if (p.x > maxX) maxX = p.x;
+		if (p.y > maxY) maxY = p.y;
+	}
+	if (!Number.isFinite(minX) || !Number.isFinite(minY)) return;
+	el.x = minX;
+	el.y = minY;
+	el.width = Math.max(1, maxX - minX);
+	el.height = Math.max(1, maxY - minY);
+	el.points = worldPoints.map((p) => ({
+		x: p.x - minX,
+		y: p.y - minY,
+		pressure: p.pressure,
+	}));
+}
+
 function sampleQuadratic(
 	start: ScenePoint,
 	control: ScenePoint,
@@ -310,128 +344,207 @@ export function aabbIntersects(a: AABB, b: AABB): boolean {
 	);
 }
 
+const HIT_SLOP_PX = 6;
+
+/** Запас попадания в мировых единицах: половина толщины штриха + 6 экранных px независимо от масштаба. */
+function getHitThreshold(el: SceneElement, zoom: number): number {
+	return el.strokeWidth / 2 + HIT_SLOP_PX / Math.max(0.1, zoom);
+}
+
+export function isTransparentColor(color: string | null | undefined): boolean {
+	if (!color) return true;
+	const value = color.trim().toLowerCase();
+	if (value === "" || value === "transparent" || value === "none") return true;
+	if (/^#[0-9a-f]{8}$/.test(value)) return value.endsWith("00");
+	if (/^#[0-9a-f]{4}$/.test(value)) return value.endsWith("0");
+	const functional = /^rgba?\(([^)]*)\)$/.exec(value);
+	if (functional?.[1]) {
+		const parts = functional[1].split(/[\s,/]+/).filter(Boolean);
+		return parts.length >= 4 && Number.parseFloat(parts[3]!) === 0;
+	}
+	return false;
+}
+
+export function hasVisibleFill(el: SceneElement): boolean {
+	return el.fillStyle !== "none" && !isTransparentColor(el.backgroundColor);
+}
+
+/** Фигуры без видимой заливки выделяются по контуру; их пустое нутро проверяется отдельным вторым проходом. */
+function isOutlineOnlyShape(el: SceneElement): boolean {
+	return (
+		(el.type === "rectangle" ||
+			el.type === "ellipse" ||
+			el.type === "diamond") &&
+		!hasVisibleFill(el)
+	);
+}
+
 /**
- * Проверяет попадание точки `pt` (в координатах сцены) в элемент `el`.
+ * Лежит ли точка (в системе координат элемента без поворота) внутри фигуры,
+ * увеличенной (`margin > 0`) или уменьшенной (`margin < 0`) на `margin` со всех сторон.
+ */
+function isInsideShape(
+	el: SceneElement,
+	local: ScenePoint,
+	margin: number
+): boolean {
+	const halfW = el.width / 2 + margin;
+	const halfH = el.height / 2 + margin;
+	if (halfW <= 0 || halfH <= 0) return false;
+	const dx = local.x - (el.x + el.width / 2);
+	const dy = local.y - (el.y + el.height / 2);
+	if (el.type === "ellipse") {
+		return (dx * dx) / (halfW * halfW) + (dy * dy) / (halfH * halfH) <= 1;
+	}
+	if (el.type === "diamond") {
+		return Math.abs(dx) / halfW + Math.abs(dy) / halfH <= 1;
+	}
+	return Math.abs(dx) <= halfW && Math.abs(dy) <= halfH;
+}
+
+function hitTestPath(
+	el: SceneElement,
+	pt: ScenePoint,
+	threshold: number
+): boolean {
+	const pts =
+		el.type === "freedraw" ? getElementWorldPoints(el) : getConnectorPolyline(el);
+	if (pts.length === 0) return false;
+	if (pts.length === 1) {
+		return Math.hypot(pt.x - pts[0]!.x, pt.y - pts[0]!.y) <= threshold;
+	}
+	for (let i = 0; i < pts.length - 1; i++) {
+		const p1 = pts[i]!;
+		const p2 = pts[i + 1]!;
+		if (distanceToSegment(pt.x, pt.y, p1.x, p1.y, p2.x, p2.y) <= threshold) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function hitTestFrame(
+	el: SceneElement,
+	local: ScenePoint,
+	threshold: number
+): boolean {
+	// В рамку попадаем по заголовку сверху или по её контуру
+	const inHeader =
+		local.x >= el.x &&
+		local.x <= el.x + Math.min(220, el.width) &&
+		local.y >= el.y - 26 &&
+		local.y <= el.y;
+	if (inHeader) return true;
+	return (
+		isInsideShape(el, local, threshold) && !isInsideShape(el, local, -threshold)
+	);
+}
+
+function toElementLocal(el: SceneElement, pt: ScenePoint): ScenePoint {
+	return unrotatePoint(
+		pt.x,
+		pt.y,
+		el.x + el.width / 2,
+		el.y + el.height / 2,
+		el.angle || 0
+	);
+}
+
+/**
+ * Первый проход: линии и штрихи, контуры фигур без заливки, закрашенные фигуры,
+ * текст, заметки и изображения.
+ */
+function hitTestSolid(el: SceneElement, pt: ScenePoint, zoom: number): boolean {
+	if (el.isDeleted) return false;
+	const threshold = getHitThreshold(el, zoom);
+	if (isPathElement(el)) return hitTestPath(el, pt, threshold);
+
+	const local = toElementLocal(el, pt);
+	if (el.type === "frame") return hitTestFrame(el, local, threshold);
+	if (isOutlineOnlyShape(el)) {
+		return (
+			isInsideShape(el, local, threshold) &&
+			!isInsideShape(el, local, -threshold)
+		);
+	}
+	// rectangle, ellipse, diamond с заливкой, text, image, note
+	return isInsideShape(el, local, threshold);
+}
+
+/** Второй проход: пустое нутро фигур без заливки. */
+function hitTestEmptyInterior(
+	el: SceneElement,
+	pt: ScenePoint,
+	zoom: number
+): boolean {
+	if (el.isDeleted || !isOutlineOnlyShape(el)) return false;
+	return isInsideShape(el, toElementLocal(el, pt), getHitThreshold(el, zoom));
+}
+
+/**
+ * Проверяет попадание точки `pt` (в координатах сцены) в элемент `el`:
+ * по линии, тексту, заливке или внутри контура.
  */
 export function hitTestElement(
 	el: SceneElement,
 	pt: ScenePoint,
 	zoom = 1
 ): boolean {
-	if (el.isDeleted) return false;
-	const threshold = Math.max(6 / Math.max(0.25, zoom), el.strokeWidth / 2 + 4);
-
-	if (el.type === "arrow" || el.type === "line" || el.type === "freedraw") {
-		const pts =
-			el.type === "arrow" || el.type === "line"
-				? getConnectorPolyline(el)
-				: getElementWorldPoints(el);
-		if (pts.length === 0) return false;
-		if (pts.length === 1) {
-			return Math.hypot(pt.x - pts[0]!.x, pt.y - pts[0]!.y) <= threshold;
-		}
-		for (let i = 0; i < pts.length - 1; i++) {
-			const p1 = pts[i]!;
-			const p2 = pts[i + 1]!;
-			if (distanceToSegment(pt.x, pt.y, p1.x, p1.y, p2.x, p2.y) <= threshold) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	const cx = el.x + el.width / 2;
-	const cy = el.y + el.height / 2;
-	const local = unrotatePoint(pt.x, pt.y, cx, cy, el.angle || 0);
-
-	if (el.type === "frame") {
-		// В рамку попадаем по заголовку сверху или по её контуру
-		const inHeader =
-			local.x >= el.x &&
-			local.x <= el.x + Math.min(220, el.width) &&
-			local.y >= el.y - 26 &&
-			local.y <= el.y;
-		if (inHeader) return true;
-
-		const nearLeft =
-			Math.abs(local.x - el.x) <= threshold &&
-			local.y >= el.y - threshold &&
-			local.y <= el.y + el.height + threshold;
-		const nearRight =
-			Math.abs(local.x - (el.x + el.width)) <= threshold &&
-			local.y >= el.y - threshold &&
-			local.y <= el.y + el.height + threshold;
-		const nearTop =
-			Math.abs(local.y - el.y) <= threshold &&
-			local.x >= el.x - threshold &&
-			local.x <= el.x + el.width + threshold;
-		const nearBottom =
-			Math.abs(local.y - (el.y + el.height)) <= threshold &&
-			local.x >= el.x - threshold &&
-			local.x <= el.x + el.width + threshold;
-		return nearLeft || nearRight || nearTop || nearBottom;
-	}
-
-	if (el.type === "ellipse") {
-		const rx = Math.max(1, el.width / 2);
-		const ry = Math.max(1, el.height / 2);
-		const norm =
-			(local.x - cx) ** 2 / (rx + threshold) ** 2 +
-			(local.y - cy) ** 2 / (ry + threshold) ** 2;
-		if (el.fillStyle === "none" || el.backgroundColor === "transparent") {
-			const innerRx = Math.max(0, rx - threshold);
-			const innerRy = Math.max(0, ry - threshold);
-			const innerNorm =
-				innerRx > 0 && innerRy > 0
-					? (local.x - cx) ** 2 / innerRx ** 2 +
-					  (local.y - cy) ** 2 / innerRy ** 2
-					: 0;
-			return norm <= 1 && innerNorm >= 1;
-		}
-		return norm <= 1;
-	}
-
-	if (el.type === "diamond") {
-		const hw = Math.max(1, el.width / 2);
-		const hh = Math.max(1, el.height / 2);
-		const dist =
-			Math.abs(local.x - cx) / (hw + threshold) +
-			Math.abs(local.y - cy) / (hh + threshold);
-		if (el.fillStyle === "none" || el.backgroundColor === "transparent") {
-			const innerDist =
-				Math.abs(local.x - cx) / Math.max(1, hw - threshold) +
-				Math.abs(local.y - cy) / Math.max(1, hh - threshold);
-			return dist <= 1 && innerDist >= 1;
-		}
-		return dist <= 1;
-	}
-
-	// rectangle, text, image, note
-	return (
-		local.x >= el.x - threshold &&
-		local.x <= el.x + el.width + threshold &&
-		local.y >= el.y - threshold &&
-		local.y <= el.y + el.height + threshold
-	);
+	return hitTestSolid(el, pt, zoom) || hitTestEmptyInterior(el, pt, zoom);
 }
 
 /**
  * Находит самый верхний по слою (zIndex) видимый элемент под курсором.
+ * Сначала проверяются линии, текст и закрашенные области, и только потом нутро фигур без заливки
+ * (`includeEmptyInterior`), чтобы прозрачный контейнер не перехватывал клики по его содержимому.
  * Привязанные текстовые элементы (`containerId !== null`) пропускаются в пользу их родительской фигуры.
  */
 export function getElementAtPoint(
 	elements: readonly SceneElement[],
 	pt: ScenePoint,
-	zoom = 1
+	zoom = 1,
+	includeEmptyInterior = true
 ): SceneElement | null {
 	for (let i = elements.length - 1; i >= 0; i--) {
 		const el = elements[i]!;
 		if (el.isDeleted || el.containerId) continue;
-		if (hitTestElement(el, pt, zoom)) {
-			return el;
-		}
+		if (hitTestSolid(el, pt, zoom)) return el;
+	}
+	if (!includeEmptyInterior) return null;
+	for (let i = elements.length - 1; i >= 0; i--) {
+		const el = elements[i]!;
+		if (el.isDeleted || el.containerId) continue;
+		if (hitTestEmptyInterior(el, pt, zoom)) return el;
 	}
 	return null;
+}
+
+/**
+ * Рамка элемента, по которой строятся контур выделения и ручки.
+ * Для штриха берётся реальный AABB точек: `x`/`y` рисованной линии могут не совпадать с её краем.
+ */
+export function getElementFrameBox(el: SceneElement): {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+} {
+	if (el.type === "freedraw" && el.points && el.points.length > 0) {
+		const box = getElementAABB(el);
+		return { x: box.minX, y: box.minY, width: box.width, height: box.height };
+	}
+	return { x: el.x, y: el.y, width: el.width, height: el.height };
+}
+
+/**
+ * Привязанный текст выделяется вместе с фигурой-контейнером,
+ * но контур и ручки строятся только по самой фигуре.
+ */
+export function getSelectionFrameElements(
+	selected: readonly SceneElement[]
+): SceneElement[] {
+	const ids = new Set(selected.map((el) => el.id));
+	return selected.filter((el) => !(el.containerId && ids.has(el.containerId)));
 }
 
 /**
@@ -441,10 +554,11 @@ export function getTransformHandles(
 	selectedElements: readonly SceneElement[],
 	zoom = 1
 ): HandleDescriptor[] {
-	if (selectedElements.length === 0) return [];
+	const targets = getSelectionFrameElements(selectedElements);
+	if (targets.length === 0) return [];
 
-	if (selectedElements.length === 1) {
-		const el = selectedElements[0]!;
+	if (targets.length === 1) {
+		const el = targets[0]!;
 		if (el.locked) return [];
 
 		if (el.type === "arrow" || el.type === "line") {
@@ -472,40 +586,45 @@ export function getTransformHandles(
 			return handles;
 		}
 
-		const cx = el.x + el.width / 2;
-		const cy = el.y + el.height / 2;
+		const box = getElementFrameBox(el);
+		const cx = box.x + box.width / 2;
+		const cy = box.y + box.height / 2;
 		const angle = el.angle || 0;
-		const rotOffset = ROTATE_HANDLE_OFFSET_PX / Math.max(0.25, zoom);
+		const rotOffset = ROTATE_HANDLE_OFFSET_PX / Math.max(0.1, zoom);
+		const hidden = getHiddenSideHandles(box.width, box.height, zoom);
 
 		const rawHandles: Array<{ kind: HandleKind; x: number; y: number }> = [
-			{ kind: "nw", x: el.x, y: el.y },
-			{ kind: "n", x: cx, y: el.y },
-			{ kind: "ne", x: el.x + el.width, y: el.y },
-			{ kind: "e", x: el.x + el.width, y: cy },
-			{ kind: "se", x: el.x + el.width, y: el.y + el.height },
-			{ kind: "s", x: cx, y: el.y + el.height },
-			{ kind: "sw", x: el.x, y: el.y + el.height },
-			{ kind: "w", x: el.x, y: cy },
-			{ kind: "rotate", x: cx, y: el.y - rotOffset },
+			{ kind: "nw", x: box.x, y: box.y },
+			{ kind: "n", x: cx, y: box.y },
+			{ kind: "ne", x: box.x + box.width, y: box.y },
+			{ kind: "e", x: box.x + box.width, y: cy },
+			{ kind: "se", x: box.x + box.width, y: box.y + box.height },
+			{ kind: "s", x: cx, y: box.y + box.height },
+			{ kind: "sw", x: box.x, y: box.y + box.height },
+			{ kind: "w", x: box.x, y: cy },
+			{ kind: "rotate", x: cx, y: box.y - rotOffset },
 		];
 
-		return rawHandles.map((h) => {
-			const r = rotatePoint(h.x, h.y, cx, cy, angle);
-			return {
-				kind: h.kind,
-				x: r.x,
-				y: r.y,
-				elementId: el.id,
-			};
-		});
+		return rawHandles
+			.filter((h) => !hidden.has(h.kind))
+			.map((h) => {
+				const r = rotatePoint(h.x, h.y, cx, cy, angle);
+				return {
+					kind: h.kind,
+					x: r.x,
+					y: r.y,
+					elementId: el.id,
+				};
+			});
 	}
 
 	// Множественное выделение — общий AABB
-	const box = getSelectionAABB(selectedElements);
+	const box = getSelectionAABB(targets);
 	if (!box) return [];
-	const rotOffset = ROTATE_HANDLE_OFFSET_PX / Math.max(0.25, zoom);
+	const rotOffset = ROTATE_HANDLE_OFFSET_PX / Math.max(0.1, zoom);
+	const hidden = getHiddenSideHandles(box.width, box.height, zoom);
 
-	return [
+	const groupHandles: HandleDescriptor[] = [
 		{ kind: "nw", x: box.minX, y: box.minY },
 		{ kind: "n", x: box.cx, y: box.minY },
 		{ kind: "ne", x: box.maxX, y: box.minY },
@@ -516,19 +635,67 @@ export function getTransformHandles(
 		{ kind: "w", x: box.minX, y: box.cy },
 		{ kind: "rotate", x: box.cx, y: box.minY - rotOffset },
 	];
+	return groupHandles.filter((h) => !hidden.has(h.kind));
 }
+
+/** Минимальная длина стороны на экране, при которой у неё ещё показывается ручка середины. */
+const MIN_SIDE_HANDLE_SPAN_PX = 16;
+
+/** Ручки середин сторон скрываются у совсем маленьких элементов, чтобы не сливаться с угловыми. */
+function getHiddenSideHandles(
+	width: number,
+	height: number,
+	zoom: number
+): ReadonlySet<HandleKind> {
+	const scale = Math.max(0.1, zoom);
+	const hidden = new Set<HandleKind>();
+	if (width * scale < MIN_SIDE_HANDLE_SPAN_PX) {
+		hidden.add("n");
+		hidden.add("s");
+	}
+	if (height * scale < MIN_SIDE_HANDLE_SPAN_PX) {
+		hidden.add("e");
+		hidden.add("w");
+	}
+	return hidden;
+}
+
+/** При наложении ручек выигрывают вращение и узлы линии, затем углы, затем середины сторон. */
+const HANDLE_PRIORITY: Partial<Record<HandleKind, number>> = {
+	rotate: 0,
+	point: 0,
+	nw: 1,
+	ne: 1,
+	se: 1,
+	sw: 1,
+	midpoint: 2,
+	n: 2,
+	e: 2,
+	s: 2,
+	w: 2,
+};
 
 export function hitTestHandles(
 	handles: readonly HandleDescriptor[],
 	pt: ScenePoint,
 	zoom = 1
 ): HandleDescriptor | null {
-	const radius = (HANDLE_HIT_RADIUS_PX + 2) / Math.max(0.25, zoom);
-	for (let i = handles.length - 1; i >= 0; i--) {
-		const h = handles[i]!;
-		if (Math.hypot(pt.x - h.x, pt.y - h.y) <= radius) {
-			return h;
+	const radius = (HANDLE_HIT_RADIUS_PX + 2) / Math.max(0.1, zoom);
+	let best: HandleDescriptor | null = null;
+	let bestPriority = Infinity;
+	let bestDistance = Infinity;
+	for (const handle of handles) {
+		const distance = Math.hypot(pt.x - handle.x, pt.y - handle.y);
+		if (distance > radius) continue;
+		const priority = HANDLE_PRIORITY[handle.kind] ?? 3;
+		if (
+			priority < bestPriority ||
+			(priority === bestPriority && distance < bestDistance)
+		) {
+			best = handle;
+			bestPriority = priority;
+			bestDistance = distance;
 		}
 	}
-	return null;
+	return best;
 }

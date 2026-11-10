@@ -8,6 +8,8 @@ import {
 	hashStringSeed,
 } from "../scene/types";
 import { constrainTo45Degrees } from "../input/pointer";
+import { normalizeElementBounds } from "../hit/hitTest";
+import { TEXT_LINE_HEIGHT } from "../text/metrics";
 
 const DRAW_TO_ELEMENT: Partial<Record<CanvasToolId, SceneElementType>> = {
 	rectangle: "rectangle",
@@ -42,8 +44,8 @@ export function createSceneElement(
 		type,
 		x: point.x,
 		y: point.y,
-		width: isText ? 180 : 1,
-		height: isText ? 44 : 1,
+		width: 1,
+		height: isText ? style.fontSize * TEXT_LINE_HEIGHT : 1,
 		angle: 0,
 		strokeColor: style.strokeColor,
 		backgroundColor: style.backgroundColor,
@@ -63,8 +65,10 @@ export function createSceneElement(
 		text: type === "note" ? "Заметка" : type === "frame" ? "Рамка" : undefined,
 		fontFamily: style.fontFamily,
 		fontSize: style.fontSize,
-		textAlign: style.textAlign,
-		verticalAlign: style.verticalAlign,
+		// Подписи фигур и заметок по умолчанию центрируются; свободный текст берёт выравнивание из текущего стиля
+		textAlign: isText ? style.textAlign : "center",
+		verticalAlign: isText ? "top" : "middle",
+		autoResize: isText ? true : undefined,
 		groupIds: [],
 		frameId: null,
 		link: null,
@@ -124,18 +128,27 @@ export function finalizeElementSize(
 	start: ScenePoint,
 	didDrag: boolean
 ): void {
-	if (didDrag) {
-		element.width = Math.max(4, element.width);
-		element.height = Math.max(4, element.height);
+	// Штрих, линия и стрелка завершаются нормализацией AABB, а не фиксированными размерами
+	if (element.type === "freedraw") {
+		normalizeElementBounds(element);
+		element.updated = Date.now();
 		return;
 	}
 
 	if (element.type === "arrow" || element.type === "line") {
-		element.x = start.x;
-		element.y = start.y;
-		element.width = 120;
-		element.height = 1;
-		element.points = [{ x: 0, y: 0 }, { x: 120, y: 0 }];
+		if (!didDrag) {
+			element.x = start.x;
+			element.y = start.y;
+			element.points = [{ x: 0, y: 0 }, { x: 120, y: 0 }];
+		}
+		normalizeElementBounds(element);
+		element.updated = Date.now();
+		return;
+	}
+
+	if (didDrag) {
+		element.width = Math.max(4, element.width);
+		element.height = Math.max(4, element.height);
 		return;
 	}
 
@@ -174,7 +187,5 @@ export function appendFreedrawPoint(
 	}
 	points.push(relative);
 	element.points = points;
-	element.width = Math.max(element.width, Math.abs(relative.x));
-	element.height = Math.max(element.height, Math.abs(relative.y));
 	element.updated = Date.now();
 }

@@ -773,7 +773,8 @@ export class StudyCompilerView extends ItemView {
 			if (
 				this.viewMode === "schema" &&
 				this.doc.activeElement instanceof HTMLTextAreaElement &&
-				this.doc.activeElement.classList.contains("mni-text-input")
+				(this.doc.activeElement.classList.contains("mni-text-input") ||
+					this.doc.activeElement.classList.contains("my-sc-canvas-text-editor"))
 			) {
 				return;
 			}

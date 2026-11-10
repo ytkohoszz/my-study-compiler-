@@ -5,10 +5,17 @@ import {
 	ScenePoint,
 	SnapGuideLine,
 } from "../scene/types";
-import { getElementAABB, rotatePoint, unrotatePoint } from "./hitTest";
+import {
+	getElementAABB,
+	normalizeElementBounds,
+	rotatePoint,
+	unrotatePoint,
+} from "./hitTest";
+import { getContainerTextBox } from "../text/metrics";
 
 export const BINDING_SNAP_DISTANCE = 24;
 export const OBJECT_SNAP_THRESHOLD = 6;
+export const GRID_SNAP_THRESHOLD_PX = 6;
 
 export function isBindableShape(el: SceneElement): boolean {
 	if (el.isDeleted) return false;
@@ -156,11 +163,11 @@ export function updateBoundElements(elements: SceneElement[]): void {
 				el.containerId = null;
 				continue;
 			}
-			const pad = 12;
-			el.x = container.x + pad;
-			el.y = container.y + pad;
-			el.width = Math.max(24, container.width - pad * 2);
-			el.height = Math.max(20, container.height - pad * 2);
+			const box = getContainerTextBox(container);
+			el.x = box.x;
+			el.y = box.y;
+			el.width = box.width;
+			el.height = box.height;
 			el.angle = container.angle;
 			continue;
 		}
@@ -246,27 +253,12 @@ export function updateBoundElements(elements: SceneElement[]): void {
 					worldPoints[2] = { x: midX, y: newLastWorld.y };
 				}
 
-				const baseX = worldPoints[0]!.x;
-				const baseY = worldPoints[0]!.y;
-				el.x = baseX;
-				el.y = baseY;
+				// Каноничная геометрия: x/y — угол реального AABB, points — относительно него
 				el.points = worldPoints.map((wp) => ({
-					x: wp.x - baseX,
-					y: wp.y - baseY,
+					x: wp.x - el.x,
+					y: wp.y - el.y,
 				}));
-
-				let minX = Infinity;
-				let minY = Infinity;
-				let maxX = -Infinity;
-				let maxY = -Infinity;
-				for (const wp of worldPoints) {
-					if (wp.x < minX) minX = wp.x;
-					if (wp.y < minY) minY = wp.y;
-					if (wp.x > maxX) maxX = wp.x;
-					if (wp.y > maxY) maxY = wp.y;
-				}
-				el.width = Math.max(4, maxX - minX);
-				el.height = Math.max(4, maxY - minY);
+				normalizeElementBounds(el);
 			}
 		}
 	}
@@ -346,15 +338,22 @@ export function computeSnapOffset(
 	}
 
 	if (opts.snapToGrid && opts.gridSize > 1) {
+		// Сетка притягивает фигуру только вблизи линий, иначе перетаскивание «залипает» шагами по сетке
+		const threshold = Math.min(
+			GRID_SNAP_THRESHOLD_PX / Math.max(0.1, opts.zoom),
+			opts.gridSize / 2
+		);
 		if (dx === 0) {
 			const snappedX =
 				Math.round(movingAABB.minX / opts.gridSize) * opts.gridSize;
-			dx = snappedX - movingAABB.minX;
+			const offsetX = snappedX - movingAABB.minX;
+			if (Math.abs(offsetX) <= threshold) dx = offsetX;
 		}
 		if (dy === 0) {
 			const snappedY =
 				Math.round(movingAABB.minY / opts.gridSize) * opts.gridSize;
-			dy = snappedY - movingAABB.minY;
+			const offsetY = snappedY - movingAABB.minY;
+			if (Math.abs(offsetY) <= threshold) dy = offsetY;
 		}
 	}
 
