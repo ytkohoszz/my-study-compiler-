@@ -1,6 +1,6 @@
 {
 	"name": "my-study-compiler",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"description": "Конструктор структуры, аудит источников и автосборка научных работ и проектов",
 	"main": "main.js",
 	"scripts": {
