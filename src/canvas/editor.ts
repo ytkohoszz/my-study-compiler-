@@ -12,7 +12,6 @@ import {
 	SnapGuideLine,
 	cloneSceneElement,
 	generateElementId,
-	hashStringSeed,
 } from "../scene/types";
 import { SceneHistory } from "../scene/history";
 import {
@@ -33,7 +32,6 @@ import { isResizeHandle, resizeBoxFromHandle } from "../hit/transform";
 import {
 	CanvasPoint,
 	canvasPointToWorld,
-	constrainTo45Degrees,
 	getCanvasPoint,
 	getDistance,
 	getMidpoint,
@@ -74,6 +72,26 @@ export interface CanvasEditorCallbacks {
 	onPickImage: (point: ScenePoint) => void;
 	onPasteImage: (file: File, point: ScenePoint) => Promise<void>;
 	onOpenLink: (link: string, newTab: boolean) => void;
+}
+
+interface AsyncClipboardItemLike {
+	readonly types: readonly string[];
+	getType(type: string): Promise<Blob>;
+}
+
+interface AsyncClipboardLike {
+	read?: () => Promise<AsyncClipboardItemLike[]>;
+	readText?: () => Promise<string>;
+}
+
+interface ElectronNativeImageLike {
+	isEmpty(): boolean;
+	toPNG(): Uint8Array;
+}
+
+interface ElectronClipboardLike {
+	readImage?: () => ElectronNativeImageLike;
+	readText?: () => string;
 }
 
 type PointerInteraction =
@@ -150,7 +168,6 @@ type PointerInteraction =
 interface TextEditSession {
 	elementId: string;
 	isNew: boolean;
-	/** Мировые X-якоря рамки в начале правки: выравнивание решает, какой край остаётся на месте при росте текста. */
 	anchor: TextAnchor;
 }
 
@@ -160,7 +177,45 @@ interface MenuAction {
 	onClick: () => void;
 }
 
+interface SegmentedOption<T> {
+	value: T;
+	title: string;
+	label?: string;
+	obsidianIcon?: string;
+	renderSvg?: (svg: SVGSVGElement, doc: Document) => void;
+}
+
 const SCENE_CLIPBOARD_PREFIX = "MY_STUDY_COMPILER_SCENE:";
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+const STROKE_PALETTE: ReadonlyArray<{ color: string; title: string }> = [
+	{ color: "#ffffff", title: "Белый" },
+	{ color: "#cbd5e1", title: "Светло-серый" },
+	{ color: "#868e96", title: "Серый" },
+	{ color: "#1e1e1e", title: "Чёрный" },
+	{ color: "#e5a158", title: "Янтарный" },
+	{ color: "#e06c75", title: "Красный" },
+	{ color: "#4aab80", title: "Зелёный" },
+	{ color: "#599ed6", title: "Синий" },
+	{ color: "#4fb3d9", title: "Голубой" },
+	{ color: "#9c83e8", title: "Фиолетовый" },
+	{ color: "#d882b6", title: "Розовый" },
+	{ color: "#d4c05a", title: "Жёлтый" },
+];
+
+const BACKGROUND_PALETTE: ReadonlyArray<{ color: string; preview: string; title: string }> = [
+	{ color: "transparent", preview: "transparent", title: "Прозрачный" },
+	{ color: "rgba(229, 161, 88, 0.18)", preview: "#e5a158", title: "Янтарный" },
+	{ color: "rgba(224, 108, 117, 0.18)", preview: "#e06c75", title: "Красный" },
+	{ color: "rgba(74, 171, 128, 0.18)", preview: "#4aab80", title: "Зелёный" },
+	{ color: "rgba(89, 158, 214, 0.18)", preview: "#599ed6", title: "Синий" },
+	{ color: "rgba(79, 179, 217, 0.18)", preview: "#4fb3d9", title: "Голубой" },
+	{ color: "rgba(156, 131, 232, 0.18)", preview: "#9c83e8", title: "Фиолетовый" },
+	{ color: "rgba(216, 130, 182, 0.18)", preview: "#d882b6", title: "Розовый" },
+	{ color: "rgba(212, 192, 90, 0.18)", preview: "#d4c05a", title: "Жёлтый" },
+	{ color: "rgba(255, 255, 255, 0.10)", preview: "#cbd5e1", title: "Светлый" },
+	{ color: "rgba(30, 34, 42, 0.72)", preview: "#2d3340", title: "Тёмный" },
+];
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
@@ -179,12 +234,6 @@ function cloneElementMap(
 	return result;
 }
 
-function getElementMap(
-	elements: readonly SceneElement[]
-): Map<string, SceneElement> {
-	return new Map(elements.map((element) => [element.id, element]));
-}
-
 function getMaxZIndex(elements: readonly SceneElement[]): number {
 	return elements.reduce(
 		(max, element) => (element.isDeleted ? max : Math.max(max, element.zIndex)),
@@ -196,7 +245,6 @@ function getTextValue(element: SceneElement): string {
 	return typeof element.text === "string" ? element.text : "";
 }
 
-/** Фигуры, внутри которых можно разместить привязанную подпись. */
 function isTextContainer(element: SceneElement): boolean {
 	return (
 		element.type === "rectangle" ||
@@ -213,6 +261,30 @@ function getTextOffsetY(
 	if (align === "bottom") return boxHeight - textHeight;
 	if (align === "middle") return (boxHeight - textHeight) / 2;
 	return 0;
+}
+
+function normalizeColorToHex(color: string): string {
+	const trimmed = color.trim().toLowerCase();
+	if (/^#[0-9a-f]{6}$/.test(trimmed)) return trimmed;
+	if (/^#[0-9a-f]{3}$/.test(trimmed)) {
+		return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+	}
+	const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(trimmed);
+	if (rgbMatch) {
+		const r = clamp(Number(rgbMatch[1]), 0, 255).toString(16).padStart(2, "0");
+		const g = clamp(Number(rgbMatch[2]), 0, 255).toString(16).padStart(2, "0");
+		const b = clamp(Number(rgbMatch[3]), 0, 255).toString(16).padStart(2, "0");
+		return `#${r}${g}${b}`;
+	}
+	return "#e5a158";
+}
+
+function hexToSoftRgba(hex: string, alpha = 0.2): string {
+	const clean = normalizeColorToHex(hex).slice(1);
+	const r = Number.parseInt(clean.slice(0, 2), 16);
+	const g = Number.parseInt(clean.slice(2, 4), 16);
+	const b = Number.parseInt(clean.slice(4, 6), 16);
+	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export class CanvasSceneEditor {
@@ -260,6 +332,9 @@ export class CanvasSceneEditor {
 	private snapGuides: SnapGuideLine[] = [];
 	private bindingHighlightElement: SceneElement | null = null;
 	private eraserTrail: ScenePoint[] = [];
+	private lastPointerWorld: ScenePoint | null = null;
+	private isPasting = false;
+	private lastPasteAt = 0;
 
 	private readonly onPointerDownBound = (event: PointerEvent) =>
 		this.handlePointerDown(event);
@@ -271,6 +346,8 @@ export class CanvasSceneEditor {
 		this.handleWheel(event);
 	private readonly onKeyDownBound = (event: KeyboardEvent) =>
 		this.handleKeyDown(event);
+	private readonly onDocKeyDownBound = (event: KeyboardEvent) =>
+		this.handleDocumentKeyDown(event);
 	private readonly onKeyUpBound = (event: KeyboardEvent) =>
 		this.handleKeyUp(event);
 	private readonly onCopyBound = (event: ClipboardEvent) =>
@@ -332,11 +409,11 @@ export class CanvasSceneEditor {
 	}
 
 	public setScene(scene: Scene, camera?: CameraState | null): void {
-		// Незавершённый текст сохраняется в старую сцену, пока редактор ещё привязан к её ключу
 		if (this.textEditor.isOpen()) this.textEditor.close(true);
 		this.scene = scene;
 		this.selectedIds.clear();
 		this.history.clear();
+		this.lastPointerWorld = null;
 		this.activeTool = scene.appState.activeTool || "select";
 		if (camera) {
 			this.setCameraState(camera, false);
@@ -374,17 +451,24 @@ export class CanvasSceneEditor {
 	): void {
 		this.scene.files[fileEntry.id] = { ...fileEntry };
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
+		const safeWidth = Math.max(24, width);
+		const safeHeight = Math.max(24, height);
+		const centeredPoint: ScenePoint = {
+			x: point.x - safeWidth / 2,
+			y: point.y - safeHeight / 2,
+		};
 		const image = createSceneElement(
 			"image",
-			point,
+			centeredPoint,
 			this.scene.appState.currentStyle,
 			getMaxZIndex(this.scene.elements) + 1
 		);
 		image.fileId = fileEntry.id;
-		image.width = Math.max(24, width);
-		image.height = Math.max(24, height);
+		image.width = safeWidth;
+		image.height = safeHeight;
 		image.aspectRatio = image.width / image.height;
 		this.scene.elements.push(image);
+		this.updateFrameMembership();
 		this.selectOnly(image.id);
 		this.commitHistory();
 	}
@@ -432,6 +516,10 @@ export class CanvasSceneEditor {
 		if (this.textEditor.isOpen()) this.textEditor.close(true);
 		this.finishInteraction();
 		this.destroyed = true;
+		this.doc.removeEventListener("paste", this.onPasteBound, true);
+		this.doc.removeEventListener("copy", this.onCopyBound);
+		this.doc.removeEventListener("cut", this.onCutBound);
+		this.doc.removeEventListener("keydown", this.onDocKeyDownBound, true);
 		this.win.removeEventListener("blur", this.onWindowBlurBound);
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
@@ -569,6 +657,11 @@ export class CanvasSceneEditor {
 		this.canvasWrapEl.appendChild(this.menuEl);
 
 		const actions: MenuAction[] = [
+			{
+				title: "Вставить из буфера",
+				icon: "clipboard-paste",
+				onClick: () => void this.pasteFromClipboard(),
+			},
 			{ title: "Вписать выделение", icon: "focus", onClick: () => this.fitToSelection() },
 			{ title: "Выбрать всё", icon: "scan", onClick: () => this.selectAll() },
 			{ title: "Дублировать", icon: "copy", onClick: () => this.duplicateSelection() },
@@ -606,36 +699,21 @@ export class CanvasSceneEditor {
 			this.notifySceneAndCameraChanged();
 			this.renderFrame();
 		});
-		this.addMenuToggle(
-			"snapToGrid",
-			"Привязка к сетке",
-			this.scene.appState.snapToGrid,
-			(value) => {
-				this.scene.appState.snapToGrid = value;
-				this.notifySceneAndCameraChanged();
-			}
-		);
-		this.addMenuToggle(
-			"snapToObjects",
-			"Умные направляющие",
-			this.scene.appState.snapToObjects,
-			(value) => {
-				this.scene.appState.snapToObjects = value;
-				this.notifySceneAndCameraChanged();
-			}
-		);
-		this.addMenuToggle(
-			"theme",
-			"Светлая тема",
-			this.scene.appState.theme === "light",
-			(value) => {
-				const nextTheme = value ? "light" : "dark";
-				this.recolorDefaultText(this.scene.appState.theme, nextTheme);
-				this.scene.appState.theme = nextTheme;
-				this.notifySceneAndCameraChanged();
-				this.renderFrame();
-			}
-		);
+		this.addMenuToggle("snapToGrid", "Привязка к сетке", this.scene.appState.snapToGrid, (value) => {
+			this.scene.appState.snapToGrid = value;
+			this.notifySceneAndCameraChanged();
+		});
+		this.addMenuToggle("snapToObjects", "Умные направляющие", this.scene.appState.snapToObjects, (value) => {
+			this.scene.appState.snapToObjects = value;
+			this.notifySceneAndCameraChanged();
+		});
+		this.addMenuToggle("theme", "Светлая тема", this.scene.appState.theme === "light", (value) => {
+			const nextTheme = value ? "light" : "dark";
+			this.recolorDefaultText(this.scene.appState.theme, nextTheme);
+			this.scene.appState.theme = nextTheme;
+			this.notifySceneAndCameraChanged();
+			this.renderFrame();
+		});
 	}
 
 	private addMenuToggle(
@@ -663,9 +741,7 @@ export class CanvasSceneEditor {
 		const snapToGrid = this.menuToggleByKey.get("snapToGrid");
 		if (snapToGrid) snapToGrid.checked = this.scene.appState.snapToGrid;
 		const snapToObjects = this.menuToggleByKey.get("snapToObjects");
-		if (snapToObjects) {
-			snapToObjects.checked = this.scene.appState.snapToObjects;
-		}
+		if (snapToObjects) snapToObjects.checked = this.scene.appState.snapToObjects;
 		const theme = this.menuToggleByKey.get("theme");
 		if (theme) theme.checked = this.scene.appState.theme === "light";
 	}
@@ -698,16 +774,15 @@ export class CanvasSceneEditor {
 		this.canvasEl.addEventListener("pointermove", this.onPointerMoveBound);
 		this.canvasEl.addEventListener("pointerup", this.onPointerUpBound);
 		this.canvasEl.addEventListener("pointercancel", this.onPointerUpBound);
-		this.canvasEl.addEventListener("wheel", this.onWheelBound, {
-			passive: false,
-		});
+		this.canvasEl.addEventListener("wheel", this.onWheelBound, { passive: false });
 		this.canvasEl.addEventListener("dblclick", this.onDoubleClickBound);
 		this.canvasEl.addEventListener("contextmenu", this.onContextMenuBound);
 		this.root.addEventListener("keydown", this.onKeyDownBound);
 		this.root.addEventListener("keyup", this.onKeyUpBound);
-		this.root.addEventListener("copy", this.onCopyBound);
-		this.root.addEventListener("cut", this.onCutBound);
-		this.root.addEventListener("paste", this.onPasteBound);
+		this.doc.addEventListener("paste", this.onPasteBound, true);
+		this.doc.addEventListener("copy", this.onCopyBound);
+		this.doc.addEventListener("cut", this.onCutBound);
+		this.doc.addEventListener("keydown", this.onDocKeyDownBound, true);
 		this.canvasEl.addEventListener("dragover", this.onDragOverBound);
 		this.canvasEl.addEventListener("drop", this.onDropBound);
 		this.win.addEventListener("blur", this.onWindowBlurBound);
@@ -760,6 +835,13 @@ export class CanvasSceneEditor {
 		return pointerToWorld(event, this.canvasEl, this.scene.appState);
 	}
 
+	private getPasteWorldPoint(): ScenePoint {
+		if (this.lastPointerWorld) {
+			return { x: this.lastPointerWorld.x, y: this.lastPointerWorld.y };
+		}
+		return this.getViewportCenterWorld();
+	}
+
 	private getSelectedElements(): SceneElement[] {
 		return this.scene.elements.filter(
 			(element) => !element.isDeleted && this.selectedIds.has(element.id)
@@ -792,25 +874,14 @@ export class CanvasSceneEditor {
 			".my-sc-canvas-lock"
 		);
 		if (lockButton) {
-			lockButton.classList.toggle(
-				"is-active",
-				this.scene.appState.keepToolActive
-			);
-			lockButton.setAttribute(
-				"aria-label",
-				this.scene.appState.keepToolActive
-					? "Отключить фиксацию инструмента (K)"
-					: "Не переключать инструмент (K)"
-			);
-			lockButton.title =
-				this.scene.appState.keepToolActive
-					? "Отключить фиксацию инструмента (K)"
-					: "Не переключать инструмент (K)";
+			lockButton.classList.toggle("is-active", this.scene.appState.keepToolActive);
+			const label = this.scene.appState.keepToolActive
+				? "Отключить фиксацию инструмента (K)"
+				: "Не переключать инструмент (K)";
+			lockButton.setAttribute("aria-label", label);
+			lockButton.title = label;
 			lockButton.replaceChildren();
-			setIcon(
-				lockButton,
-				this.scene.appState.keepToolActive ? "lock" : "unlock"
-			);
+			setIcon(lockButton, this.scene.appState.keepToolActive ? "lock" : "unlock");
 		}
 	}
 
@@ -848,9 +919,11 @@ export class CanvasSceneEditor {
 
 	private handlePointerDown(event: PointerEvent): void {
 		if (this.destroyed) return;
-		// Клик по холсту завершает правку текста и затем обрабатывается как обычно
 		if (this.textEditor.isOpen()) this.textEditor.close(true);
+		const world = this.getWorldPoint(event);
+		this.lastPointerWorld = { x: world.x, y: world.y };
 		if (event.button === 2) return;
+		this.hideActionMenu();
 		event.preventDefault();
 		const screen = getCanvasPoint(event, this.canvasEl);
 		this.activePointers.set(event.pointerId, screen);
@@ -861,13 +934,8 @@ export class CanvasSceneEditor {
 			return;
 		}
 
-		const world = this.getWorldPoint(event);
 		this.root.focus({ preventScroll: true });
-		if (
-			event.button === 1 ||
-			this.spacePressed ||
-			this.activeTool === "hand"
-		) {
+		if (event.button === 1 || this.spacePressed || this.activeTool === "hand") {
 			this.interaction = {
 				kind: "pan",
 				pointerId: event.pointerId,
@@ -904,7 +972,6 @@ export class CanvasSceneEditor {
 			};
 			this.interaction = eraseInteraction;
 			this.eraserTrail = [world];
-			// Без этого стирание одиночным кликом не попадало в историю и не сохранялось
 			eraseInteraction.didErase = this.eraseAt(world);
 			this.renderFrame();
 			return;
@@ -920,15 +987,8 @@ export class CanvasSceneEditor {
 		world: ScenePoint
 	): void {
 		const selectedElements = this.getSelectedElements();
-		const handles = getTransformHandles(
-			selectedElements,
-			this.scene.appState.zoom
-		);
-		const hitHandle = hitTestHandles(
-			handles,
-			world,
-			this.scene.appState.zoom
-		);
+		const handles = getTransformHandles(selectedElements, this.scene.appState.zoom);
+		const hitHandle = hitTestHandles(handles, world, this.scene.appState.zoom);
 		if (hitHandle) {
 			this.beginHandleInteraction(event, screen, world, hitHandle);
 			return;
@@ -992,12 +1052,7 @@ export class CanvasSceneEditor {
 			this.selectedIds.clear();
 			this.updatePropertiesPanel();
 		}
-		this.marqueeBox = this.makeAABB(
-			world.x,
-			world.y,
-			world.x,
-			world.y
-		);
+		this.marqueeBox = this.makeAABB(world.x, world.y, world.x, world.y);
 		this.renderFrame();
 	}
 
@@ -1012,7 +1067,7 @@ export class CanvasSceneEditor {
 			const element = elementId ? this.getElementById(elementId) : undefined;
 			if (!element || element.locked || !element.points) return;
 			this.history.beginTransaction(this.scene.elements, this.selectedIds);
-			let pointIndex = handle.pointIndex ?? 0;
+			const pointIndex = handle.pointIndex ?? 0;
 			if (handle.kind === "midpoint") {
 				const nextPoint = element.points[pointIndex];
 				const previousPoint = element.points[pointIndex - 1];
@@ -1048,10 +1103,7 @@ export class CanvasSceneEditor {
 				pointerId: event.pointerId,
 				startScreen: screen,
 				startWorld: world,
-				startElements: cloneElementMap(
-					this.scene.elements,
-					this.selectedIds
-				),
+				startElements: cloneElementMap(this.scene.elements, this.selectedIds),
 				center: { x: bounds.cx, y: bounds.cy },
 				startAngle: Math.atan2(world.y - bounds.cy, world.x - bounds.cx),
 			};
@@ -1091,7 +1143,6 @@ export class CanvasSceneEditor {
 		}
 		this.scene.elements.push(element);
 		if (type === "freedraw") {
-			// Штрих карандаша не выделяется: рамка появляется только при выборе инструментом «Выбор»
 			this.selectedIds = new Set<string>();
 		} else {
 			this.selectOnly(element.id);
@@ -1152,7 +1203,10 @@ export class CanvasSceneEditor {
 	private handlePointerMove(event: PointerEvent): void {
 		if (this.destroyed) return;
 		const screen = getCanvasPoint(event, this.canvasEl);
-		// Наведённые, но не нажатые указатели (мышь/перо в зоне hover) не учитываем: иначе они ложно запускают pinch
+		const world = this.getWorldPoint(event);
+		if (!this.menuPanelEl || this.menuPanelEl.classList.contains("is-hidden")) {
+			this.lastPointerWorld = { x: world.x, y: world.y };
+		}
 		if (this.activePointers.has(event.pointerId)) {
 			this.activePointers.set(event.pointerId, screen);
 		}
@@ -1163,10 +1217,9 @@ export class CanvasSceneEditor {
 
 		const current = this.interaction;
 		if (!current || current.pointerId !== event.pointerId) {
-			this.updateBindingPreview(pointerToWorld(event, this.canvasEl, this.scene.appState));
+			this.updateBindingPreview(world);
 			return;
 		}
-		const world = this.getWorldPoint(event);
 		const screenDistance = getDistance(current.startScreen, screen);
 		if (screenDistance > 3 && current.kind !== "pan") {
 			if (current.kind === "create") current.didMove = true;
@@ -1257,7 +1310,6 @@ export class CanvasSceneEditor {
 		this.snapGuides = [];
 		this.bindingHighlightElement = null;
 		this.eraserTrail = [];
-		// Карандаш остаётся активным, чтобы сразу рисовать следующий штрих
 		const keepsPencil =
 			current.kind === "create" && this.activeTool === "freedraw";
 		if (
@@ -1297,6 +1349,12 @@ export class CanvasSceneEditor {
 		}
 		if (isEditableTarget(event.target)) return;
 
+		if (this.isPasteShortcut(event)) {
+			event.preventDefault();
+			void this.pasteFromClipboard();
+			return;
+		}
+
 		const tool = getToolForKey(event);
 		if (tool) {
 			event.preventDefault();
@@ -1307,6 +1365,93 @@ export class CanvasSceneEditor {
 		const command = getCanvasCommand(event);
 		if (!command) return;
 		if (this.executeCommand(command, event)) event.preventDefault();
+	}
+
+	private handleDocumentKeyDown(event: KeyboardEvent): void {
+		if (!this.isPasteShortcut(event)) return;
+		if (!this.isCanvasPasteContextActive(event.target)) return;
+		this.root.focus({ preventScroll: true });
+		this.win.setTimeout(() => {
+			if (!this.destroyed) {
+				void this.pasteFromClipboard();
+			}
+		}, 20);
+	}
+
+	private isPasteShortcut(event: KeyboardEvent): boolean {
+		if (event.isComposing) return false;
+		const mod = event.ctrlKey || event.metaKey;
+		if (
+			mod &&
+			!event.altKey &&
+			(event.code === "KeyV" || event.key.toLowerCase() === "v")
+		) {
+			return true;
+		}
+		if (
+			event.shiftKey &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			!event.altKey &&
+			(event.code === "Insert" || event.key === "Insert")
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	private isCanvasPasteContextActive(target: EventTarget | null): boolean {
+		if (this.destroyed || !this.root || !this.root.isConnected) return false;
+		if (this.textEditor.isOpen()) return false;
+		if (isEditableTarget(target) || isEditableTarget(this.doc.activeElement)) {
+			return false;
+		}
+		if (target instanceof Node && this.isInsideExternalInputOrModal(target)) {
+			return false;
+		}
+		const activeEl = this.doc.activeElement;
+		if (activeEl instanceof Node && this.isInsideExternalInputOrModal(activeEl)) {
+			return false;
+		}
+
+		const rect = this.root.getBoundingClientRect();
+		if (rect.width <= 0 || rect.height <= 0) return false;
+
+		const myLeaf = this.root.closest(".workspace-leaf");
+		if (myLeaf) {
+			const activeLeaf = this.doc.querySelector(".workspace-leaf.mod-active");
+			if (activeLeaf && activeLeaf !== myLeaf && !myLeaf.contains(activeEl)) {
+				return false;
+			}
+		}
+
+		if (
+			!activeEl ||
+			activeEl === this.doc.body ||
+			activeEl === this.doc.documentElement
+		) {
+			return true;
+		}
+		if (this.root.contains(activeEl) || activeEl.contains(this.root)) {
+			return true;
+		}
+		const hostContainer = this.root.closest(
+			".my-sc-workspace-root, .my-sc-schema-host, .modal.my-sc-modal-container"
+		);
+		return Boolean(hostContainer && hostContainer.contains(activeEl));
+	}
+
+	private isInsideExternalInputOrModal(node: Node): boolean {
+		const el = node instanceof HTMLElement ? node : node.parentElement;
+		if (!el) return false;
+		if (el.closest("input, textarea, select, [contenteditable='true']")) {
+			return true;
+		}
+		const modal = el.closest(".modal-container, .prompt");
+		if (modal && !modal.contains(this.root)) {
+			return true;
+		}
+		return false;
 	}
 
 	private handleKeyUp(event: KeyboardEvent): void {
@@ -1388,7 +1533,6 @@ export class CanvasSceneEditor {
 					this.setTool("select");
 				} else {
 					this.selectedIds.clear();
-					// Escape выводит из любого инструмента рисования, в том числе из закреплённого карандаша
 					if (this.activeTool !== "select") this.setTool("select");
 					this.updatePropertiesPanel();
 					this.renderFrame();
@@ -1398,12 +1542,12 @@ export class CanvasSceneEditor {
 	}
 
 	private handleCopy(event: ClipboardEvent): void {
-		if (isEditableTarget(event.target)) return;
+		if (!this.isCanvasPasteContextActive(event.target)) return;
 		this.copySelectionToClipboard(event);
 	}
 
 	private handleCut(event: ClipboardEvent): void {
-		if (isEditableTarget(event.target)) return;
+		if (!this.isCanvasPasteContextActive(event.target)) return;
 		if (this.copySelectionToClipboard(event)) this.deleteSelection();
 	}
 
@@ -1417,7 +1561,7 @@ export class CanvasSceneEditor {
 		try {
 			clipboard.setData("application/x-my-study-compiler-scene", payload);
 		} catch {
-			// The plain-text representation below remains available in browsers that reject custom MIME types.
+			// Fallback to text/plain
 		}
 		const plainText =
 			selected.length === 1 && selected[0]?.type === "text"
@@ -1428,43 +1572,198 @@ export class CanvasSceneEditor {
 	}
 
 	private handlePaste(event: ClipboardEvent): void {
-		if (isEditableTarget(event.target)) return;
-		const clipboard = event.clipboardData;
-		if (!clipboard) return;
-		const imageItem = Array.from(clipboard.items).find(
-			(item) => item.kind === "file" && item.type.startsWith("image/")
-		);
-		if (imageItem) {
-			const file = imageItem.getAsFile();
-			if (file) {
-				event.preventDefault();
-				void this.callbacks
-					.onPasteImage(file, this.getViewportCenterWorld())
-					.catch((error: unknown) => this.reportAsyncError(error));
-				return;
-			}
-		}
+		if (!this.isCanvasPasteContextActive(event.target)) return;
+		event.preventDefault();
+		event.stopPropagation();
+		void this.pasteFromClipboard(event.clipboardData);
+	}
 
-		const custom = clipboard.getData("application/x-my-study-compiler-scene");
-		const plainText = clipboard.getData("text/plain");
+	private async pasteFromClipboard(
+		clipboardData?: DataTransfer | null,
+		targetPoint?: ScenePoint
+	): Promise<void> {
+		const now = Date.now();
+		if (this.isPasting || now - this.lastPasteAt < 120) return;
+		this.isPasting = true;
+		this.lastPasteAt = now;
+		const point = targetPoint
+			? { x: targetPoint.x, y: targetPoint.y }
+			: this.getPasteWorldPoint();
+
+		try {
+			// 1. Чтение через ClipboardEvent (DataTransfer)
+			if (clipboardData) {
+				const eventFile = this.extractImageFileFromDataTransfer(clipboardData);
+				if (eventFile) {
+					await this.callbacks.onPasteImage(eventFile, point);
+					return;
+				}
+				const custom = clipboardData.getData("application/x-my-study-compiler-scene");
+				const plainText = clipboardData.getData("text/plain");
+				if (this.tryPasteScenePayload(custom, plainText)) {
+					return;
+				}
+			}
+
+			// 2. Чтение через стандартный Web API navigator.clipboard.read()
+			const navigatorFile = await this.readImageFromNavigatorClipboard();
+			if (navigatorFile) {
+				await this.callbacks.onPasteImage(navigatorFile, point);
+				return;
+			}
+
+			// 3. Чтение через системный буфер Electron (clipboard.readImage())
+			const electronFile = this.readImageFromElectronClipboard();
+			if (electronFile) {
+				await this.callbacks.onPasteImage(electronFile, point);
+				return;
+			}
+
+			// 4. Вставка элементов сцены или обычного текста из буфера
+			const text =
+				(clipboardData ? clipboardData.getData("text/plain") : "") ||
+				(await this.readTextFromClipboard());
+			if (text) {
+				if (this.tryPasteScenePayload("", text)) {
+					return;
+				}
+				if (text.trim()) {
+					this.addTextFromString(text, point, true);
+				}
+			}
+		} catch (error: unknown) {
+			this.reportAsyncError(error);
+		} finally {
+			this.isPasting = false;
+			this.lastPasteAt = Date.now();
+		}
+	}
+
+	private extractImageFileFromDataTransfer(
+		clipboard: DataTransfer
+	): File | null {
+		if (clipboard.items) {
+			for (const item of Array.from(clipboard.items)) {
+				if (item.kind === "file" && item.type.startsWith("image/")) {
+					const file = item.getAsFile();
+					if (file) return file;
+				}
+			}
+		}
+		if (clipboard.files) {
+			for (const file of Array.from(clipboard.files)) {
+				if (
+					file.type.startsWith("image/") ||
+					/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(file.name)
+				) {
+					return file;
+				}
+			}
+		}
+		return null;
+	}
+
+	private async readImageFromNavigatorClipboard(): Promise<File | null> {
+		try {
+			const nav = this.win.navigator as Navigator & {
+				clipboard?: AsyncClipboardLike;
+			};
+			const clipboard = nav?.clipboard;
+			if (!clipboard || typeof clipboard.read !== "function") return null;
+			const items = await clipboard.read();
+			for (const item of items) {
+				const imageType = item.types.find((type) =>
+					type.toLowerCase().startsWith("image/")
+				);
+				if (!imageType) continue;
+				const blob = await item.getType(imageType);
+				if (blob && blob.size > 0) {
+					const ext = imageType.split("/")[1]?.split("+")[0] || "png";
+					return new File([blob], `clipboard-${Date.now()}.${ext}`, {
+						type: imageType,
+					});
+				}
+			}
+		} catch {
+			// Переходим к чтению системного буфера Electron
+		}
+		return null;
+	}
+
+	private getElectronClipboard(): ElectronClipboardLike | null {
+		try {
+			const winWithRequire = this.win as Window &
+				typeof globalThis & {
+					require?: (moduleId: string) => unknown;
+				};
+			const req =
+				typeof winWithRequire.require === "function"
+					? winWithRequire.require
+					: null;
+			if (!req) return null;
+			const electronModule = req("electron") as {
+				clipboard?: ElectronClipboardLike;
+			} | null;
+			return electronModule?.clipboard ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	private readImageFromElectronClipboard(): File | null {
+		try {
+			const clipboard = this.getElectronClipboard();
+			if (!clipboard || typeof clipboard.readImage !== "function") return null;
+			const image = clipboard.readImage();
+			if (!image || image.isEmpty()) return null;
+			const pngBytes = image.toPNG();
+			if (!pngBytes || pngBytes.byteLength === 0) return null;
+			const bufferCopy = new Uint8Array(pngBytes.byteLength);
+			bufferCopy.set(pngBytes);
+			return new File([bufferCopy], `clipboard-${Date.now()}.png`, {
+				type: "image/png",
+			});
+		} catch {
+			return null;
+		}
+	}
+
+	private async readTextFromClipboard(): Promise<string> {
+		try {
+			const nav = this.win.navigator as Navigator & {
+				clipboard?: AsyncClipboardLike;
+			};
+			if (nav?.clipboard && typeof nav.clipboard.readText === "function") {
+				const text = await nav.clipboard.readText();
+				if (text) return text;
+			}
+		} catch {
+			// Переходим к чтению текста через Electron
+		}
+		try {
+			const clipboard = this.getElectronClipboard();
+			if (clipboard && typeof clipboard.readText === "function") {
+				return clipboard.readText() || "";
+			}
+		} catch {
+			// Игнорируем ошибку
+		}
+		return "";
+	}
+
+	private tryPasteScenePayload(custom: string, plainText: string): boolean {
 		const serialized = custom || this.stripClipboardPrefix(plainText);
-		if (serialized) {
-			const parsed = this.parseClipboardScene(serialized);
-			if (parsed) {
-				event.preventDefault();
-				this.pasteElements(parsed);
-				return;
-			}
-			if (plainText.startsWith(SCENE_CLIPBOARD_PREFIX)) {
-				event.preventDefault();
-				new Notice("Не удалось вставить: данные холста повреждены.");
-				return;
-			}
+		if (!serialized) return false;
+		const parsed = this.parseClipboardScene(serialized);
+		if (parsed) {
+			this.pasteElements(parsed);
+			return true;
 		}
-		if (plainText.trim()) {
-			event.preventDefault();
-			this.addTextFromString(plainText, this.getViewportCenterWorld(), true);
+		if (plainText.startsWith(SCENE_CLIPBOARD_PREFIX)) {
+			new Notice("Не удалось вставить: данные холста повреждены.");
+			return true;
 		}
+		return false;
 	}
 
 	private stripClipboardPrefix(value: string): string {
@@ -1549,6 +1848,7 @@ export class CanvasSceneEditor {
 		if (!transfer) return;
 		event.preventDefault();
 		const point = this.getDropWorldPoint(event);
+		this.lastPointerWorld = { x: point.x, y: point.y };
 		const files = Array.from(transfer.files);
 		if (files.length > 0) {
 			for (const file of files) {
@@ -1587,6 +1887,7 @@ export class CanvasSceneEditor {
 			{ x: event.offsetX, y: event.offsetY },
 			this.scene.appState
 		);
+		this.lastPointerWorld = { x: point.x, y: point.y };
 		const element = getElementAtPoint(
 			this.scene.elements,
 			point,
@@ -1611,6 +1912,8 @@ export class CanvasSceneEditor {
 			{ x: event.offsetX, y: event.offsetY },
 			this.scene.appState
 		);
+		this.lastPointerWorld = { x: point.x, y: point.y };
+		this.root.focus({ preventScroll: true });
 		const element = getElementAtPoint(
 			this.scene.elements,
 			point,
@@ -1637,7 +1940,6 @@ export class CanvasSceneEditor {
 		return getMeasureContext(this.doc);
 	}
 
-	/** Цвет нового текста: выбранный пользователем, иначе контрастный к теме холста. */
 	private getNewTextColor(): string {
 		const style = this.scene.appState.currentStyle;
 		if (
@@ -1654,7 +1956,6 @@ export class CanvasSceneEditor {
 		return element.type === "text" ? element.strokeColor || fallback : fallback;
 	}
 
-	/** Фигура, внутри которой рисуется текст: контейнер привязанной подписи или сама заметка; у свободного текста её нет. */
 	private getTextContainer(element: SceneElement): SceneElement | null {
 		if (element.type !== "text") return element;
 		return element.containerId
@@ -1691,7 +1992,6 @@ export class CanvasSceneEditor {
 		}
 	}
 
-	/** Правка подписи фигуры: существующий привязанный текст либо новая подпись по центру фигуры. */
 	private beginContainerTextEditing(container: SceneElement): void {
 		const bound = container.boundTextId
 			? this.getElementById(container.boundTextId)
@@ -1757,7 +2057,6 @@ export class CanvasSceneEditor {
 		this.renderFrame();
 	}
 
-	/** Свободный текст появляется там, где кликнули: каретка встаёт ровно в точку клика. */
 	private createTextElement(point: ScenePoint): void {
 		if (this.textEditor.isOpen()) this.textEditor.close(true);
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
@@ -1770,7 +2069,6 @@ export class CanvasSceneEditor {
 		this.beginTextEditing(element, true, true);
 	}
 
-	/** Вставка или перетаскивание текста создаёт элемент сразу, без редактора. */
 	private addTextFromString(
 		text: string,
 		point: ScenePoint,
@@ -1792,10 +2090,6 @@ export class CanvasSceneEditor {
 		this.commitHistory();
 	}
 
-	/**
-	 * Положение `<textarea>` в экранных координатах строится из тех же формул, что и отрисовка на холсте,
-	 * поэтому текст при вводе лежит ровно поверх будущего результата.
-	 */
 	private computeTextEditorLayout(
 		elementId: string,
 		value: string
@@ -1879,12 +2173,10 @@ export class CanvasSceneEditor {
 		}
 
 		if (element.type === "text" && !value.trim()) {
-			// Пустой текст не оставляет на сцене невидимых рамок
 			this.removeElementAndUnbind(element);
 			if (session.isNew) this.history.cancelTransaction();
 			else this.commitHistory();
 		} else if (!session.isNew && value === getTextValue(element)) {
-			// Ничего не изменилось: без записи в историю и без лишнего сохранения
 			this.history.cancelTransaction();
 		} else {
 			element.text = value;
@@ -1899,17 +2191,12 @@ export class CanvasSceneEditor {
 		this.updatePropertiesPanel();
 		if (!this.scene.appState.keepToolActive) this.setTool("select");
 		else this.renderFrame();
-		// После Escape и Ctrl+Enter фокус возвращается на холст, иначе горячие клавиши молчат до следующего клика
 		if (reason === "keyboard" && !this.destroyed) {
 			this.root.focus({ preventScroll: true });
 		}
 	}
 
-	/** При смене темы текст с цветом по умолчанию переключается на контрастный, иначе он «пропадает» на холсте. */
-	private recolorDefaultText(
-		from: "dark" | "light",
-		to: "dark" | "light"
-	): void {
+	private recolorDefaultText(from: "dark" | "light", to: "dark" | "light"): void {
 		if (from === to) return;
 		const previous = getDefaultTextColor(from).toLowerCase();
 		const next = getDefaultTextColor(to);
@@ -2027,10 +2314,8 @@ export class CanvasSceneEditor {
 			element.startBinding = startMatch?.binding ?? null;
 			element.endBinding = endMatch?.binding ?? null;
 			if (element.type === "arrow") {
-				element.startArrowhead =
-					this.scene.appState.currentStyle.startArrowhead;
-				element.endArrowhead =
-					this.scene.appState.currentStyle.endArrowhead;
+				element.startArrowhead = this.scene.appState.currentStyle.startArrowhead;
+				element.endArrowhead = this.scene.appState.currentStyle.endArrowhead;
 			}
 			updateBoundElements(this.scene.elements);
 			normalizeElementBounds(element);
@@ -2045,7 +2330,9 @@ export class CanvasSceneEditor {
 
 	private getElementEndPoint(element: SceneElement): ScenePoint {
 		const last = element.points?.[element.points.length - 1];
-		return last ? { x: element.x + last.x, y: element.y + last.y } : { x: element.x + element.width, y: element.y + element.height };
+		return last
+			? { x: element.x + last.x, y: element.y + last.y }
+			: { x: element.x + element.width, y: element.y + element.height };
 	}
 
 	private updateBindingPreview(point: ScenePoint): void {
@@ -2185,7 +2472,6 @@ export class CanvasSceneEditor {
 		const handle = interaction.handle;
 		if (!isResizeHandle(handle.kind)) return;
 		const kind = handle.kind;
-		// Ручку берут не точно за центр: сохраняем смещение курсора, чтобы край не «прыгал» при первом движении
 		const pointer: ScenePoint = {
 			x: world.x + (handle.x - interaction.startWorld.x),
 			y: world.y + (handle.y - interaction.startWorld.y),
@@ -2196,7 +2482,6 @@ export class CanvasSceneEditor {
 		const single = frameElements.length === 1 ? frameElements[0] : undefined;
 
 		if (single && single.type === "text" && !single.containerId) {
-			// Угловые и верхняя/нижняя ручки масштабируют шрифт, боковые меняют ширину блока
 			const element = this.getElementById(single.id);
 			const ctx = this.getMeasureCtx();
 			if (element && ctx && !element.locked) {
@@ -2206,7 +2491,6 @@ export class CanvasSceneEditor {
 				);
 			}
 		} else if (single && !single.points) {
-			// Одиночная фигура (в том числе повёрнутая) меняется в собственной системе координат
 			const element = this.getElementById(single.id);
 			if (element && !element.locked) {
 				const isImage = single.type === "image";
@@ -2303,10 +2587,8 @@ export class CanvasSceneEditor {
 			} else {
 				const x1 = anchorX + (snapshot.x - anchorX) * scaleX;
 				const y1 = anchorY + (snapshot.y - anchorY) * scaleY;
-				const x2 =
-					anchorX + (snapshot.x + snapshot.width - anchorX) * scaleX;
-				const y2 =
-					anchorY + (snapshot.y + snapshot.height - anchorY) * scaleY;
+				const x2 = anchorX + (snapshot.x + snapshot.width - anchorX) * scaleX;
+				const y2 = anchorY + (snapshot.y + snapshot.height - anchorY) * scaleY;
 				element.x = Math.min(x1, x2);
 				element.y = Math.min(y1, y2);
 				element.width = Math.max(4, Math.abs(x2 - x1));
@@ -2322,17 +2604,14 @@ export class CanvasSceneEditor {
 		snapAngle: boolean
 	): void {
 		let delta =
-			Math.atan2(
-				world.y - interaction.center.y,
-				world.x - interaction.center.x
-			) - interaction.startAngle;
+			Math.atan2(world.y - interaction.center.y, world.x - interaction.center.x) -
+			interaction.startAngle;
 		if (snapAngle) {
 			const step = Math.PI / 12;
 			const frameElements = getSelectionFrameElements(
 				Array.from(interaction.startElements.values())
 			);
 			const only = frameElements.length === 1 ? frameElements[0] : undefined;
-			// У одиночной фигуры к шагу привязывается итоговый угол, а не только приращение
 			const base = only && !only.points ? only.angle || 0 : 0;
 			delta = Math.round((base + delta) / step) * step - base;
 		}
@@ -2384,10 +2663,7 @@ export class CanvasSceneEditor {
 	): void {
 		if (!element.points || !element.points[pointIndex]) return;
 		if (pointIndex === 0 && element.startBinding) element.startBinding = null;
-		if (
-			pointIndex === element.points.length - 1 &&
-			element.endBinding
-		) {
+		if (pointIndex === element.points.length - 1 && element.endBinding) {
 			element.endBinding = null;
 		}
 		element.points[pointIndex] = {
@@ -2419,12 +2695,13 @@ export class CanvasSceneEditor {
 			);
 			element.startBinding = match?.binding ?? null;
 		} else if (interaction.pointIndex === lastIndex) {
-			element.endBinding = findNearestBindingTarget(
+			const match = findNearestBindingTarget(
 				this.getElementEndPoint(element),
 				this.scene.elements,
 				element.id,
 				maxDistance
-			)?.binding ?? null;
+			);
+			element.endBinding = match?.binding ?? null;
 		}
 		updateBoundElements(this.scene.elements);
 	}
@@ -2435,7 +2712,7 @@ export class CanvasSceneEditor {
 
 	private setPathWorldPoints(
 		element: SceneElement,
-		worldPoints: readonly ScenePoint[]
+		worldPoints: ScenePoint[]
 	): void {
 		if (worldPoints.length === 0) return;
 		element.points = worldPoints.map((point) => ({
@@ -2451,7 +2728,7 @@ export class CanvasSceneEditor {
 	): void {
 		const box = this.marqueeBox;
 		if (!box) return;
-		const matches = this.scene.elements.filter((element) => {
+		const matched = this.scene.elements.filter((element) => {
 			if (element.isDeleted || element.containerId) return false;
 			const bounds = getElementAABB(element);
 			return (
@@ -2464,22 +2741,23 @@ export class CanvasSceneEditor {
 		this.selectedIds = interaction.additive
 			? new Set(interaction.selectionBefore)
 			: new Set<string>();
-		for (const element of matches) this.addGroupedSelection(element.id);
+		for (const element of matched) {
+			this.addGroupedSelection(element.id);
+		}
 	}
 
 	private eraseAt(point: ScenePoint): boolean {
-		// Ластик стирает только то, чего касается (линию, заливку, текст), а не пустое нутро контура
-		const element = getElementAtPoint(
+		const hit = getElementAtPoint(
 			this.scene.elements,
 			point,
 			this.scene.appState.zoom,
 			false
 		);
-		if (!element || element.locked) return false;
+		if (!hit || hit.locked) return false;
 		if (!this.history.hasPendingTransaction()) {
 			this.history.beginTransaction(this.scene.elements, this.selectedIds);
 		}
-		this.markElementsDeleted([element.id]);
+		this.markElementsDeleted([hit.id]);
 		updateBoundElements(this.scene.elements);
 		this.updatePropertiesPanel();
 		return true;
@@ -2515,13 +2793,13 @@ export class CanvasSceneEditor {
 		this.renderFrame();
 	}
 
-	private zoomAt(point: CanvasPoint, factor: number): void {
-		const oldZoom = this.scene.appState.zoom;
-		const world = canvasPointToWorld(point, this.scene.appState);
-		const nextZoom = clamp(oldZoom * factor, 0.1, 30);
+	private zoomAt(screenPoint: CanvasPoint, factor: number): void {
+		const prevZoom = this.scene.appState.zoom;
+		const worldBefore = canvasPointToWorld(screenPoint, this.scene.appState);
+		const nextZoom = clamp(prevZoom * factor, 0.1, 30);
 		this.scene.appState.zoom = nextZoom;
-		this.scene.appState.scrollX = point.x / nextZoom - world.x;
-		this.scene.appState.scrollY = point.y / nextZoom - world.y;
+		this.scene.appState.scrollX = screenPoint.x / nextZoom - worldBefore.x;
+		this.scene.appState.scrollY = screenPoint.y / nextZoom - worldBefore.y;
 		this.notifySceneAndCameraChanged();
 		this.positionTextEditor();
 		this.renderFrame();
@@ -2535,16 +2813,18 @@ export class CanvasSceneEditor {
 	private updatePinch(): void {
 		const points = Array.from(this.activePointers.values()).slice(-2);
 		if (points.length < 2 || !this.pinchState) return;
-		const distance = Math.max(1, getDistance(points[0]!, points[1]!));
+		const dist = Math.max(1, getDistance(points[0]!, points[1]!));
 		const center = getMidpoint(points[0]!, points[1]!);
-		const zoom = clamp(
-			this.pinchState.zoom * (distance / this.pinchState.distance),
+		const nextZoom = clamp(
+			this.pinchState.zoom * (dist / this.pinchState.distance),
 			0.1,
 			30
 		);
-		this.scene.appState.zoom = zoom;
-		this.scene.appState.scrollX = center.x / zoom - this.pinchState.anchorWorld.x;
-		this.scene.appState.scrollY = center.y / zoom - this.pinchState.anchorWorld.y;
+		this.scene.appState.zoom = nextZoom;
+		this.scene.appState.scrollX =
+			center.x / nextZoom - this.pinchState.anchorWorld.x;
+		this.scene.appState.scrollY =
+			center.y / nextZoom - this.pinchState.anchorWorld.y;
 		this.notifySceneAndCameraChanged();
 		this.positionTextEditor();
 		this.renderFrame();
@@ -2565,8 +2845,8 @@ export class CanvasSceneEditor {
 		const bounds = getSelectionAABB(
 			elements.filter((element) => !element.isDeleted)
 		);
-		const viewport = this.canvasEl.getBoundingClientRect();
-		if (viewport.width <= 0 || viewport.height <= 0) {
+		const rect = this.canvasEl.getBoundingClientRect();
+		if (rect.width <= 0 || rect.height <= 0) {
 			this.win.requestAnimationFrame(() => this.fitElements(elements));
 			return;
 		}
@@ -2581,17 +2861,15 @@ export class CanvasSceneEditor {
 		const padding = 80;
 		const zoom = clamp(
 			Math.min(
-				(viewport.width - padding) / Math.max(1, bounds.width),
-				(viewport.height - padding) / Math.max(1, bounds.height)
+				(rect.width - padding) / Math.max(1, bounds.width),
+				(rect.height - padding) / Math.max(1, bounds.height)
 			),
 			0.1,
 			30
 		);
 		this.scene.appState.zoom = zoom;
-		this.scene.appState.scrollX =
-			viewport.width / (2 * zoom) - bounds.cx;
-		this.scene.appState.scrollY =
-			viewport.height / (2 * zoom) - bounds.cy;
+		this.scene.appState.scrollX = rect.width / (2 * zoom) - bounds.cx;
+		this.scene.appState.scrollY = rect.height / (2 * zoom) - bounds.cy;
 		this.notifySceneAndCameraChanged();
 		this.renderFrame();
 	}
@@ -2631,26 +2909,26 @@ export class CanvasSceneEditor {
 	}
 
 	private addGroupedSelection(id: string): void {
-		const pending = [id];
-		while (pending.length > 0) {
-			const currentId = pending.pop();
-			if (!currentId || this.selectedIds.has(currentId)) continue;
-			const element = this.getElementById(currentId);
+		const queue = [id];
+		while (queue.length > 0) {
+			const current = queue.pop();
+			if (!current || this.selectedIds.has(current)) continue;
+			const element = this.getElementById(current);
 			if (!element || element.isDeleted) continue;
-			this.selectedIds.add(currentId);
+			this.selectedIds.add(current);
 			for (const groupId of element.groupIds ?? []) {
-				for (const member of this.scene.elements) {
+				for (const candidate of this.scene.elements) {
 					if (
-						!member.isDeleted &&
-						member.groupIds?.includes(groupId) &&
-						!this.selectedIds.has(member.id)
+						!candidate.isDeleted &&
+						candidate.groupIds?.includes(groupId) &&
+						!this.selectedIds.has(candidate.id)
 					) {
-						pending.push(member.id);
+						queue.push(candidate.id);
 					}
 				}
 			}
-			if (element.containerId) pending.push(element.containerId);
-			if (element.boundTextId) pending.push(element.boundTextId);
+			if (element.containerId) queue.push(element.containerId);
+			if (element.boundTextId) queue.push(element.boundTextId);
 		}
 	}
 
@@ -2670,10 +2948,10 @@ export class CanvasSceneEditor {
 	}
 
 	private moveSelectionBy(dx: number, dy: number): void {
-		const selected = this.getSelectedElements().filter((element) => !element.locked);
-		if (selected.length === 0) return;
+		const movable = this.getSelectedElements().filter((element) => !element.locked);
+		if (movable.length === 0) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		for (const element of selected) {
+		for (const element of movable) {
 			element.x += dx;
 			element.y += dy;
 			element.updated = Date.now();
@@ -2707,36 +2985,39 @@ export class CanvasSceneEditor {
 	}
 
 	private deleteSelection(): void {
-		const selected = this.getSelectedElements().filter((element) => !element.locked);
-		if (selected.length === 0) return;
+		const deletable = this.getSelectedElements().filter(
+			(element) => !element.locked
+		);
+		if (deletable.length === 0) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		this.markElementsDeleted(selected.map((element) => element.id));
+		this.markElementsDeleted(deletable.map((element) => element.id));
 		this.selectedIds.clear();
 		updateBoundElements(this.scene.elements);
 		this.commitHistory();
 	}
 
-	private markElementsDeleted(initialIds: readonly string[]): void {
-		const ids = new Set<string>();
-		const pending = [...initialIds];
-		while (pending.length > 0) {
-			const id = pending.pop();
-			if (!id || ids.has(id)) continue;
-			ids.add(id);
-			const target = this.getElementById(id);
-			if (target?.boundTextId) pending.push(target.boundTextId);
-			for (const element of this.scene.elements) {
-				if (!element.isDeleted && element.containerId === id) {
-					pending.push(element.id);
+	private markElementsDeleted(ids: readonly string[]): void {
+		const visited = new Set<string>();
+		const queue = [...ids];
+		while (queue.length > 0) {
+			const id = queue.pop();
+			if (!id || visited.has(id)) continue;
+			visited.add(id);
+			const element = this.getElementById(id);
+			if (element?.boundTextId) queue.push(element.boundTextId);
+			for (const candidate of this.scene.elements) {
+				if (!candidate.isDeleted && candidate.containerId === id) {
+					queue.push(candidate.id);
 				}
 			}
 		}
-		for (const id of ids) {
+		for (const id of visited) {
 			const element = this.getElementById(id);
-			if (!element || element.isDeleted) continue;
-			element.isDeleted = true;
-			element.updated = Date.now();
-			this.selectedIds.delete(id);
+			if (element && !element.isDeleted) {
+				element.isDeleted = true;
+				element.updated = Date.now();
+				this.selectedIds.delete(id);
+			}
 		}
 	}
 
@@ -2744,17 +3025,17 @@ export class CanvasSceneEditor {
 		const selected = this.getSelectedElements();
 		if (selected.length === 0) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		const ids = new Set(selected.map((element) => element.id));
-		const copies = this.cloneElements(selected, ids, 24, 24);
-		this.scene.elements.push(...copies);
-		this.selectedIds = new Set(copies.map((element) => element.id));
+		const selectedSet = new Set(selected.map((element) => element.id));
+		const clones = this.cloneElements(selected, selectedSet, 24, 24);
+		this.scene.elements.push(...clones);
+		this.selectedIds = new Set(clones.map((element) => element.id));
 		updateBoundElements(this.scene.elements);
 		this.commitHistory();
 	}
 
 	private cloneElements(
 		source: readonly SceneElement[],
-		ids: ReadonlySet<string>,
+		selectedSet: ReadonlySet<string>,
 		dx: number,
 		dy: number
 	): SceneElement[] {
@@ -2774,15 +3055,18 @@ export class CanvasSceneEditor {
 			copy.zIndex = this.getNextZIndex() + source.indexOf(original);
 			copy.updated = Date.now();
 			copy.groupIds = copy.groupIds.map((id) => groupMap.get(id) ?? id);
-			copy.containerId = copy.containerId && ids.has(copy.containerId)
-				? idMap.get(copy.containerId) ?? null
-				: null;
-			copy.boundTextId = copy.boundTextId && ids.has(copy.boundTextId)
-				? idMap.get(copy.boundTextId) ?? null
-				: null;
-			copy.frameId = copy.frameId && ids.has(copy.frameId)
-				? idMap.get(copy.frameId) ?? null
-				: null;
+			copy.containerId =
+				copy.containerId && selectedSet.has(copy.containerId)
+					? idMap.get(copy.containerId) ?? null
+					: null;
+			copy.boundTextId =
+				copy.boundTextId && selectedSet.has(copy.boundTextId)
+					? idMap.get(copy.boundTextId) ?? null
+					: null;
+			copy.frameId =
+				copy.frameId && selectedSet.has(copy.frameId)
+					? idMap.get(copy.frameId) ?? null
+					: null;
 			if (copy.startBinding) {
 				copy.startBinding.elementId =
 					idMap.get(copy.startBinding.elementId) ?? copy.startBinding.elementId;
@@ -2796,77 +3080,81 @@ export class CanvasSceneEditor {
 	}
 
 	private changeLayerOrder(
-		direction: "forward" | "backward" | "front" | "back"
+		direction: "front" | "back" | "forward" | "backward"
 	): void {
-		const ordered = this.scene.elements
+		const active = this.scene.elements
 			.filter((element) => !element.isDeleted)
 			.sort((a, b) => a.zIndex - b.zIndex);
-		const selected = ordered.filter((element) => this.selectedIds.has(element.id));
+		const selected = active.filter((element) => this.selectedIds.has(element.id));
 		if (selected.length === 0) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-
-		let next: SceneElement[];
+		let reordered: SceneElement[];
 		if (direction === "front") {
-			next = [...ordered.filter((element) => !this.selectedIds.has(element.id)), ...selected];
+			reordered = [
+				...active.filter((element) => !this.selectedIds.has(element.id)),
+				...selected,
+			];
 		} else if (direction === "back") {
-			next = [...selected, ...ordered.filter((element) => !this.selectedIds.has(element.id))];
+			reordered = [
+				...selected,
+				...active.filter((element) => !this.selectedIds.has(element.id)),
+			];
 		} else {
-			next = [...ordered];
+			reordered = [...active];
 			if (direction === "forward") {
-				for (let index = next.length - 2; index >= 0; index--) {
+				for (let i = reordered.length - 2; i >= 0; i--) {
 					if (
-						this.selectedIds.has(next[index]!.id) &&
-						!this.selectedIds.has(next[index + 1]!.id)
+						this.selectedIds.has(reordered[i]!.id) &&
+						!this.selectedIds.has(reordered[i + 1]!.id)
 					) {
-						[next[index], next[index + 1]] = [next[index + 1]!, next[index]!];
+						[reordered[i], reordered[i + 1]] = [
+							reordered[i + 1]!,
+							reordered[i]!,
+						];
 					}
 				}
 			} else {
-				for (let index = 1; index < next.length; index++) {
+				for (let i = 1; i < reordered.length; i++) {
 					if (
-						this.selectedIds.has(next[index]!.id) &&
-						!this.selectedIds.has(next[index - 1]!.id)
+						this.selectedIds.has(reordered[i]!.id) &&
+						!this.selectedIds.has(reordered[i - 1]!.id)
 					) {
-						[next[index], next[index - 1]] = [next[index - 1]!, next[index]!];
+						[reordered[i], reordered[i - 1]] = [
+							reordered[i - 1]!,
+							reordered[i]!,
+						];
 					}
 				}
 			}
 		}
-
-		next.forEach((element, index) => {
+		reordered.forEach((element, index) => {
 			element.zIndex = index;
 			element.updated = Date.now();
 		});
 		this.scene.elements = [
-			...next,
+			...reordered,
 			...this.scene.elements.filter((element) => element.isDeleted),
 		];
 		this.commitHistory();
 	}
 
 	private alignSelection(
-		alignment:
-			| "left"
-			| "center-x"
-			| "right"
-			| "top"
-			| "center-y"
-			| "bottom"
+		mode: "left" | "center-x" | "right" | "top" | "center-y" | "bottom"
 	): void {
-		const selected = this.getSelectedElements().filter((element) => !element.locked);
-		if (selected.length < 2) return;
-		const bounds = getSelectionAABB(selected);
+		const movable = this.getSelectedElements().filter((element) => !element.locked);
+		if (movable.length < 2) return;
+		const bounds = getSelectionAABB(movable);
 		if (!bounds) return;
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		for (const element of selected) {
+		for (const element of movable) {
 			const box = getElementAABB(element);
 			let dx = 0;
 			let dy = 0;
-			if (alignment === "left") dx = bounds.minX - box.minX;
-			else if (alignment === "center-x") dx = bounds.cx - box.cx;
-			else if (alignment === "right") dx = bounds.maxX - box.maxX;
-			else if (alignment === "top") dy = bounds.minY - box.minY;
-			else if (alignment === "center-y") dy = bounds.cy - box.cy;
+			if (mode === "left") dx = bounds.minX - box.minX;
+			else if (mode === "center-x") dx = bounds.cx - box.cx;
+			else if (mode === "right") dx = bounds.maxX - box.maxX;
+			else if (mode === "top") dy = bounds.minY - box.minY;
+			else if (mode === "center-y") dy = bounds.cy - box.cy;
 			else dy = bounds.maxY - box.maxY;
 			element.x += dx;
 			element.y += dy;
@@ -2877,36 +3165,34 @@ export class CanvasSceneEditor {
 	}
 
 	private distributeSelection(axis: "horizontal" | "vertical"): void {
-		const selected = this.getSelectedElements().filter((element) => !element.locked);
-		if (selected.length < 3) return;
-		const ordered = [...selected].sort((a, b) => {
+		const movable = this.getSelectedElements().filter((element) => !element.locked);
+		if (movable.length < 3) return;
+		const sorted = [...movable].sort((a, b) => {
 			const boxA = getElementAABB(a);
 			const boxB = getElementAABB(b);
-			return axis === "horizontal"
-				? boxA.cx - boxB.cx
-				: boxA.cy - boxB.cy;
+			return axis === "horizontal" ? boxA.cx - boxB.cx : boxA.cy - boxB.cy;
 		});
-		const first = getElementAABB(ordered[0]!);
-		const last = getElementAABB(ordered[ordered.length - 1]!);
-		const totalExtent =
+		const firstBox = getElementAABB(sorted[0]!);
+		const lastBox = getElementAABB(sorted[sorted.length - 1]!);
+		const span =
 			axis === "horizontal"
-				? last.maxX - first.minX
-				: last.maxY - first.minY;
-		const elementsExtent = ordered.reduce((total, element) => {
-			const bounds = getElementAABB(element);
-			return total + (axis === "horizontal" ? bounds.width : bounds.height);
+				? lastBox.maxX - firstBox.minX
+				: lastBox.maxY - firstBox.minY;
+		const occupied = sorted.reduce((sum, item) => {
+			const box = getElementAABB(item);
+			return sum + (axis === "horizontal" ? box.width : box.height);
 		}, 0);
-		const gap = (totalExtent - elementsExtent) / (ordered.length - 1);
+		const gap = (span - occupied) / (sorted.length - 1);
 		this.history.beginTransaction(this.scene.elements, this.selectedIds);
-		let cursor = axis === "horizontal" ? first.minX : first.minY;
-		for (const element of ordered) {
-			const bounds = getElementAABB(element);
-			const extent = axis === "horizontal" ? bounds.width : bounds.height;
-			const delta = cursor - (axis === "horizontal" ? bounds.minX : bounds.minY);
-			if (axis === "horizontal") element.x += delta;
-			else element.y += delta;
-			element.updated = Date.now();
-			cursor += extent + gap;
+		let cursor = axis === "horizontal" ? firstBox.minX : firstBox.minY;
+		for (const item of sorted) {
+			const box = getElementAABB(item);
+			const size = axis === "horizontal" ? box.width : box.height;
+			const delta = cursor - (axis === "horizontal" ? box.minX : box.minY);
+			if (axis === "horizontal") item.x += delta;
+			else item.y += delta;
+			item.updated = Date.now();
+			cursor += size + gap;
 		}
 		updateBoundElements(this.scene.elements);
 		this.commitHistory();
@@ -2918,15 +3204,15 @@ export class CanvasSceneEditor {
 		);
 		for (const element of this.scene.elements) {
 			if (element.isDeleted || element.type === "frame") continue;
-			const bounds = getElementAABB(element);
-			const candidates = frames
+			const box = getElementAABB(element);
+			const matching = frames
 				.filter((frame) => {
-					const frameBounds = getElementAABB(frame);
+					const frameBox = getElementAABB(frame);
 					return (
-						bounds.cx >= frameBounds.minX &&
-						bounds.cx <= frameBounds.maxX &&
-						bounds.cy >= frameBounds.minY &&
-						bounds.cy <= frameBounds.maxY
+						box.cx >= frameBox.minX &&
+						box.cx <= frameBox.maxX &&
+						box.cy >= frameBox.minY &&
+						box.cy <= frameBox.maxY
 					);
 				})
 				.sort(
@@ -2934,7 +3220,7 @@ export class CanvasSceneEditor {
 						getElementAABB(a).width * getElementAABB(a).height -
 						getElementAABB(b).width * getElementAABB(b).height
 				);
-			element.frameId = candidates[0]?.id ?? null;
+			element.frameId = matching[0]?.id ?? null;
 		}
 	}
 
@@ -2957,15 +3243,15 @@ export class CanvasSceneEditor {
 		};
 	}
 
-	private commitHistory(updateProperties = true): void {
-		const changed = this.history.commitTransaction(
+	private commitHistory(refreshPanel = true): void {
+		const committed = this.history.commitTransaction(
 			this.scene.elements,
 			this.selectedIds
 		);
 		this.updateHistoryButtons();
-		if (changed) {
+		if (committed) {
 			this.notifySceneAndCameraChanged();
-			if (updateProperties) this.updatePropertiesPanel();
+			if (refreshPanel) this.updatePropertiesPanel();
 		}
 		this.renderFrame();
 	}
@@ -3027,299 +3313,877 @@ export class CanvasSceneEditor {
 		if (!this.propertiesEl) return;
 		this.propertiesEl.replaceChildren();
 		const selected = this.getSelectedElements();
-		this.propertiesEl.classList.toggle("is-hidden", selected.length === 0);
-		if (selected.length === 0) return;
+		const primarySelected = selected.filter((el) => !el.containerId);
+		const displayList = primarySelected.length > 0 ? primarySelected : selected;
+		this.propertiesEl.classList.toggle("is-hidden", displayList.length === 0);
+		if (displayList.length === 0) return;
 
-		const heading = this.doc.createElement("h4");
-		heading.textContent =
-			selected.length === 1
-				? "Свойства элемента"
-				: `Выбрано элементов: ${selected.length}`;
-		this.propertiesEl.appendChild(heading);
+		const primary = displayList[0]!;
+		const textSample =
+			selected.find((el) => el.type === "text" || el.text !== undefined) ??
+			primary;
 
-		const actionRow = this.doc.createElement("div");
-		actionRow.className = "my-sc-canvas-property-actions";
-		this.propertiesEl.appendChild(actionRow);
-		this.createButton(actionRow, "copy", "Дублировать", () =>
-			this.duplicateSelection()
+		const hasStroke = displayList.some((el) => el.type !== "image");
+		const hasFill = displayList.some(
+			(el) =>
+				el.type === "rectangle" ||
+				el.type === "diamond" ||
+				el.type === "ellipse" ||
+				el.type === "note"
 		);
-		this.createButton(actionRow, "lock", "Блокировать или разблокировать", () =>
-			this.toggleSelectedLock()
+		const hasStrokeStyle = displayList.some(
+			(el) =>
+				el.type === "rectangle" ||
+				el.type === "diamond" ||
+				el.type === "ellipse" ||
+				el.type === "arrow" ||
+				el.type === "line" ||
+				el.type === "note"
 		);
-		this.createButton(actionRow, "trash-2", "Удалить", () =>
-			this.deleteSelection()
+		const hasStrokeWidth = displayList.some(
+			(el) => el.type !== "text" && el.type !== "image" && el.type !== "frame"
+		);
+		const hasRoughness = displayList.some(
+			(el) =>
+				el.type === "rectangle" ||
+				el.type === "diamond" ||
+				el.type === "ellipse" ||
+				el.type === "arrow" ||
+				el.type === "line"
+		);
+		const hasRoundness = displayList.some(
+			(el) => el.type === "rectangle" || el.type === "image"
+		);
+		const hasPathRouting = displayList.some(
+			(el) => el.type === "arrow" || el.type === "line"
+		);
+		const hasArrowheads = displayList.some((el) => el.type === "arrow");
+		const hasTypography = selected.some(
+			(el) =>
+				el.type === "text" ||
+				el.type === "note" ||
+				el.type === "rectangle" ||
+				el.type === "diamond" ||
+				el.type === "ellipse"
 		);
 
-		const first = selected[0]!;
-		this.addTextProperty("Обводка", first.strokeColor, (value) => {
-			const color = this.validateColor(value);
-			if (!color) return;
-			this.updateSelected((element) => (element.strokeColor = color), (style) => {
-				style.strokeColor = color;
+		const header = this.doc.createElement("div");
+		header.className = "my-sc-canvas-prop-header";
+		const title = this.doc.createElement("h4");
+		title.textContent =
+			displayList.length === 1
+				? this.getElementTypeTitle(primary.type)
+				: `Выбрано: ${displayList.length}`;
+		header.appendChild(title);
+
+		const quickActions = this.doc.createElement("div");
+		quickActions.className = "my-sc-canvas-property-actions";
+		this.createButton(
+			quickActions,
+			"copy",
+			"Дублировать (Ctrl+D)",
+			() => this.duplicateSelection(),
+			"my-sc-canvas-prop-icon-btn"
+		);
+		this.createButton(
+			quickActions,
+			"layers",
+			"На задний план",
+			() => this.changeLayerOrder("back"),
+			"my-sc-canvas-prop-icon-btn"
+		);
+		this.createButton(
+			quickActions,
+			"layers-2",
+			"На передний план",
+			() => this.changeLayerOrder("front"),
+			"my-sc-canvas-prop-icon-btn"
+		);
+		const isLocked = displayList.every((el) => el.locked);
+		const lockBtn = this.createButton(
+			quickActions,
+			isLocked ? "lock" : "unlock",
+			isLocked ? "Разблокировать" : "Закрепить",
+			() => this.toggleSelectedLock(),
+			"my-sc-canvas-prop-icon-btn"
+		);
+		lockBtn.classList.toggle("is-active", isLocked);
+		const deleteBtn = this.createButton(
+			quickActions,
+			"trash-2",
+			"Удалить (Del)",
+			() => this.deleteSelection(),
+			"my-sc-canvas-prop-icon-btn is-danger"
+		);
+		deleteBtn.disabled = isLocked;
+		this.propertiesEl.append(header, quickActions);
+
+		if (hasStroke) {
+			const strokeTitle =
+				displayList.every((el) => el.type === "text") ? "Цвет текста" : "Обводка";
+			this.addStrokePaletteSection(strokeTitle, primary.strokeColor, (color) => {
+				this.updateSelected(
+					(el) => {
+						if (el.containerId && displayList.some((item) => item.id === el.containerId)) {
+							return;
+						}
+						el.strokeColor = color;
+					},
+					(style) => {
+						style.strokeColor = color;
+					},
+					true
+				);
 			});
-		});
-		this.addTextProperty("Фон", first.backgroundColor, (value) => {
-			const color = this.validateColor(value);
-			if (!color) return;
-			this.updateSelected(
-				(element) => (element.backgroundColor = color),
-				(style) => (style.backgroundColor = color)
-			);
-		});
-		this.addSelectProperty(
-			"Заливка",
-			first.fillStyle,
-			[
-				["solid", "Сплошная"],
-				["hachure", "Штриховка"],
-				["cross-hatch", "Перекрёстная"],
-				["none", "Без заливки"],
-			],
-			(value) => {
-				this.updateSelected(
-					(element) => (element.fillStyle = value as SceneElement["fillStyle"]),
-					(style) => (style.fillStyle = value as ElementStyleDefaults["fillStyle"])
-				);
-			}
-		);
-		this.addNumberProperty("Толщина", first.strokeWidth, 1, 16, 1, (value) => {
-			this.updateSelected(
-				(element) => (element.strokeWidth = value),
-				(style) => (style.strokeWidth = value)
-			);
-		});
-		this.addSelectProperty(
-			"Стиль линии",
-			first.strokeStyle,
-			[
-				["solid", "Сплошная"],
-				["dashed", "Штриховая"],
-				["dotted", "Точечная"],
-			],
-			(value) => {
-				this.updateSelected(
-					(element) => (element.strokeStyle = value as SceneElement["strokeStyle"]),
-					(style) => (style.strokeStyle = value as ElementStyleDefaults["strokeStyle"])
-				);
-			}
-		);
-		this.addNumberProperty("Небрежность", first.roughness, 0, 2, 0.1, (value) => {
-			this.updateSelected(
-				(element) => (element.roughness = value),
-				(style) => (style.roughness = value)
-			);
-		});
-		this.addNumberProperty("Скругление", first.roundness, 0, 48, 1, (value) => {
-			this.updateSelected(
-				(element) => (element.roundness = value),
-				(style) => (style.roundness = value)
-			);
-		});
-		this.addNumberProperty("Прозрачность", first.opacity, 5, 100, 1, (value) => {
-			this.updateSelected(
-				(element) => (element.opacity = value),
-				(style) => (style.opacity = value)
-			);
-		});
+		}
 
-		if (selected.some((element) => element.type === "text" || element.text !== undefined)) {
-			this.addSelectProperty(
-				"Шрифт",
-				first.fontFamily,
-				[
-					["hand", "Рукописный"],
-					["normal", "Обычный"],
-					["mono", "Моноширинный"],
-				],
-				(value) => {
+		if (hasFill) {
+			this.addBackgroundPaletteSection(
+				"Фон",
+				primary.fillStyle === "none" ? "transparent" : primary.backgroundColor,
+				(color) => {
 					this.updateSelected(
-						(element) => (element.fontFamily = value as SceneElement["fontFamily"]),
-						(style) => (style.fontFamily = value as ElementStyleDefaults["fontFamily"])
+						(el) => {
+							if (el.containerId) return;
+							el.backgroundColor = color;
+							if (color === "transparent") {
+								el.fillStyle = "none";
+							} else if (el.fillStyle === "none") {
+								el.fillStyle = "solid";
+							}
+						},
+						(style) => {
+							style.backgroundColor = color;
+							if (color === "transparent") {
+								style.fillStyle = "none";
+							} else if (style.fillStyle === "none") {
+								style.fillStyle = "solid";
+							}
+						},
+						true
 					);
 				}
 			);
-			this.addNumberProperty("Размер текста", first.fontSize, 8, 96, 1, (value) => {
-				this.updateSelected(
-					(element) => (element.fontSize = value),
-					(style) => (style.fontSize = value)
-				);
-			});
-			this.addSelectProperty(
-				"Выравнивание",
-				first.textAlign,
+
+			this.addSegmentedSection<SceneElement["fillStyle"]>(
+				"Заливка",
+				primary.fillStyle,
 				[
-					["left", "Слева"],
-					["center", "По центру"],
-					["right", "Справа"],
+					{
+						value: "solid",
+						title: "Сплошная заливка",
+						renderSvg: (svg, doc) => {
+							const rect = doc.createElementNS(SVG_NS, "rect");
+							rect.setAttribute("x", "3");
+							rect.setAttribute("y", "3");
+							rect.setAttribute("width", "14");
+							rect.setAttribute("height", "14");
+							rect.setAttribute("rx", "3");
+							rect.setAttribute("fill", "currentColor");
+							svg.appendChild(rect);
+						},
+					},
+					{
+						value: "hachure",
+						title: "Штриховка",
+						renderSvg: (svg, doc) => {
+							this.appendSvgPath(
+								svg,
+								doc,
+								"M4 4h12v12H4z M5 14L14 5 M8 16l8-8 M4 10l6-6"
+							);
+						},
+					},
+					{
+						value: "cross-hatch",
+						title: "Перекрёстная штриховка",
+						renderSvg: (svg, doc) => {
+							this.appendSvgPath(
+								svg,
+								doc,
+								"M4 4h12v12H4z M5 15L15 5 M5 5l10 10"
+							);
+						},
+					},
+					{
+						value: "none",
+						title: "Без заливки",
+						renderSvg: (svg, doc) => {
+							this.appendSvgPath(svg, doc, "M4 4h12v12H4z M5 15L15 5");
+						},
+					},
 				],
-				(value) => {
+				(fillStyle) => {
 					this.updateSelected(
-						(element) => (element.textAlign = value as SceneElement["textAlign"]),
-						(style) => (style.textAlign = value as ElementStyleDefaults["textAlign"])
+						(el) => {
+							if (el.containerId) return;
+							el.fillStyle = fillStyle;
+							if (
+								fillStyle !== "none" &&
+								(!el.backgroundColor || el.backgroundColor === "transparent")
+							) {
+								el.backgroundColor = DEFAULT_ELEMENT_STYLE.backgroundColor;
+							}
+						},
+						(style) => {
+							style.fillStyle = fillStyle;
+						},
+						true
 					);
 				}
 			);
 		}
 
-		if (selected.some((element) => element.type === "arrow")) {
-			this.addSelectProperty(
+		if (hasStrokeWidth) {
+			const activeWidth =
+				primary.strokeWidth <= 1.5 ? 1 : primary.strokeWidth <= 3 ? 2 : 4;
+			this.addSegmentedSection<number>(
+				"Толщина",
+				activeWidth,
+				[
+					{
+						value: 1,
+						title: "Тонкая (1 px)",
+						renderSvg: (svg, doc) => this.appendStrokeWidthPreview(svg, doc, 1.5),
+					},
+					{
+						value: 2,
+						title: "Средняя (2 px)",
+						renderSvg: (svg, doc) => this.appendStrokeWidthPreview(svg, doc, 3),
+					},
+					{
+						value: 4,
+						title: "Толстая (4 px)",
+						renderSvg: (svg, doc) => this.appendStrokeWidthPreview(svg, doc, 5),
+					},
+				],
+				(width) => {
+					this.updateSelected(
+						(el) => {
+							if (!el.containerId) el.strokeWidth = width;
+						},
+						(style) => {
+							style.strokeWidth = width;
+						},
+						true
+					);
+				}
+			);
+		}
+
+		if (hasStrokeStyle) {
+			this.addSegmentedSection<SceneElement["strokeStyle"]>(
+				"Стиль линии",
+				primary.strokeStyle,
+				[
+					{
+						value: "solid",
+						title: "Сплошная",
+						renderSvg: (svg, doc) => this.appendLineDashPreview(svg, doc, ""),
+					},
+					{
+						value: "dashed",
+						title: "Штриховая",
+						renderSvg: (svg, doc) => this.appendLineDashPreview(svg, doc, "4 3"),
+					},
+					{
+						value: "dotted",
+						title: "Точечная",
+						renderSvg: (svg, doc) => this.appendLineDashPreview(svg, doc, "1.5 3"),
+					},
+				],
+				(strokeStyle) => {
+					this.updateSelected(
+						(el) => {
+							if (!el.containerId) el.strokeStyle = strokeStyle;
+						},
+						(style) => {
+							style.strokeStyle = strokeStyle;
+						},
+						true
+					);
+				}
+			);
+		}
+
+		if (hasRoughness) {
+			const activeRoughness =
+				primary.roughness <= 0.2 ? 0 : primary.roughness <= 1.3 ? 1 : 2;
+			this.addSegmentedSection<number>(
+				"Рисовка",
+				activeRoughness,
+				[
+					{
+						value: 0,
+						title: "Чёткая геометрия",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M3 14L17 6"),
+					},
+					{
+						value: 1,
+						title: "От руки",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M3 13C7 8 13 12 17 7"),
+					},
+					{
+						value: 2,
+						title: "Эскиз",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(
+								svg,
+								doc,
+								"M3 12C7 6 13 14 17 6 M3 15C8 9 12 16 17 9"
+							),
+					},
+				],
+				(roughness) => {
+					this.updateSelected(
+						(el) => {
+							if (!el.containerId) el.roughness = roughness;
+						},
+						(style) => {
+							style.roughness = roughness;
+						},
+						true
+					);
+				}
+			);
+		}
+
+		if (hasRoundness) {
+			const activeRoundness =
+				primary.roundness <= 2 ? 0 : primary.roundness <= 12 ? 8 : 20;
+			this.addSegmentedSection<number>(
+				"Углы",
+				activeRoundness,
+				[
+					{
+						value: 0,
+						title: "Острые углы",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M5 15V5h10"),
+					},
+					{
+						value: 8,
+						title: "Мягкое скругление",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M5 15V9a4 4 0 0 1 4-4h6"),
+					},
+					{
+						value: 20,
+						title: "Сильное скругление",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M5 15V13a8 8 0 0 1 8-8h2"),
+					},
+				],
+				(roundness) => {
+					this.updateSelected(
+						(el) => {
+							if (!el.containerId) el.roundness = roundness;
+						},
+						(style) => {
+							style.roundness = roundness;
+						},
+						true
+					);
+				}
+			);
+		}
+
+		if (hasPathRouting) {
+			const routingMode: "straight" | "curved" | "elbowed" = primary.curved
+				? "curved"
+				: primary.elbowed
+					? "elbowed"
+					: "straight";
+			this.addSegmentedSection<"straight" | "curved" | "elbowed">(
+				"Траектория",
+				routingMode,
+				[
+					{
+						value: "straight",
+						title: "Прямая линия",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M4 15L16 5"),
+					},
+					{
+						value: "curved",
+						title: "Плавная дуга",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M4 15C5 6 15 14 16 5"),
+					},
+					{
+						value: "elbowed",
+						title: "Ломаная под 90°",
+						renderSvg: (svg, doc) =>
+							this.appendSvgPath(svg, doc, "M4 15h6V5h6"),
+					},
+				],
+				(mode) => {
+					this.updateSelected(
+						(el) => {
+							el.curved = mode === "curved";
+							el.elbowed = mode === "elbowed";
+						},
+						(style) => {
+							style.curved = mode === "curved";
+							style.elbowed = mode === "elbowed";
+						},
+						true
+					);
+				}
+			);
+		}
+
+		if (hasArrowheads) {
+			const headOptions = this.getArrowheadSegmentOptions();
+			this.addSegmentedSection(
 				"Начало стрелки",
-				first.startArrowhead ?? "none",
-				this.getArrowheadOptions(),
-				(value) => {
+				primary.startArrowhead ?? "none",
+				headOptions,
+				(head) => {
 					this.updateSelected(
-						(element) => (element.startArrowhead = value as SceneElement["startArrowhead"]),
-						(style) => (style.startArrowhead = value as ElementStyleDefaults["startArrowhead"])
+						(el) => {
+							el.startArrowhead = head;
+						},
+						(style) => {
+							style.startArrowhead = head;
+						},
+						true
 					);
 				}
 			);
-			this.addSelectProperty(
+			this.addSegmentedSection(
 				"Конец стрелки",
-				first.endArrowhead ?? "arrow",
-				this.getArrowheadOptions(),
-				(value) => {
+				primary.endArrowhead ?? "arrow",
+				headOptions,
+				(head) => {
 					this.updateSelected(
-						(element) => (element.endArrowhead = value as SceneElement["endArrowhead"]),
-						(style) => (style.endArrowhead = value as ElementStyleDefaults["endArrowhead"])
+						(el) => {
+							el.endArrowhead = head;
+						},
+						(style) => {
+							style.endArrowhead = head;
+						},
+						true
 					);
 				}
 			);
-			this.addCheckboxProperty("Скруглённая линия", Boolean(first.curved), (value) => {
-				this.updateSelected(
-					(element) => (element.curved = value),
-					(style) => (style.curved = value)
-				);
-			});
-			this.addCheckboxProperty("Ломаная линия", Boolean(first.elbowed), (value) => {
-				this.updateSelected(
-					(element) => (element.elbowed = value),
-					(style) => (style.elbowed = value)
-				);
-			});
 		}
 
-		this.addTextProperty("Ссылка", first.link ?? "", (value) => {
+		if (hasTypography) {
+			this.addSegmentedSection<SceneElement["fontFamily"]>(
+				"Шрифт",
+				textSample.fontFamily,
+				[
+					{ value: "normal", title: "Обычный шрифт", label: "Аа" },
+					{ value: "hand", title: "Рукописный шрифт", label: "✍️" },
+					{ value: "mono", title: "Моноширинный код", label: "{}" },
+				],
+				(fontFamily) => {
+					this.updateSelected(
+						(el) => {
+							el.fontFamily = fontFamily;
+						},
+						(style) => {
+							style.fontFamily = fontFamily;
+						},
+						true
+					);
+				}
+			);
+
+			const activeSize =
+				textSample.fontSize <= 17
+					? 16
+					: textSample.fontSize <= 24
+						? 20
+						: textSample.fontSize <= 32
+							? 28
+							: 36;
+			this.addSegmentedSection<number>(
+				"Размер текста",
+				activeSize,
+				[
+					{ value: 16, title: "Малый (16 px)", label: "S" },
+					{ value: 20, title: "Средний (20 px)", label: "M" },
+					{ value: 28, title: "Крупный (28 px)", label: "L" },
+					{ value: 36, title: "Заголовок (36 px)", label: "XL" },
+				],
+				(fontSize) => {
+					this.updateSelected(
+						(el) => {
+							el.fontSize = fontSize;
+						},
+						(style) => {
+							style.fontSize = fontSize;
+						},
+						true
+					);
+				}
+			);
+
+			this.addSegmentedSection<SceneElement["textAlign"]>(
+				"Выравнивание",
+				textSample.textAlign,
+				[
+					{ value: "left", title: "По левому краю", obsidianIcon: "align-left" },
+					{ value: "center", title: "По центру", obsidianIcon: "align-center" },
+					{ value: "right", title: "По правому краю", obsidianIcon: "align-right" },
+				],
+				(textAlign) => {
+					this.updateSelected(
+						(el) => {
+							el.textAlign = textAlign;
+						},
+						(style) => {
+							style.textAlign = textAlign;
+						},
+						true
+					);
+				}
+			);
+		}
+
+		this.addOpacitySliderSection(primary.opacity);
+
+		this.addLinkPropertySection(primary.link ?? "", (nextLink) => {
 			this.updateSelected(
-				(element) => (element.link = value.trim() || null),
-				() => undefined
+				(el) => {
+					if (!el.containerId) el.link = nextLink.trim() || null;
+				},
+				() => {},
+				false
 			);
 		});
-
-		const layerRow = this.doc.createElement("div");
-		layerRow.className = "my-sc-canvas-property-actions";
-		this.propertiesEl.appendChild(layerRow);
-		this.createButton(layerRow, "arrow-up", "На передний план", () =>
-			this.changeLayerOrder("front")
-		);
-		this.createButton(layerRow, "arrow-down", "На задний план", () =>
-			this.changeLayerOrder("back")
-		);
 	}
 
-	private addTextProperty(
-		title: string,
-		value: string,
-		onChange: (value: string) => void
-	): void {
-		const row = this.doc.createElement("label");
-		row.className = "my-sc-canvas-property";
-		const label = this.doc.createElement("span");
-		label.textContent = title;
-		const input = this.doc.createElement("input");
-		input.type = "text";
-		input.value = value;
-		input.addEventListener("change", () => onChange(input.value));
-		row.append(label, input);
-		this.propertiesEl.appendChild(row);
-	}
-
-	private validateColor(value: string): string | null {
-		const color = value.trim();
-		if (color && this.win.CSS.supports("color", color)) return color;
-		new Notice("Укажи допустимое значение цвета.");
-		return null;
-	}
-
-	private addNumberProperty(
-		title: string,
-		value: number,
-		min: number,
-		max: number,
-		step: number,
-		onChange: (value: number) => void
-	): void {
-		const row = this.doc.createElement("label");
-		row.className = "my-sc-canvas-property";
-		const label = this.doc.createElement("span");
-		label.textContent = title;
-		const input = this.doc.createElement("input");
-		input.type = "number";
-		input.min = String(min);
-		input.max = String(max);
-		input.step = String(step);
-		input.value = String(clamp(value, min, max));
-		input.addEventListener("change", () => {
-			const parsed = Number(input.value);
-			if (Number.isFinite(parsed)) onChange(clamp(parsed, min, max));
-		});
-		row.append(label, input);
-		this.propertiesEl.appendChild(row);
-	}
-
-	private addSelectProperty(
-		title: string,
-		value: string,
-		options: Array<[string, string]>,
-		onChange: (value: string) => void
-	): void {
-		const row = this.doc.createElement("label");
-		row.className = "my-sc-canvas-property";
-		const label = this.doc.createElement("span");
-		label.textContent = title;
-		const select = this.doc.createElement("select");
-		for (const [optionValue, optionLabel] of options) {
-			const option = this.doc.createElement("option");
-			option.value = optionValue;
-			option.textContent = optionLabel;
-			select.appendChild(option);
+	private getElementTypeTitle(type: SceneElement["type"]): string {
+		switch (type) {
+			case "rectangle":
+				return "Прямоугольник";
+			case "diamond":
+				return "Ромб";
+			case "ellipse":
+				return "Эллипс";
+			case "arrow":
+				return "Стрелка";
+			case "line":
+				return "Линия";
+			case "freedraw":
+				return "Набросок";
+			case "text":
+				return "Текст";
+			case "image":
+				return "Изображение";
+			case "note":
+				return "Заметка";
+			case "frame":
+				return "Рамка";
 		}
-		select.value = value;
-		select.addEventListener("change", () => onChange(select.value));
-		row.append(label, select);
-		this.propertiesEl.appendChild(row);
 	}
 
-	private addCheckboxProperty(
-		title: string,
-		value: boolean,
-		onChange: (value: boolean) => void
+	private createPropertySection(labelText: string): HTMLDivElement {
+		const section = this.doc.createElement("div");
+		section.className = "my-sc-canvas-prop-section";
+		const label = this.doc.createElement("div");
+		label.className = "my-sc-canvas-prop-label";
+		label.textContent = labelText;
+		section.appendChild(label);
+		this.propertiesEl.appendChild(section);
+		return section;
+	}
+
+	private addStrokePaletteSection(
+		labelText: string,
+		currentColor: string,
+		onSelect: (color: string) => void
 	): void {
-		const row = this.doc.createElement("label");
-		row.className = "my-sc-canvas-property my-sc-canvas-property-check";
-		const input = this.doc.createElement("input");
-		input.type = "checkbox";
-		input.checked = value;
-		const label = this.doc.createElement("span");
-		label.textContent = title;
-		input.addEventListener("change", () => onChange(input.checked));
-		row.append(input, label);
-		this.propertiesEl.appendChild(row);
+		const section = this.createPropertySection(labelText);
+		const grid = this.doc.createElement("div");
+		grid.className = "my-sc-canvas-color-grid";
+		const normalizedCurrent = currentColor.trim().toLowerCase();
+		let matchedPreset = false;
+
+		for (const item of STROKE_PALETTE) {
+			const btn = this.doc.createElement("button");
+			btn.type = "button";
+			btn.className = "my-sc-canvas-color-swatch";
+			btn.title = item.title;
+			btn.setAttribute("aria-label", item.title);
+			btn.style.setProperty("--swatch-color", item.color);
+			const isMatch = item.color.toLowerCase() === normalizedCurrent;
+			if (isMatch) matchedPreset = true;
+			btn.classList.toggle("is-active", isMatch);
+			btn.addEventListener("click", () => onSelect(item.color));
+			grid.appendChild(btn);
+		}
+
+		const pickerWrap = this.doc.createElement("label");
+		pickerWrap.className = "my-sc-canvas-color-swatch is-custom-picker";
+		pickerWrap.title = "Свой цвет…";
+		const hexValue = normalizeColorToHex(currentColor);
+		pickerWrap.style.setProperty("--swatch-color", hexValue);
+		pickerWrap.classList.toggle("is-active", !matchedPreset);
+
+		const pickerInput = this.doc.createElement("input");
+		pickerInput.type = "color";
+		pickerInput.value = hexValue;
+		pickerInput.addEventListener("change", () => onSelect(pickerInput.value));
+		pickerWrap.appendChild(pickerInput);
+		grid.appendChild(pickerWrap);
+		section.appendChild(grid);
 	}
 
-	private getArrowheadOptions(): Array<[string, string]> {
+	private addBackgroundPaletteSection(
+		labelText: string,
+		currentColor: string,
+		onSelect: (color: string) => void
+	): void {
+		const section = this.createPropertySection(labelText);
+		const grid = this.doc.createElement("div");
+		grid.className = "my-sc-canvas-color-grid";
+		const normalizedCurrent = (currentColor || "transparent").trim().toLowerCase();
+		let matchedPreset = false;
+
+		for (const item of BACKGROUND_PALETTE) {
+			const btn = this.doc.createElement("button");
+			btn.type = "button";
+			btn.className = "my-sc-canvas-color-swatch";
+			btn.title = item.title;
+			btn.setAttribute("aria-label", item.title);
+			if (item.color === "transparent") {
+				btn.classList.add("is-transparent");
+			} else {
+				btn.style.setProperty("--swatch-color", item.preview);
+			}
+			const isMatch = item.color.toLowerCase() === normalizedCurrent;
+			if (isMatch) matchedPreset = true;
+			btn.classList.toggle("is-active", isMatch);
+			btn.addEventListener("click", () => onSelect(item.color));
+			grid.appendChild(btn);
+		}
+
+		const pickerWrap = this.doc.createElement("label");
+		pickerWrap.className = "my-sc-canvas-color-swatch is-custom-picker";
+		pickerWrap.title = "Свой цвет фона…";
+		const hexValue = normalizeColorToHex(currentColor);
+		pickerWrap.style.setProperty("--swatch-color", hexValue);
+		pickerWrap.classList.toggle(
+			"is-active",
+			!matchedPreset && normalizedCurrent !== "transparent"
+		);
+
+		const pickerInput = this.doc.createElement("input");
+		pickerInput.type = "color";
+		pickerInput.value = hexValue;
+		pickerInput.addEventListener("change", () =>
+			onSelect(hexToSoftRgba(pickerInput.value, 0.22))
+		);
+		pickerWrap.appendChild(pickerInput);
+		grid.appendChild(pickerWrap);
+		section.appendChild(grid);
+	}
+
+private addSegmentedSection<T extends string | number>(
+		labelText: string,
+		activeValue: T,
+		options: ReadonlyArray<SegmentedOption<T>>,
+		onSelect: (value: T) => void
+	): void {
+		const section = this.createPropertySection(labelText);
+		const group = this.doc.createElement("div");
+		group.className = "my-sc-canvas-seg-group";
+
+		for (const option of options) {
+			const btn = this.doc.createElement("button");
+			btn.type = "button";
+			btn.className = "my-sc-canvas-seg-btn";
+			const isActive = option.value === activeValue;
+			btn.classList.toggle("is-active", isActive);
+			btn.title = option.title;
+			btn.setAttribute("aria-label", option.title);
+			btn.setAttribute("aria-pressed", String(isActive));
+
+			if (option.obsidianIcon) {
+				setIcon(btn, option.obsidianIcon);
+			} else if (option.renderSvg) {
+				const svg = this.doc.createElementNS(SVG_NS, "svg");
+				svg.setAttribute("viewBox", "0 0 20 20");
+				svg.setAttribute("class", "my-sc-canvas-seg-svg");
+				option.renderSvg(svg, this.doc);
+				btn.appendChild(svg);
+			} else if (option.label) {
+				const span = this.doc.createElement("span");
+				span.className = "my-sc-canvas-seg-text";
+				span.textContent = option.label;
+				btn.appendChild(span);
+			}
+
+			btn.addEventListener("click", () => onSelect(option.value));
+			group.appendChild(btn);
+		}
+
+		section.appendChild(group);
+	}
+
+	private appendSvgPath(
+		svg: SVGSVGElement,
+		doc: Document,
+		d: string,
+		fill = "none"
+	): void {
+		const path = doc.createElementNS(SVG_NS, "path");
+		path.setAttribute("d", d);
+		path.setAttribute("stroke", "currentColor");
+		path.setAttribute("stroke-width", "1.75");
+		path.setAttribute("stroke-linecap", "round");
+		path.setAttribute("stroke-linejoin", "round");
+		path.setAttribute("fill", fill);
+		svg.appendChild(path);
+	}
+
+	private appendStrokeWidthPreview(
+		svg: SVGSVGElement,
+		doc: Document,
+		strokeWidth: number
+	): void {
+		const line = doc.createElementNS(SVG_NS, "line");
+		line.setAttribute("x1", "4");
+		line.setAttribute("y1", "10");
+		line.setAttribute("x2", "16");
+		line.setAttribute("y2", "10");
+		line.setAttribute("stroke", "currentColor");
+		line.setAttribute("stroke-width", String(strokeWidth));
+		line.setAttribute("stroke-linecap", "round");
+		svg.appendChild(line);
+	}
+
+	private appendLineDashPreview(
+		svg: SVGSVGElement,
+		doc: Document,
+		dashArray: string
+	): void {
+		const line = doc.createElementNS(SVG_NS, "line");
+		line.setAttribute("x1", "3");
+		line.setAttribute("y1", "10");
+		line.setAttribute("x2", "17");
+		line.setAttribute("y2", "10");
+		line.setAttribute("stroke", "currentColor");
+		line.setAttribute("stroke-width", "2");
+		line.setAttribute("stroke-linecap", "round");
+		if (dashArray) line.setAttribute("stroke-dasharray", dashArray);
+		svg.appendChild(line);
+	}
+
+	private getArrowheadSegmentOptions(): ReadonlyArray<
+		SegmentedOption<NonNullable<SceneElement["startArrowhead"]>>
+	> {
 		return [
-			["none", "Нет"],
-			["arrow", "Стрелка"],
-			["triangle", "Треугольник"],
-			["circle", "Круг"],
-			["diamond", "Ромб"],
-			["bar", "Черта"],
+			{
+				value: "none",
+				title: "Без наконечника",
+				renderSvg: (svg, doc) => this.appendSvgPath(svg, doc, "M4 10h12"),
+			},
+			{
+				value: "arrow",
+				title: "Стрелка",
+				renderSvg: (svg, doc) =>
+					this.appendSvgPath(svg, doc, "M4 10h11 M11 6l4 4-4 4"),
+			},
+			{
+				value: "triangle",
+				title: "Треугольник",
+				renderSvg: (svg, doc) =>
+					this.appendSvgPath(svg, doc, "M4 10h7 M11 6l5 4-5 4z", "currentColor"),
+			},
+			{
+				value: "circle",
+				title: "Круг",
+				renderSvg: (svg, doc) => {
+					this.appendSvgPath(svg, doc, "M4 10h7");
+					const circle = doc.createElementNS(SVG_NS, "circle");
+					circle.setAttribute("cx", "14");
+					circle.setAttribute("cy", "10");
+					circle.setAttribute("r", "2.6");
+					circle.setAttribute("fill", "currentColor");
+					svg.appendChild(circle);
+				},
+			},
+			{
+				value: "diamond",
+				title: "Ромб",
+				renderSvg: (svg, doc) =>
+					this.appendSvgPath(
+						svg,
+						doc,
+						"M3 10h6 M9 10l3.5-3 3.5 3-3.5 3z",
+						"currentColor"
+					),
+			},
+			{
+				value: "bar",
+				title: "Засечка",
+				renderSvg: (svg, doc) =>
+					this.appendSvgPath(svg, doc, "M4 10h10 M14 6v8"),
+			},
 		];
 	}
 
+	private addOpacitySliderSection(currentOpacity: number): void {
+		const section = this.createPropertySection("Прозрачность");
+		const row = this.doc.createElement("div");
+		row.className = "my-sc-canvas-opacity-row";
+
+		const slider = this.doc.createElement("input");
+		slider.type = "range";
+		slider.className = "my-sc-canvas-opacity-slider";
+		slider.min = "10";
+		slider.max = "100";
+		slider.step = "5";
+		const clamped = clamp(Math.round(currentOpacity), 10, 100);
+		slider.value = String(clamped);
+
+		const badge = this.doc.createElement("span");
+		badge.className = "my-sc-canvas-opacity-value";
+		badge.textContent = `${clamped}\%`;  	slider.addEventListener("input", () => { 		const val = clamp(Number(slider.value), 10, 100); 		badge.textContent = `${val}%`;
+			if (!this.history.hasPendingTransaction()) {
+				this.history.beginTransaction(this.scene.elements, this.selectedIds);
+			}
+			for (const el of this.getSelectedElements()) {
+				el.opacity = val;
+				el.updated = Date.now();
+			}
+			this.scene.appState.currentStyle.opacity = val;
+			this.renderFrame();
+		});
+
+		slider.addEventListener("change", () => {
+			this.commitHistory(false);
+		});
+
+		row.append(slider, badge);
+		section.appendChild(row);
+	}
+
+	private addLinkPropertySection(
+		currentLink: string,
+		onChange: (value: string) => void
+	): void {
+		const section = this.createPropertySection("Ссылка");
+		const input = this.doc.createElement("input");
+		input.type = "text";
+		input.className = "my-sc-canvas-link-input";
+		input.placeholder = "[[Заметка]] или https://…";
+		input.value = currentLink;
+		input.addEventListener("change", () => onChange(input.value));
+		section.appendChild(input);
+	}
+
 	private updateSelected(
-		updateElement: (element: SceneElement) => void,
-		updateStyle: (style: ElementStyleDefaults) => void
+		mutateElement: (element: SceneElement) => void,
+		mutateStyle: (style: ElementStyleDefaults) => void,
+		refreshPanel = false
 	): void {
 		const selected = this.getSelectedElements();
 		if (selected.length === 0) return;
@@ -3327,14 +4191,13 @@ export class CanvasSceneEditor {
 		const ctx = this.getMeasureCtx();
 		for (const element of selected) {
 			const anchor = getTextAnchor(element);
-			updateElement(element);
-			// Смена шрифта, размера или выравнивания пересчитывает рамку текста, а привязанный край остаётся на месте
+			mutateElement(element);
 			if (ctx) fitTextElementToContent(ctx, element, anchor);
 			element.updated = Date.now();
 		}
-		updateStyle(this.scene.appState.currentStyle);
+		mutateStyle(this.scene.appState.currentStyle);
 		this.updateBoundElementsAndFrames();
-		this.commitHistory(false);
+		this.commitHistory(refreshPanel);
 	}
 
 	private updateBoundElementsAndFrames(): void {
@@ -3351,6 +4214,6 @@ export class CanvasSceneEditor {
 			element.locked = shouldLock;
 			element.updated = Date.now();
 		}
-		this.commitHistory();
+		this.commitHistory(true);
 	}
 }
