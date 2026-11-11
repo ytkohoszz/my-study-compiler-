@@ -2087,14 +2087,61 @@ box-sizing: border-box !important;
 }
 
 .my-sc-workspace-root:fullscreen,
+.my-sc-workspace-root:-webkit-full-screen,
 .my-sc-workspace-root.is-fullscreen {
-width: 100vw !important;
-height: 100vh !important;
-height: 100dvh !important;
-max-width: 100vw !important;
-max-height: 100dvh !important;
-padding: var(--my-sc-s3) var(--my-sc-s4) !important;
-background: var(--background-primary) !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  padding: max(var(--my-sc-s3), env(safe-area-inset-top, 0px))
+           max(var(--my-sc-s4), env(safe-area-inset-right, 0px))
+           max(var(--my-sc-s3), env(safe-area-inset-bottom, 0px))
+           max(var(--my-sc-s4), env(safe-area-inset-left, 0px)) !important;
+  background: var(--background-primary) !important;
+}
+
+/* Псевдо-полноэкранный режим для iPadOS / iOS / мобильного WebView */
+.workspace-leaf-content.is-pseudo-fullscreen-leaf,
+.view-content.my-sc-view-content.is-pseudo-fullscreen-parent {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  z-index: 9998 !important;
+  overflow: hidden !important;
+}
+
+.my-sc-workspace-root.is-pseudo-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  z-index: 9999 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  padding: max(var(--my-sc-s3), env(safe-area-inset-top, 0px))
+           max(var(--my-sc-s4), env(safe-area-inset-right, 0px))
+           max(var(--my-sc-s3), env(safe-area-inset-bottom, 0px))
+           max(var(--my-sc-s4), env(safe-area-inset-left, 0px)) !important;
+  background: var(--background-primary) !important;
+}
+
+body.my-sc-body-pseudo-fullscreen .workspace-ribbon,
+body.my-sc-body-pseudo-fullscreen .mod-left-split,
+body.my-sc-body-pseudo-fullscreen .mod-right-split,
+body.my-sc-body-pseudo-fullscreen .status-bar,
+body.my-sc-body-pseudo-fullscreen .mobile-navbar,
+body.my-sc-body-pseudo-fullscreen .workspace-drawer,
+body.my-sc-body-pseudo-fullscreen .workspace-tab-header-container,
+body.my-sc-body-pseudo-fullscreen .view-header {
+  display: none !important;
 }
 
 .my-sc-workspace-stage {
@@ -2675,23 +2722,6 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   width: 100%;
   height: 100%;
   touch-action: none;
-}
-
-.my-sc-canvas-hint {
-  position: absolute;
-  z-index: 1;
-  top: 10px;
-  left: 50%;
-  max-width: calc(100% - 24px);
-  transform: translateX(-50%);
-  padding: 5px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: rgba(15, 17, 22, 0.72);
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.72rem;
-  pointer-events: none;
-  text-align: center;
 }
 
 .my-sc-canvas-controls {

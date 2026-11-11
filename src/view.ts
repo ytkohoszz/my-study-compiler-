@@ -53,6 +53,16 @@ import { animateClose, animateOpen, prefersReducedMotion } from "./motion";
 import { ProjectGraphView } from "./graph";
 import { ProjectSchemaView } from "./canvasView";
 
+interface WebkitFullscreenDocument extends Document {
+	webkitFullscreenElement?: Element | null;
+	webkitFullscreenEnabled?: boolean;
+	webkitExitFullscreen?: () => Promise<void> | void;
+}
+
+interface WebkitFullscreenHTMLElement extends HTMLElement {
+	webkitRequestFullscreen?: () => Promise<void> | void;
+}
+
 class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
 	private items: StudyNoteItem[];
 	private onPick: (item: StudyNoteItem) => void;
@@ -88,6 +98,7 @@ export class StudyCompilerView extends ItemView {
 	private savedSchemaCamera: CameraState | null = null;
 	private savedGraphCamera: CameraState | null = null;
 	private isFocusMode = false;
+	private isPseudoFullscreen = false;
 
 	private expanded: Set<string>;
 	private refreshTimer: number | null = null;
@@ -118,6 +129,7 @@ export class StudyCompilerView extends ItemView {
 	private expandToggleBtn: HTMLButtonElement | null = null;
 	private focusModeBtn: HTMLButtonElement | null = null;
 	private fullscreenBtn: HTMLButtonElement | null = null;
+	private floatingFullscreenBtn: HTMLButtonElement | null = null;
 
 	private editingNodePath: string | null = null;
 	private editingNodeMode: "type" | "props" | null = null;
@@ -272,6 +284,22 @@ export class StudyCompilerView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.closed = true;
+		if (this.isPseudoFullscreen) {
+			this.setPseudoFullscreen(false);
+		}
+		const fsDoc = this.doc as WebkitFullscreenDocument;
+		const activeFsEl = fsDoc.fullscreenElement ?? fsDoc.webkitFullscreenElement ?? null;
+		if (activeFsEl && (activeFsEl === this.rootHostEl || this.rootHostEl?.contains(activeFsEl))) {
+			try {
+				if (typeof fsDoc.exitFullscreen === "function") {
+					await fsDoc.exitFullscreen();
+				} else if (typeof fsDoc.webkitExitFullscreen === "function") {
+					await fsDoc.webkitExitFullscreen();
+				}
+			} catch {
+				// игнорируем при закрытии вида
+			}
+		}
 		this.unbindWindowEvents();
 
 		if (this.rootResizeObserver) {
@@ -304,6 +332,7 @@ export class StudyCompilerView extends ItemView {
 		this.expandToggleBtn = null;
 		this.focusModeBtn = null;
 		this.fullscreenBtn = null;
+		this.floatingFullscreenBtn = null;
 		this.workSelectEl = null;
 		this.searchInputEl = null;
 		this.contentEl.empty();
@@ -461,29 +490,48 @@ export class StudyCompilerView extends ItemView {
 		this.boundWinKeyDown = (e: KeyboardEvent) => {
 			if (this.closed || !this.containerEl.isShown()) return;
 			const activeLeaf = this.app.workspace.getMostRecentLeaf();
-			if (activeLeaf && activeLeaf !== this.leaf && !this.rootHostEl.contains(this.doc.activeElement)) {
+			if (
+				activeLeaf &&
+				activeLeaf !== this.leaf &&
+				!this.rootHostEl.contains(this.doc.activeElement) &&
+				!this.isFullscreenActive()
+			) {
 				return;
 			}
 			if (e.key === "F11") {
 				e.preventDefault();
 				e.stopPropagation();
 				void this.toggleFullscreen();
-			} else if (e.key === "Escape" && this.isFocusMode && !this.doc.fullscreenElement) {
-				const tag = (e.target as HTMLElement | null)?.tagName ?? "";
-				if (!["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
+			} else if (e.key === "Escape") {
+				const target = e.target as HTMLElement | null;
+				const tag = target?.tagName ?? "";
+				if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || target?.isContentEditable) {
+					return;
+				}
+				if (this.isPseudoFullscreen) {
+					e.preventDefault();
+					e.stopPropagation();
+					this.setPseudoFullscreen(false);
+					return;
+				}
+				if (this.isFocusMode && !this.getNativeFullscreenElement()) {
 					this.toggleFocusMode(false);
 				}
 			}
 		};
 
 		this.boundFullscreenChange = () => {
+			if (this.getNativeFullscreenElement() && this.isPseudoFullscreen) {
+				this.isPseudoFullscreen = false;
+				this.applyPseudoFullscreenClasses(false);
+			}
 			this.syncFullscreenButtonState();
-			this.graphView?.notifyResize();
-			this.schemaView?.notifyResize();
+			this.scheduleViewportResize();
 		};
 
 		targetWin.addEventListener("keydown", this.boundWinKeyDown, true);
 		targetWin.document.addEventListener("fullscreenchange", this.boundFullscreenChange);
+		targetWin.document.addEventListener("webkitfullscreenchange", this.boundFullscreenChange);
 	}
 
 	private unbindWindowEvents(): void {
@@ -495,6 +543,10 @@ export class StudyCompilerView extends ItemView {
 		if (this.boundFullscreenChange) {
 			this.currentWin.document.removeEventListener(
 				"fullscreenchange",
+				this.boundFullscreenChange
+			);
+			this.currentWin.document.removeEventListener(
+				"webkitfullscreenchange",
 				this.boundFullscreenChange
 			);
 			this.boundFullscreenChange = undefined;
@@ -514,7 +566,7 @@ export class StudyCompilerView extends ItemView {
 		});
 		exitFocusBtn.onclick = () => this.toggleFocusMode(false);
 
-		const fsBtn = this.focusFloatingBarEl.createEl("button", {
+		this.floatingFullscreenBtn = this.focusFloatingBarEl.createEl("button", {
 			cls: "my-sc-icon-btn",
 			attr: {
 				type: "button",
@@ -522,8 +574,8 @@ export class StudyCompilerView extends ItemView {
 				"aria-label": "Полный экран (F11)",
 			},
 		});
-		setIcon(fsBtn, "maximize-2");
-		fsBtn.onclick = () => void this.toggleFullscreen();
+		setIcon(this.floatingFullscreenBtn, "maximize-2");
+		this.floatingFullscreenBtn.onclick = () => void this.toggleFullscreen();
 	}
 
 	private toggleFocusMode(force?: boolean): void {
@@ -534,39 +586,108 @@ export class StudyCompilerView extends ItemView {
 			this.focusModeBtn.toggleClass("is-active", this.isFocusMode);
 		}
 		this.requestSaveViewState();
+		this.scheduleViewportResize();
+	}
+
+	private getNativeFullscreenElement(): Element | null {
+		const d = this.doc as WebkitFullscreenDocument;
+		return d.fullscreenElement ?? d.webkitFullscreenElement ?? null;
+	}
+
+	private isFullscreenActive(): boolean {
+		return Boolean(this.getNativeFullscreenElement()) || this.isPseudoFullscreen;
+	}
+
+	private applyPseudoFullscreenClasses(active: boolean): void {
+		this.rootHostEl?.toggleClass("is-pseudo-fullscreen", active);
+		this.contentEl?.toggleClass("is-pseudo-fullscreen-parent", active);
+		this.containerEl?.toggleClass("is-pseudo-fullscreen-leaf", active);
+		this.doc.body?.classList.toggle("my-sc-body-pseudo-fullscreen", active);
+	}
+
+	private setPseudoFullscreen(active: boolean): void {
+		this.isPseudoFullscreen = active;
+		this.applyPseudoFullscreenClasses(active);
+		this.syncFullscreenButtonState();
+		this.scheduleViewportResize();
+	}
+
+	private scheduleViewportResize(): void {
 		this.win.requestAnimationFrame(() => {
+			if (this.closed) return;
 			this.graphView?.notifyResize();
 			this.schemaView?.notifyResize();
 		});
 	}
 
 	private async toggleFullscreen(): Promise<void> {
-		const d = this.doc;
-		try {
-			if (!d.fullscreenElement) {
-				await this.rootHostEl.requestFullscreen();
-			} else {
-				await d.exitFullscreen();
+		const d = this.doc as WebkitFullscreenDocument;
+		const hostEl = this.rootHostEl as WebkitFullscreenHTMLElement;
+		const nativeFsEl = this.getNativeFullscreenElement();
+
+		if (nativeFsEl) {
+			try {
+				if (typeof d.exitFullscreen === "function") {
+					await d.exitFullscreen();
+				} else if (typeof d.webkitExitFullscreen === "function") {
+					await d.webkitExitFullscreen();
+				}
+			} catch {
+				// игнорируем и синхронизируем состояние
 			}
-		} catch (err: unknown) {
-			new Notice(
-				"Не удалось переключить полный экран: " +
-					(err instanceof Error ? err.message : String(err))
-			);
+			this.syncFullscreenButtonState();
+			this.scheduleViewportResize();
+			return;
 		}
-		this.syncFullscreenButtonState();
+
+		if (this.isPseudoFullscreen) {
+			this.setPseudoFullscreen(false);
+			return;
+		}
+
+		const canUseStandard =
+			typeof hostEl.requestFullscreen === "function" &&
+			d.fullscreenEnabled !== false;
+		const canUseWebkit =
+			typeof hostEl.webkitRequestFullscreen === "function" &&
+			d.webkitFullscreenEnabled !== false;
+
+		if (canUseStandard || canUseWebkit) {
+			try {
+				if (canUseStandard && hostEl.requestFullscreen) {
+					await hostEl.requestFullscreen();
+				} else if (canUseWebkit && hostEl.webkitRequestFullscreen) {
+					await hostEl.webkitRequestFullscreen();
+				}
+				if (this.getNativeFullscreenElement()) {
+					this.syncFullscreenButtonState();
+					this.scheduleViewportResize();
+					return;
+				}
+			} catch {
+				// На iPad / в мобильном WebView вызов может быть отклонён — включаем псевдо-полноэкранный режим
+			}
+		}
+
+		this.setPseudoFullscreen(true);
 	}
 
 	private syncFullscreenButtonState(): void {
-		const isFs = Boolean(this.doc.fullscreenElement);
+		const isFs = this.isFullscreenActive();
 		this.rootHostEl?.toggleClass("is-fullscreen", isFs);
-		if (this.fullscreenBtn) {
-			this.fullscreenBtn.empty();
-			setIcon(this.fullscreenBtn, isFs ? "minimize-2" : "maximize-2");
-			this.fullscreenBtn.toggleClass("is-active", isFs);
-			const title = isFs ? "Выйти из полного экрана (F11 / Esc)" : "Полный экран (F11)";
-			this.fullscreenBtn.setAttribute("title", title);
-			this.fullscreenBtn.setAttribute("aria-label", title);
+		this.applyPseudoFullscreenClasses(this.isPseudoFullscreen);
+
+		const title = isFs
+			? "Выйти из полного экрана (F11 / Esc)"
+			: "Полный экран (F11)";
+
+		for (const btn of [this.fullscreenBtn, this.floatingFullscreenBtn]) {
+			if (!btn) continue;
+			btn.empty();
+			setIcon(btn, isFs ? "minimize-2" : "maximize-2");
+			btn.toggleClass("is-active", isFs);
+			btn.setAttribute("title", title);
+			btn.setAttribute("aria-label", title);
 		}
 	}
 
@@ -719,7 +840,7 @@ export class StudyCompilerView extends ItemView {
 		const root = this.getRootInCurrentGroup();
 		if (!root) {
 			if (this.schemaView) {
-				this.schemaView.destroy();
+				void this.schemaView.destroy();
 				this.schemaView = null;
 			}
 			this.schemaEl.empty();

@@ -300,7 +300,6 @@ export class CanvasSceneEditor {
 	private propertiesEl!: HTMLElement;
 	private canvasWrapEl!: HTMLDivElement;
 	private canvasEl!: HTMLCanvasElement;
-	private hintEl!: HTMLDivElement;
 	private controlsEl!: HTMLDivElement;
 	private zoomLabelEl!: HTMLButtonElement;
 	private undoBtn!: HTMLButtonElement;
@@ -551,12 +550,6 @@ export class CanvasSceneEditor {
 		this.canvasWrapEl = this.doc.createElement("div");
 		this.canvasWrapEl.className = "my-sc-canvas-wrap";
 		this.workspaceEl.appendChild(this.canvasWrapEl);
-
-		this.hintEl = this.doc.createElement("div");
-		this.hintEl.className = "my-sc-canvas-hint";
-		this.hintEl.textContent =
-			"Колесо или Пробел + перетаскивание — перемещение. Инструмент «Рука» (H).";
-		this.canvasWrapEl.appendChild(this.hintEl);
 
 		this.canvasEl = this.doc.createElement("canvas");
 		this.canvasEl.className = "my-sc-canvas-surface";
