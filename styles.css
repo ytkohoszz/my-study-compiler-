@@ -129,22 +129,31 @@
   flex-direction: column;
   flex: 0 0 auto;
   min-width: 0;
-  gap: var(--my-sc-s2);
+  gap: 6px;
 }
 
 .my-sc-top-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   min-width: 0;
-  gap: var(--my-sc-s2);
+  gap: 6px;
   padding-right: 40px;
 }
 
 .my-sc-work-select {
-  flex: 1 1 160px;
-  min-width: 0;
+  flex: 1 1 220px;
+  min-width: 160px;
   min-height: var(--my-sc-hit);
   font-weight: 500;
+}
+
+.my-sc-top-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--background-modifier-border);
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 .my-sc-meta-row {
@@ -1195,9 +1204,9 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   flex-wrap: wrap;
   flex: 0 0 auto;
   min-width: 0;
-  gap: var(--my-sc-s2);
-  padding: 6px 8px;
-  border-radius: 10px;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 9px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
 }
@@ -2078,14 +2087,13 @@ min-width: 0 !important;
 min-height: 0 !important;
 max-height: 100% !important;
 margin: 0 !important;
-padding: var(--my-sc-s3) var(--my-sc-s4) !important;
+padding: 8px 10px !important;
 background: var(--background-primary);
 overflow: hidden !important;
-gap: var(--my-sc-s2);
+gap: 6px;
 outline: none !important;
 box-sizing: border-box !important;
 }
-
 .my-sc-workspace-root:fullscreen,
 .my-sc-workspace-root:-webkit-full-screen,
 .my-sc-workspace-root.is-fullscreen {
@@ -2588,22 +2596,36 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 }
 
 .my-sc-canvas-toolbar {
-  z-index: 2;
-  display: flex;
-  flex: 0 0 auto;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 6px 8px;
+  justify-content: flex-start;
+  gap: 3px;
+  max-width: calc(100% - 20px);
+  padding: 4px 6px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  scrollbar-width: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-secondary) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+}
+
+.my-sc-canvas-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 .my-sc-canvas-tool,
 .my-sc-canvas-control,
 .my-sc-canvas-lock,
+.my-sc-canvas-pen-mode,
 .my-sc-canvas-menu-trigger {
   display: inline-flex;
   width: 34px;
@@ -2613,25 +2635,34 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   justify-content: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .my-sc-canvas-tool:hover,
 .my-sc-canvas-control:hover,
 .my-sc-canvas-lock:hover,
+.my-sc-canvas-pen-mode:hover,
 .my-sc-canvas-menu-trigger:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
 .my-sc-canvas-tool.is-active,
-.my-sc-canvas-lock.is-active {
+.my-sc-canvas-control.is-active,
+.my-sc-canvas-lock.is-active,
+.my-sc-canvas-pen-mode.is-active {
   border-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-secondary));
+  background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary));
   color: var(--interactive-accent);
+}
+
+.my-sc-canvas-control:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .my-sc-canvas-workspace {
@@ -2883,24 +2914,114 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 }
 
 /* ==========================================================================
-   Панель свойств элементов схемы (Excalidraw-style)
+   Панель свойств элементов схемы (Excalidraw-style) и контекстная мини-панель
    ========================================================================== */
 
 .my-sc-canvas-properties {
+	position: absolute;
+	top: 58px;
+	left: 12px;
+	bottom: 58px;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	width: 224px;
-	max-height: calc(100% - 24px);
+	width: 228px;
+	max-width: calc(100% - 24px);
+	max-height: calc(100% - 116px);
 	padding: 12px;
 	border-radius: 12px;
-	background: var(--background-secondary);
+	background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
 	overflow-y: auto;
 	overflow-x: hidden;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
 	user-select: none;
 	z-index: 12;
+	pointer-events: auto;
+}
+
+.my-sc-canvas-properties::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+.my-sc-canvas-properties button.my-sc-canvas-prop-close-btn {
+	display: inline-flex;
+	width: 22px;
+	min-width: 22px;
+	height: 22px;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.my-sc-canvas-properties button.my-sc-canvas-prop-close-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.my-sc-canvas-selection-bar {
+	position: absolute;
+	z-index: 9;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 4px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32);
+	pointer-events: auto;
+}
+
+.my-sc-canvas-selection-bar.is-hidden {
+	display: none !important;
+}
+
+.my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn {
+	display: inline-flex;
+	width: 30px;
+	min-width: 30px;
+	height: 30px;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border-radius: 7px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--text-muted);
+	box-shadow: none;
+	cursor: pointer;
+	transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border));
+	color: var(--interactive-accent);
+}
+
+.my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn.is-danger:hover:not(:disabled) {
+	background: rgba(224, 108, 117, 0.16);
+	color: #e06c75;
 }
 
 .my-sc-canvas-properties.is-hidden {
