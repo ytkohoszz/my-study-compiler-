@@ -29,6 +29,7 @@ export interface GraphCallbacks {
 	onOpen: (path: string, newTab?: boolean) => void;
 	onFocus: (path: string) => void;
 	onOpenSchema: (path: string) => void;
+	onHover?: (event: MouseEvent, targetEl: Element, path: string) => void;
 	getSavedPositions: (graphKey: string) => Record<string, Point>;
 	onSaveNodePosition: (graphKey: string, nodePath: string, pos: Point) => void;
 	onResetNodePositions: (graphKey: string) => void;
@@ -176,6 +177,7 @@ export class ProjectGraphView {
 	private schemaBtn: HTMLButtonElement;
 	private focusBtn: HTMLButtonElement;
 	private toggleAllBtn: HTMLButtonElement;
+	private directionBtn: HTMLButtonElement;
 	private resetLayoutBtn: HTMLButtonElement;
 
 	private scan: ScanResult | null = null;
@@ -183,6 +185,7 @@ export class ProjectGraphView {
 	private fresh: Set<string> = new Set();
 	private collapsed = new Set<string>();
 	private selectedPath: string | null = null;
+	private direction: "LR" | "TB" = "LR";
 
 	private placed: LayoutNode[] = [];
 	private nodeByPath = new Map<string, LayoutNode>();
@@ -246,13 +249,26 @@ export class ProjectGraphView {
 			this.userMovedViewport = false;
 			this.fit(true);
 		});
-		this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", () => {
+this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", () => {
 			if (this.collapsed.size > 0) this.collapsed.clear();
 			else this.collapseDeep();
 			this.rebuild();
 			this.userMovedViewport = false;
 			this.fit(true);
 		});
+
+		this.directionBtn = addCtrl(
+			"arrow-down-right",
+			"Ориентация графа: слева направо / сверху вниз",
+			() => {
+				this.direction = this.direction === "LR" ? "TB" : "LR";
+				this.syncDirectionBtn();
+				this.rebuild();
+				this.userMovedViewport = false;
+				this.fit(true);
+			}
+		);
+		this.syncDirectionBtn();
 
 		this.resetLayoutBtn = controls.createEl("button", {
 			cls: "my-sc-graph-ctrl my-sc-graph-ctrl-reset",
@@ -421,11 +437,19 @@ export class ProjectGraphView {
 		this.container.empty();
 	}
 
-	private shiftSubtreeY(node: LayoutNode, dy: number): void {
+private shiftSubtreeY(node: LayoutNode, dy: number): void {
 		if (Math.abs(dy) < 0.01) return;
 		node.y += dy;
 		for (const c of node.children) {
 			this.shiftSubtreeY(c, dy);
+		}
+	}
+
+	private shiftSubtreeX(node: LayoutNode, dx: number): void {
+		if (Math.abs(dx) < 0.01) return;
+		node.x += dx;
+		for (const c of node.children) {
+			this.shiftSubtreeX(c, dx);
 		}
 	}
 
@@ -452,7 +476,15 @@ export class ProjectGraphView {
 		};
 	}
 
-	private computeEdgePathD(a: LayoutNode, b: LayoutNode): string {
+private computeEdgePathD(a: LayoutNode, b: LayoutNode): string {
+		if (this.direction === "TB") {
+			const x1 = a.x + a.w / 2;
+			const y1 = a.y + a.h;
+			const x2 = b.x + b.w / 2;
+			const y2 = b.y;
+			const dy = Math.max(32, Math.abs(y2 - y1) * 0.45);
+			return `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
+		}
 		const x1 = a.x + a.w;
 		const y1 = a.y + a.h / 2;
 		const x2 = b.x;
@@ -531,52 +563,97 @@ export class ProjectGraphView {
 			return node;
 		};
 
-		const tree = make(root, 0);
+const tree = make(root, 0);
 
-		const colX = new Map<number, number>();
-		let runningX = 0;
-		const maxDepth = Math.max(0, ...Array.from(maxWidthByDepth.keys()));
-		for (let dep = 0; dep <= maxDepth; dep++) {
-			colX.set(dep, runningX);
-			const colW = maxWidthByDepth.get(dep) ?? MIN_NODE_W;
-			runningX += colW + GAP_X;
-		}
-
-		let leafCursorY = 0;
-		const nextMinYByDepth = new Map<number, number>();
-
-		const place = (n: LayoutNode) => {
-			n.x = colX.get(n.depth) ?? n.depth * (MIN_NODE_W + GAP_X);
-			const minForDepth = nextMinYByDepth.get(n.depth) ?? 0;
-
-			if (n.children.length === 0) {
-				n.y = Math.max(leafCursorY, minForDepth);
-				leafCursorY = n.y + n.h + GAP_Y;
-				nextMinYByDepth.set(n.depth, n.y + n.h + GAP_Y);
-				return;
+		if (this.direction === "TB") {
+			const rowY = new Map<number, number>();
+			let runningY = 0;
+			const maxDepth = Math.max(0, ...Array.from(maxWidthByDepth.keys()));
+			for (let dep = 0; dep <= maxDepth; dep++) {
+				rowY.set(dep, runningY);
+				runningY += MIN_NODE_H + GAP_X;
 			}
 
-			for (const c of n.children) place(c);
-			const first = n.children[0];
-			const last = n.children[n.children.length - 1];
-			const firstCenter = first ? first.y + first.h / 2 : 0;
-			const lastCenter = last ? last.y + last.h / 2 : 0;
-			let desiredY = Math.round((firstCenter + lastCenter) / 2 - n.h / 2);
+			let leafCursorX = 0;
+			const nextMinXByDepth = new Map<number, number>();
+			const placeTB = (n: LayoutNode) => {
+				n.y = rowY.get(n.depth) ?? n.depth * (MIN_NODE_H + GAP_X);
+				const minForDepth = nextMinXByDepth.get(n.depth) ?? 0;
 
-			if (desiredY < minForDepth) {
-				const delta = minForDepth - desiredY;
-				desiredY = minForDepth;
-				for (const c of n.children) {
-					this.shiftSubtreeY(c, delta);
+				if (n.children.length === 0) {
+					n.x = Math.max(leafCursorX, minForDepth);
+					leafCursorX = n.x + n.w + GAP_Y;
+					nextMinXByDepth.set(n.depth, n.x + n.w + GAP_Y);
+					return;
 				}
-				leafCursorY = Math.max(leafCursorY + delta, desiredY + n.h + GAP_Y);
+
+				for (const c of n.children) placeTB(c);
+				const first = n.children[0];
+				const last = n.children[n.children.length - 1];
+				const firstCenter = first ? first.x + first.w / 2 : 0;
+				const lastCenter = last ? last.x + last.w / 2 : 0;
+				let desiredX = Math.round((firstCenter + lastCenter) / 2 - n.w / 2);
+
+				if (desiredX < minForDepth) {
+					const delta = minForDepth - desiredX;
+					desiredX = minForDepth;
+					for (const c of n.children) {
+						this.shiftSubtreeX(c, delta);
+					}
+					leafCursorX = Math.max(leafCursorX + delta, desiredX + n.w + GAP_Y);
+				}
+
+				n.x = desiredX;
+				leafCursorX = Math.max(leafCursorX, n.x + n.w + GAP_Y);
+				nextMinXByDepth.set(n.depth, n.x + n.w + GAP_Y);
+			};
+			placeTB(tree);
+		} else {
+			const colX = new Map<number, number>();
+			let runningX = 0;
+			const maxDepth = Math.max(0, ...Array.from(maxWidthByDepth.keys()));
+			for (let dep = 0; dep <= maxDepth; dep++) {
+				colX.set(dep, runningX);
+				const colW = maxWidthByDepth.get(dep) ?? MIN_NODE_W;
+				runningX += colW + GAP_X;
 			}
 
-			n.y = desiredY;
-			leafCursorY = Math.max(leafCursorY, n.y + n.h + GAP_Y);
-			nextMinYByDepth.set(n.depth, n.y + n.h + GAP_Y);
-		};
-		place(tree);
+			let leafCursorY = 0;
+			const nextMinYByDepth = new Map<number, number>();
+
+			const placeLR = (n: LayoutNode) => {
+				n.x = colX.get(n.depth) ?? n.depth * (MIN_NODE_W + GAP_X);
+				const minForDepth = nextMinYByDepth.get(n.depth) ?? 0;
+
+				if (n.children.length === 0) {
+					n.y = Math.max(leafCursorY, minForDepth);
+					leafCursorY = n.y + n.h + GAP_Y;
+					nextMinYByDepth.set(n.depth, n.y + n.h + GAP_Y);
+					return;
+				}
+
+				for (const c of n.children) placeLR(c);
+				const first = n.children[0];
+				const last = n.children[n.children.length - 1];
+				const firstCenter = first ? first.y + first.h / 2 : 0;
+				const lastCenter = last ? last.y + last.h / 2 : 0;
+				let desiredY = Math.round((firstCenter + lastCenter) / 2 - n.h / 2);
+
+				if (desiredY < minForDepth) {
+					const delta = minForDepth - desiredY;
+					desiredY = minForDepth;
+					for (const c of n.children) {
+						this.shiftSubtreeY(c, delta);
+					}
+					leafCursorY = Math.max(leafCursorY + delta, desiredY + n.h + GAP_Y);
+				}
+
+				n.y = desiredY;
+				leafCursorY = Math.max(leafCursorY, n.y + n.h + GAP_Y);
+				nextMinYByDepth.set(n.depth, n.y + n.h + GAP_Y);
+			};
+			placeLR(tree);
+		}
 
 		this.placed = [];
 		this.nodeByPath.clear();
@@ -628,7 +705,7 @@ export class ProjectGraphView {
 		);
 	}
 
-	private syncToggleAll(): void {
+private syncToggleAll(): void {
 		const anyCollapsed = this.collapsed.size > 0;
 		const title = anyCollapsed ? "Развернуть все ветки" : "Свернуть ветки";
 		this.toggleAllBtn.empty();
@@ -638,6 +715,18 @@ export class ProjectGraphView {
 		);
 		this.toggleAllBtn.setAttribute("title", title);
 		this.toggleAllBtn.setAttribute("aria-label", title);
+	}
+
+	private syncDirectionBtn(): void {
+		if (!this.directionBtn) return;
+		this.directionBtn.empty();
+		const isTB = this.direction === "TB";
+		setIcon(this.directionBtn, isTB ? "arrow-down" : "arrow-right");
+		const title = isTB
+			? "Ориентация: сверху вниз (нажми для слева направо)"
+			: "Ориентация: слева направо (нажми для сверху вниз)";
+		this.directionBtn.setAttribute("title", title);
+		this.directionBtn.setAttribute("aria-label", title);
 	}
 
 	private syncResetLayoutBtn(): void {
@@ -776,6 +865,10 @@ export class ProjectGraphView {
 				tg.appendChild(t);
 				g.appendChild(tg);
 			}
+
+g.addEventListener("mouseenter", (evt: MouseEvent) => {
+				this.callbacks.onHover?.(evt, g, item.path);
+			});
 
 			this.nodesLayer.appendChild(g);
 			this.nodeEls.set(item.path, g);

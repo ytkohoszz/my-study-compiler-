@@ -1,10 +1,12 @@
 // C:\Users\user\dev\my-study-compiler\src\view.ts
 import {
 	App,
-	FuzzySuggestModal,
+FuzzySuggestModal,
 	ItemView,
 	Menu,
 	Notice,
+	TAbstractFile,
+	TFile,
 	ViewStateResult,
 	WorkspaceLeaf,
 	normalizePath,
@@ -41,8 +43,9 @@ import {
 	formatDeadlineBadge,
 	formatFullDateTooltip,
 	getDeadlineTone,
-	getWorkMeta,
+getWorkMeta,
 	isReservedYamlKey,
+	isTemplateOrExcludedFile,
 	normalizeSpaces,
 	parseCustomPropertyValue,
 	scanStudyVault,
@@ -131,8 +134,9 @@ export class StudyCompilerView extends ItemView {
 	private fullscreenBtn: HTMLButtonElement | null = null;
 	private floatingFullscreenBtn: HTMLButtonElement | null = null;
 
-	private editingNodePath: string | null = null;
+private editingNodePath: string | null = null;
 	private editingNodeMode: "type" | "props" | null = null;
+	private draggedNodePath: string | null = null;
 
 	private rootHostEl!: HTMLElement;
 	private focusFloatingBarEl!: HTMLElement;
@@ -248,10 +252,25 @@ export class StudyCompilerView extends ItemView {
 			})
 		);
 
-		const onChange = () => this.scheduleRefresh();
-		this.registerEvent(this.app.metadataCache.on("changed", onChange));
-		this.registerEvent(this.app.vault.on("delete", onChange));
-		this.registerEvent(this.app.vault.on("rename", onChange));
+const onFileEvent = (file: TAbstractFile) => {
+			if (!(file instanceof TFile) || file.extension !== "md") return;
+			const cache = this.app.metadataCache.getFileCache(file);
+			if (isTemplateOrExcludedFile(file, cache?.frontmatter, [], this.plugin.settings)) {
+				return;
+			}
+			this.scheduleRefresh();
+		};
+		this.registerEvent(this.app.metadataCache.on("changed", onFileEvent));
+		this.registerEvent(this.app.vault.on("delete", onFileEvent));
+		this.registerEvent(
+			this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
+				if (this.scan.byPath.has(oldPath)) {
+					this.scheduleRefresh();
+					return;
+				}
+				onFileEvent(file);
+			})
+		);
 
 		if (typeof ResizeObserver !== "undefined") {
 			this.rootResizeObserver = new ResizeObserver(() => {
@@ -797,7 +816,8 @@ export class StudyCompilerView extends ItemView {
 					const r = this.getRootInCurrentGroup();
 					if (r) this.setFocusBranch(r, p);
 				},
-				onOpenSchema: (p) => this.openSchemaForNode(p),
+onOpenSchema: (p) => this.openSchemaForNode(p),
+				onHover: (evt, targetEl, p) => this.triggerHoverPreview(evt, targetEl, p),
 				getSavedPositions: (graphKey: string) =>
 					this.plugin.settings.graphNodePositions[graphKey] ?? {},
 				onSaveNodePosition: (graphKey: string, nodePath: string, pos: Point) => {
@@ -1235,17 +1255,15 @@ export class StudyCompilerView extends ItemView {
 		const sel = topRow.createEl("select", { cls: "dropdown my-sc-work-select" });
 		this.workSelectEl = sel;
 
-		const addGroup = (label: string, list: StudyNoteItem[]) => {
+const addGroup = (label: string, list: StudyNoteItem[]) => {
 			if (list.length === 0) return;
 			const group = sel.createEl("optgroup", {
 				attr: { label: `${label} · ${list.length}` },
 			});
 			for (const r of list) {
 				const meta = getWorkMeta(r.noteType, r.icon);
-				const dlText =
-					r.deadline && !r.isCompletedRoot ? ` · ${formatDeadlineBadge(r)}` : "";
 				const o = group.createEl("option", {
-					text: `${meta.icon} ${r.name}${dlText}`,
+					text: `${meta.icon} ${r.name}`,
 					value: r.path,
 				});
 				if (r.path === root.path) o.selected = true;
@@ -1279,6 +1297,69 @@ export class StudyCompilerView extends ItemView {
 		};
 
 		const topActions = topRow.createDiv("my-sc-top-actions");
+
+		const modeSeg = topActions.createDiv("my-sc-view-seg");
+		const addModeBtn = (mode: ViewMode, icon: string, label: string, hint: string) => {
+			const b = modeSeg.createEl("button", {
+				cls: "my-sc-view-seg-btn" + (this.viewMode === mode ? " is-active" : ""),
+				attr: {
+					type: "button",
+					title: hint,
+					"aria-pressed": String(this.viewMode === mode),
+				},
+			});
+			const icSpan = b.createSpan("my-sc-view-seg-icon");
+			setIcon(icSpan, icon);
+			b.createSpan({ cls: "my-sc-view-seg-label", text: label });
+			b.onclick = () => this.setViewMode(mode);
+		};
+		addModeBtn("tree", "list", "Дерево", "Иерархическое дерево проекта");
+		addModeBtn("graph", "network", "Граф", "Силовой граф связей проекта");
+		addModeBtn(
+			"schema",
+			"image",
+			"Схема",
+			"Редактор схем и аннотаций поверх картинок"
+		);
+
+		if (this.viewMode === "tree") {
+			this.expandToggleBtn = this.iconBtn(
+				topActions,
+				"chevrons-up-down",
+				"Развернуть все ветки",
+				() => {
+					const open = this.hasOpenBranches(branchRoot.path);
+					for (const p of collectDescendants(branchRoot.path, this.scan)) {
+						if (open) this.expanded.delete(p);
+						else if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0)
+							this.expanded.add(p);
+					}
+					this.saveExpanded();
+					this.renderTree();
+					this.focusSafeContainer();
+				}
+			);
+			this.syncExpandToggle();
+		}
+
+		this.iconBtn(
+			topActions,
+			this.form.open ? "x" : "plus",
+			this.form.open ? "Закрыть форму" : "Добавить материал",
+			() => {
+				if (this.form.open) {
+					this.form.open = false;
+					this.formEl.empty();
+					this.renderBar();
+					this.focusSafeContainer();
+				} else {
+					this.openForm(branchRoot.path, true);
+				}
+			},
+			{ primary: true, active: this.form.open }
+		);
+
+		topActions.createSpan("my-sc-top-divider");
 
 		this.iconBtn(
 			topActions,
@@ -1314,91 +1395,6 @@ export class StudyCompilerView extends ItemView {
 
 		this.iconBtn(topActions, "more-horizontal", "Действия с проектом", (e) =>
 			this.openProjectMenu(e, root, branchRoot)
-		);
-
-		const descendants = collectDescendants(branchRoot.path, this.scan);
-		let mediaNodesCount =
-			branchRoot.mediaItems.length > 0 || branchRoot.annotationCount > 0 ? 1 : 0;
-		for (const dPath of descendants) {
-			const dItem = this.scan.byPath.get(dPath);
-			if (dItem && (dItem.mediaItems.length > 0 || dItem.annotationCount > 0)) {
-				mediaNodesCount++;
-			}
-		}
-
-		const metaRow = this.barEl.createDiv("my-sc-meta-row");
-		const metaInfo = metaRow.createDiv("my-sc-meta-info");
-		metaInfo.createSpan({
-			cls: "my-sc-summary-text",
-			text:
-				descendants.size > 0
-					? `Материалов: ${descendants.size}` +
-					  (mediaNodesCount > 0 ? ` · Схем: ${mediaNodesCount}` : "")
-					: "Материалов пока нет",
-		});
-		this.renderDeadline(metaInfo, branchRoot);
-
-		const tools = metaRow.createDiv("my-sc-icon-group");
-
-		const modeSeg = tools.createDiv("my-sc-view-seg");
-		const addModeBtn = (mode: ViewMode, icon: string, label: string, hint: string) => {
-			const b = modeSeg.createEl("button", {
-				cls: "my-sc-view-seg-btn" + (this.viewMode === mode ? " is-active" : ""),
-				attr: {
-					type: "button",
-					title: hint,
-					"aria-pressed": String(this.viewMode === mode),
-				},
-			});
-			const icSpan = b.createSpan("my-sc-view-seg-icon");
-			setIcon(icSpan, icon);
-			b.createSpan({ cls: "my-sc-view-seg-label", text: label });
-			b.onclick = () => this.setViewMode(mode);
-		};
-		addModeBtn("tree", "list", "Дерево", "Иерархическое дерево проекта");
-		addModeBtn("graph", "network", "Граф", "Силовой граф связей проекта");
-		addModeBtn(
-			"schema",
-			"image",
-			"Схема",
-			"Редактор схем и аннотаций поверх картинок"
-		);
-
-		if (this.viewMode === "tree") {
-			this.expandToggleBtn = this.iconBtn(
-				tools,
-				"chevrons-up-down",
-				"Развернуть все ветки",
-				() => {
-					const open = this.hasOpenBranches(branchRoot.path);
-					for (const p of collectDescendants(branchRoot.path, this.scan)) {
-						if (open) this.expanded.delete(p);
-						else if ((this.scan.childrenOf.get(p)?.length ?? 0) > 0)
-							this.expanded.add(p);
-					}
-					this.saveExpanded();
-					this.renderTree();
-					this.focusSafeContainer();
-				}
-			);
-			this.syncExpandToggle();
-		}
-
-		this.iconBtn(
-			tools,
-			this.form.open ? "x" : "plus",
-			this.form.open ? "Закрыть форму" : "Добавить материал",
-			() => {
-				if (this.form.open) {
-					this.form.open = false;
-					this.formEl.empty();
-					this.renderBar();
-					this.focusSafeContainer();
-				} else {
-					this.openForm(branchRoot.path, true);
-				}
-			},
-			{ primary: true, active: this.form.open }
 		);
 	}
 
@@ -1495,12 +1491,13 @@ export class StudyCompilerView extends ItemView {
 				this.crumbsEl.createSpan({ cls: "my-sc-crumb-sep", text: "›" });
 			}
 			const isLast = idx === chain.length - 1;
-			const btn = this.crumbsEl.createEl("button", {
+const btn = this.crumbsEl.createEl("button", {
 				cls: "my-sc-crumb-btn" + (isLast ? " is-current" : ""),
 				text: node.name,
 				attr: { type: "button" },
 			});
 			btn.onclick = () => this.setFocusBranch(root, node.path);
+			this.bindDropTarget(btn, node);
 		});
 
 		const resetBtn = this.crumbsEl.createEl("button", {
@@ -2052,19 +2049,33 @@ export class StudyCompilerView extends ItemView {
 				(node.isExpanded ? " is-expanded" : " is-collapsed"),
 		});
 
-		const row = groupEl.createDiv({
+const row = groupEl.createDiv({
 			cls:
 				"my-sc-tree-row" +
 				(node.hasChildren ? " is-parent-row" : "") +
 				(node.isExpanded ? " is-open-parent" : "") +
 				(node.isDirectMatch ? " is-match" : "") +
 				(this.freshPaths.has(item.path) ? " is-new" : ""),
+			attr: { draggable: "true" },
 		});
 		this.rowElementByPath.set(item.path, row);
 		row.oncontextmenu = (e) => {
 			e.preventDefault();
 			this.openRowMenu(e, item, projectRoot);
 		};
+		row.addEventListener("dragstart", (e: DragEvent) => {
+			this.draggedNodePath = item.path;
+			row.addClass("is-dragging");
+			if (e.dataTransfer) {
+				e.dataTransfer.effectAllowed = "move";
+				e.dataTransfer.setData("text/plain", item.path);
+			}
+		});
+		row.addEventListener("dragend", () => {
+			this.draggedNodePath = null;
+			row.removeClass("is-dragging");
+		});
+		this.bindDropTarget(row, item);
 
 		const left = row.createDiv("my-sc-tree-left");
 
@@ -2088,12 +2099,15 @@ export class StudyCompilerView extends ItemView {
 			dotWrap.createSpan("my-sc-leaf-dot");
 		}
 
-		const title = left.createSpan({
+const title = left.createSpan({
 			cls: "my-sc-node-title",
 			attr: { title: `${item.name} (${item.path})` },
 		});
 		this.renderHighlightedTitle(title, item.name, this.searchQuery);
 		title.onclick = (e) => this.openNote(item.path, e.ctrlKey || e.metaKey);
+		title.addEventListener("mouseenter", (e: MouseEvent) => {
+			this.triggerHoverPreview(e, title, item.path);
+		});
 
 		if (item.parentPaths.length > 1) {
 			left.createSpan({
@@ -2353,6 +2367,62 @@ export class StudyCompilerView extends ItemView {
 			this.focusSafeContainer();
 		};
 		this.win.setTimeout(() => keyInp.focus(), 20);
+	}
+
+private triggerHoverPreview(
+		event: MouseEvent,
+		targetEl: Element,
+		notePath: string
+	): void {
+		if (!event.ctrlKey && !event.metaKey) return;
+		this.app.workspace.trigger("hover-link", {
+			event,
+			source: VIEW_TYPE_STUDY_COMPILER,
+			hoverParent: this,
+			targetEl,
+			linktext: notePath,
+			sourcePath: notePath,
+		});
+	}
+
+	private canDropNodeOnTarget(sourcePath: string, targetPath: string): boolean {
+		if (!sourcePath || !targetPath || sourcePath === targetPath) return false;
+		const sourceItem = this.scan.byPath.get(sourcePath);
+		if (!sourceItem) return false;
+		if (sourceItem.parentPaths.includes(targetPath)) return false;
+		const forbidden = collectDescendants(sourcePath, this.scan);
+		return !forbidden.has(targetPath);
+	}
+
+	private bindDropTarget(el: HTMLElement, targetItem: StudyNoteItem): void {
+		el.addEventListener("dragover", (e: DragEvent) => {
+			const srcPath = this.draggedNodePath;
+			if (!srcPath || !this.canDropNodeOnTarget(srcPath, targetItem.path)) {
+				return;
+			}
+			e.preventDefault();
+			e.stopPropagation();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+			el.addClass("is-drop-target");
+		});
+		el.addEventListener("dragleave", () => {
+			el.removeClass("is-drop-target");
+		});
+		el.addEventListener("drop", (e: DragEvent) => {
+			el.removeClass("is-drop-target");
+			const srcPath =
+				this.draggedNodePath || e.dataTransfer?.getData("text/plain") || "";
+			this.draggedNodePath = null;
+			if (!srcPath || !this.canDropNodeOnTarget(srcPath, targetItem.path)) {
+				return;
+			}
+			e.preventDefault();
+			e.stopPropagation();
+			const sourceItem = this.scan.byPath.get(srcPath);
+			if (sourceItem) {
+				void this.setParent(sourceItem, targetItem);
+			}
+		});
 	}
 
 	private openMovePicker(item: StudyNoteItem): void {

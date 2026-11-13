@@ -403,6 +403,106 @@ export class SceneCanvasRenderer {
 		ctx.restore();
 	}
 
+public async exportToPngBlob(
+		scene: Scene,
+		targetElements?: readonly SceneElement[],
+		options: { padding?: number; pixelRatio?: number; withBackground?: boolean } = {}
+	): Promise<Blob> {
+		const activeAll = scene.elements
+			.filter((el) => !el.isDeleted)
+			.sort((a, b) => a.zIndex - b.zIndex);
+		const byId = new Map<string, SceneElement>();
+		for (const el of activeAll) {
+			byId.set(el.id, el);
+		}
+
+		const sourceList = (
+			targetElements && targetElements.length > 0 ? targetElements : activeAll
+		).filter((el) => !el.isDeleted && !el.containerId);
+
+		if (sourceList.length === 0) {
+			throw new Error("На холсте нет элементов для экспорта");
+		}
+
+		const bounds = getSelectionAABB(sourceList);
+		if (!bounds) {
+			throw new Error("Не удалось вычислить границы схемы");
+		}
+
+		// Дожидаемся загрузки всех изображений, которые участвуют в экспорте
+		const pendingImages: Promise<void>[] = [];
+		for (const el of sourceList) {
+			if (el.type !== "image") continue;
+			const url = this.resolveImageUrl(el, scene);
+			const cached = url ? this.imageCache.get(url) : undefined;
+			if (cached && !cached.complete) {
+				pendingImages.push(
+					new Promise<void>((resolve) => {
+						cached.addEventListener("load", () => resolve(), { once: true });
+						cached.addEventListener("error", () => resolve(), { once: true });
+					})
+				);
+			}
+		}
+		if (pendingImages.length > 0) {
+			await Promise.all(pendingImages);
+		}
+
+		const padding = options.padding ?? 32;
+		const exportW = Math.max(1, Math.ceil(bounds.width + padding * 2));
+		const exportH = Math.max(1, Math.ceil(bounds.height + padding * 2));
+		const maxSide = 4096;
+		const requestedRatio = options.pixelRatio ?? 2;
+		const safeRatio = Math.min(
+			requestedRatio,
+			maxSide / Math.max(exportW, exportH)
+		);
+		const dpr = Math.max(1, safeRatio);
+
+		const doc = this.canvas.ownerDocument;
+		const offCanvas = doc.createElement("canvas");
+		offCanvas.width = Math.round(exportW * dpr);
+		offCanvas.height = Math.round(exportH * dpr);
+
+		const offCtx = offCanvas.getContext("2d");
+		if (!offCtx) {
+			throw new Error("Не удалось создать 2D-контекст для экспорта");
+		}
+
+		offCtx.save();
+		offCtx.scale(dpr, dpr);
+
+		if (options.withBackground !== false) {
+			offCtx.fillStyle = scene.appState.theme === "light" ? "#f8f9fa" : "#16181d";
+			offCtx.fillRect(0, 0, exportW, exportH);
+		}
+
+		offCtx.translate(padding - bounds.minX, padding - bounds.minY);
+
+		const sortedSource = [...sourceList].sort((a, b) => a.zIndex - b.zIndex);
+		for (const el of sortedSource) {
+			const boundText = el.boundTextId ? byId.get(el.boundTextId) ?? null : null;
+			renderSceneElement(offCtx, el, {
+				getImage: (imgEl) => {
+					const url = this.resolveImageUrl(imgEl, scene);
+					return url ? this.imageCache.get(url) ?? null : null;
+				},
+				boundTextElement: boundText,
+				isEditingText: false,
+				theme: scene.appState.theme,
+			});
+		}
+
+		offCtx.restore();
+
+		return await new Promise<Blob>((resolve, reject) => {
+			offCanvas.toBlob((blob) => {
+				if (blob) resolve(blob);
+				else reject(new Error("Не удалось сформировать PNG"));
+			}, "image/png");
+		});
+	}
+
 	public destroy(): void {
 		if (this.rafId !== null) {
 			this.win.cancelAnimationFrame(this.rafId);

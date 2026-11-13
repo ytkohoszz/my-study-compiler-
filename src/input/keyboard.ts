@@ -17,6 +17,8 @@ export type CanvasCommand =
 	| "bring-to-front"
 	| "send-to-back"
 	| "toggle-keep-tool"
+	| "copy-style"
+	| "paste-style"
 	| "escape";
 
 export function getToolForKey(event: KeyboardEvent): CanvasToolId | null {
@@ -56,7 +58,12 @@ export function getCanvasCommand(event: KeyboardEvent): CanvasCommand | null {
 	const key = event.key.toLowerCase();
 	const command = event.ctrlKey || event.metaKey;
 
-	if (event.key === "Escape") return "escape";
+if (event.key === "Escape") return "escape";
+	if (command && event.altKey && !event.shiftKey) {
+		if (event.code === "KeyC" || key === "c") return "copy-style";
+		if (event.code === "KeyV" || key === "v") return "paste-style";
+		return null;
+	}
 	if (command) {
 		if (event.code === "KeyZ" || key === "z") {
 			return event.shiftKey ? "redo" : "undo";

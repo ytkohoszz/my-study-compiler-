@@ -789,6 +789,8 @@ export class ProjectSchemaView {
 					onPasteImage: (file, point) =>
 						this.trackMediaOperation(this.addClipboardImage(file, point)),
 					onOpenLink: (link, newTab) => this.handleOpenLink(link, newTab),
+					onExportPng: (blob) =>
+						this.trackMediaOperation(this.saveExportedPngToVault(blob)),
 				},
 				(element, currentScene) =>
 					this.resolveSceneImage(element, currentScene)
@@ -1061,6 +1063,20 @@ export class ProjectSchemaView {
 			created: Date.now(),
 		};
 		await this.addImageEntry(entry, point, context);
+	}
+
+private async saveExportedPngToVault(blob: Blob): Promise<void> {
+		if (!this.currentNote) {
+			throw new Error("Нет активной заметки для сохранения PNG");
+		}
+		const savedFile = await saveBinaryImageToVault(
+			this.app,
+			this.currentNote.file,
+			await blob.arrayBuffer(),
+			"image/png",
+			this.callbacks.getMediaFolder()
+		);
+		new Notice(`PNG сохранён в хранилище: ${savedFile.path}`);
 	}
 
 	private async addClipboardImage(

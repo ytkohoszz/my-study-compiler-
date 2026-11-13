@@ -22,7 +22,7 @@ import {
 	ViewMode,
 } from "./types";
 import { StudyCompilerView } from "./view";
-import { syncAutoAdoptedFrontmatter } from "./scanner";
+import { isTemplateOrExcludedFile, syncAutoAdoptedFrontmatter } from "./scanner";
 
 function migrateSettings(raw: unknown): StudyCompilerSettings {
 	const s =
@@ -397,13 +397,22 @@ export default class MyStudyCompilerPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			this.scheduleAutoInheritSync(800);
 
-			this.registerEvent(
-				this.app.metadataCache.on("changed", () => {
+this.registerEvent(
+				this.app.metadataCache.on("changed", (file: TFile) => {
+					if (file.extension !== "md") return;
+					const cache = this.app.metadataCache.getFileCache(file);
+					if (isTemplateOrExcludedFile(file, cache?.frontmatter, [], this.settings)) {
+						return;
+					}
 					this.scheduleAutoInheritSync(1200);
 				})
 			);
 			this.registerEvent(
-				this.app.vault.on("create", () => {
+				this.app.vault.on("create", (file: TAbstractFile) => {
+					if (!(file instanceof TFile) || file.extension !== "md") return;
+					if (isTemplateOrExcludedFile(file, undefined, [], this.settings)) {
+						return;
+					}
 					this.scheduleAutoInheritSync(1000);
 				})
 			);

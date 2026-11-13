@@ -72,8 +72,8 @@ export interface CanvasEditorCallbacks {
 	onPickImage: (point: ScenePoint) => void;
 	onPasteImage: (file: File, point: ScenePoint) => Promise<void>;
 	onOpenLink: (link: string, newTab: boolean) => void;
+	onExportPng?: (blob: Blob) => Promise<void>;
 }
-
 interface AsyncClipboardItemLike {
 	readonly types: readonly string[];
 	getType(type: string): Promise<Blob>;
@@ -304,6 +304,7 @@ export class CanvasSceneEditor {
 	private zoomLabelEl!: HTMLButtonElement;
 	private undoBtn!: HTMLButtonElement;
 	private redoBtn!: HTMLButtonElement;
+	private propsToggleBtn!: HTMLButtonElement;
 	private menuEl!: HTMLDivElement;
 	private menuPanelEl!: HTMLDivElement;
 	private toolButtonById = new Map<CanvasToolId, HTMLButtonElement>();
@@ -331,9 +332,14 @@ export class CanvasSceneEditor {
 	private snapGuides: SnapGuideLine[] = [];
 	private bindingHighlightElement: SceneElement | null = null;
 	private eraserTrail: ScenePoint[] = [];
+	private selectionBarEl!: HTMLDivElement;
+	private penOnlyBtn: HTMLButtonElement | null = null;
+	private penOnlyMode = false;
+	private propertiesOpen = false;
 	private lastPointerWorld: ScenePoint | null = null;
 	private isPasting = false;
 	private lastPasteAt = 0;
+	private copiedStyle: ElementStyleDefaults | null = null;
 
 	private readonly onPointerDownBound = (event: PointerEvent) =>
 		this.handlePointerDown(event);
@@ -533,19 +539,9 @@ export class CanvasSceneEditor {
 		this.root.tabIndex = 0;
 		this.host.appendChild(this.root);
 
-		this.toolbarEl = this.doc.createElement("div");
-		this.toolbarEl.className = "my-sc-canvas-toolbar";
-		this.root.appendChild(this.toolbarEl);
-		this.buildToolButtons();
-
 		this.workspaceEl = this.doc.createElement("div");
 		this.workspaceEl.className = "my-sc-canvas-workspace";
 		this.root.appendChild(this.workspaceEl);
-
-		this.propertiesEl = this.doc.createElement("aside");
-		this.propertiesEl.className = "my-sc-canvas-properties is-hidden";
-		this.propertiesEl.setAttribute("aria-label", "Свойства выбранных элементов");
-		this.workspaceEl.appendChild(this.propertiesEl);
 
 		this.canvasWrapEl = this.doc.createElement("div");
 		this.canvasWrapEl.className = "my-sc-canvas-wrap";
@@ -553,8 +549,21 @@ export class CanvasSceneEditor {
 
 		this.canvasEl = this.doc.createElement("canvas");
 		this.canvasEl.className = "my-sc-canvas-surface";
-		this.canvasEl.setAttribute("aria-label", "Бесконечный холст схемы");
 		this.canvasWrapEl.appendChild(this.canvasEl);
+
+		this.toolbarEl = this.doc.createElement("div");
+		this.toolbarEl.className = "my-sc-canvas-toolbar";
+		this.canvasWrapEl.appendChild(this.toolbarEl);
+		this.buildToolButtons();
+
+		this.propertiesEl = this.doc.createElement("aside");
+		this.propertiesEl.className = "my-sc-canvas-properties is-hidden";
+		this.propertiesEl.setAttribute("aria-label", "Свойства выбранных элементов");
+		this.canvasWrapEl.appendChild(this.propertiesEl);
+
+		this.selectionBarEl = this.doc.createElement("div");
+		this.selectionBarEl.className = "my-sc-canvas-selection-bar is-hidden";
+		this.canvasWrapEl.appendChild(this.selectionBarEl);
 
 		this.controlsEl = this.doc.createElement("div");
 		this.controlsEl.className = "my-sc-canvas-controls";
@@ -613,12 +622,18 @@ export class CanvasSceneEditor {
 		this.updateToolButtons();
 	}
 
-	private buildBottomControls(): void {
+		private buildBottomControls(): void {
 		const left = this.doc.createElement("div");
 		left.className = "my-sc-canvas-controls-left";
 		this.controlsEl.appendChild(left);
 
 		this.createButton(left, "menu", "Меню холста", () => this.toggleActionMenu());
+		this.propsToggleBtn = this.createButton(
+			left,
+			"palette",
+			"Свойства выбранного элемента",
+			() => this.togglePropertiesPanelVisibility()
+		);
 		this.undoBtn = this.createButton(left, "undo-2", "Отменить (Ctrl+Z)", () =>
 			this.undo()
 		);
@@ -649,15 +664,35 @@ export class CanvasSceneEditor {
 		this.menuEl.appendChild(this.menuPanelEl);
 		this.canvasWrapEl.appendChild(this.menuEl);
 
-		const actions: MenuAction[] = [
+const actions: MenuAction[] = [
 			{
 				title: "Вставить из буфера",
 				icon: "clipboard-paste",
 				onClick: () => void this.pasteFromClipboard(),
 			},
+			{
+				title: "Скопировать как PNG",
+				icon: "image",
+				onClick: () => void this.copySceneAsPng(),
+			},
+			{
+				title: "Сохранить PNG в хранилище",
+				icon: "download",
+				onClick: () => void this.exportSceneAsPngToVault(),
+			},
 			{ title: "Вписать выделение", icon: "focus", onClick: () => this.fitToSelection() },
 			{ title: "Выбрать всё", icon: "scan", onClick: () => this.selectAll() },
 			{ title: "Дублировать", icon: "copy", onClick: () => this.duplicateSelection() },
+			{
+				title: "Копировать стиль (Ctrl+Alt+C)",
+				icon: "pipette",
+				onClick: () => this.copySelectedStyle(),
+			},
+			{
+				title: "Вставить стиль (Ctrl+Alt+V)",
+				icon: "paint-bucket",
+				onClick: () => this.pasteSelectedStyle(),
+			},
 			{ title: "Сгруппировать", icon: "group", onClick: () => this.groupSelection() },
 			{ title: "Разгруппировать", icon: "ungroup", onClick: () => this.ungroupSelection() },
 			{ title: "Выровнять по левому краю", onClick: () => this.alignSelection("left") },
@@ -707,6 +742,14 @@ export class CanvasSceneEditor {
 			this.notifySceneAndCameraChanged();
 			this.renderFrame();
 		});
+		this.addMenuToggle(
+			"penOnly",
+			"Только стилус (палец — панорама)",
+			this.penOnlyMode,
+			(value) => {
+				this.togglePenOnlyMode(value);
+			}
+		);
 	}
 
 	private addMenuToggle(
@@ -737,6 +780,8 @@ export class CanvasSceneEditor {
 		if (snapToObjects) snapToObjects.checked = this.scene.appState.snapToObjects;
 		const theme = this.menuToggleByKey.get("theme");
 		if (theme) theme.checked = this.scene.appState.theme === "light";
+		const penOnly = this.menuToggleByKey.get("penOnly");
+		if (penOnly) penOnly.checked = this.penOnlyMode;
 	}
 
 	private createButton(
@@ -822,6 +867,7 @@ export class CanvasSceneEditor {
 		};
 		this.renderer.scheduleRender(payload);
 		this.updateZoomLabel();
+		this.updateSelectionFloatingBar();
 	}
 
 	private getWorldPoint(event: PointerEvent): ScenePoint {
@@ -928,7 +974,14 @@ export class CanvasSceneEditor {
 		}
 
 		this.root.focus({ preventScroll: true });
-		if (event.button === 1 || this.spacePressed || this.activeTool === "hand") {
+		const touchPanInPenMode =
+			this.penOnlyMode && event.pointerType === "touch";
+		if (
+			event.button === 1 ||
+			this.spacePressed ||
+			this.activeTool === "hand" ||
+			touchPanInPenMode
+		) {
 			this.interaction = {
 				kind: "pan",
 				pointerId: event.pointerId,
@@ -1502,6 +1555,12 @@ export class CanvasSceneEditor {
 				return true;
 			case "toggle-keep-tool":
 				this.toggleKeepToolActive();
+				return true;
+			case "copy-style":
+				this.copySelectedStyle();
+				return true;
+			case "paste-style":
+				this.pasteSelectedStyle();
 				return true;
 			case "escape":
 				if (this.menuPanelEl && !this.menuPanelEl.classList.contains("is-hidden")) {
@@ -3305,11 +3364,23 @@ export class CanvasSceneEditor {
 	private updatePropertiesPanel(): void {
 		if (!this.propertiesEl) return;
 		this.propertiesEl.replaceChildren();
-		const selected = this.getSelectedElements();
+const selected = this.getSelectedElements();
 		const primarySelected = selected.filter((el) => !el.containerId);
 		const displayList = primarySelected.length > 0 ? primarySelected : selected;
-		this.propertiesEl.classList.toggle("is-hidden", displayList.length === 0);
-		if (displayList.length === 0) return;
+		const hasSelection = displayList.length > 0;
+		const showPanel = hasSelection && this.propertiesOpen;
+
+		if (this.propsToggleBtn) {
+			this.propsToggleBtn.disabled = !hasSelection;
+			this.propsToggleBtn.classList.toggle("is-active", showPanel);
+		}
+
+		if (!hasSelection) {
+			this.propertiesEl.classList.add("is-hidden");
+			this.updateSelectionFloatingBar();
+			return;
+		}
+		this.propertiesEl.classList.toggle("is-hidden", !showPanel);
 
 		const primary = displayList[0]!;
 		const textSample =
@@ -3368,6 +3439,13 @@ export class CanvasSceneEditor {
 				? this.getElementTypeTitle(primary.type)
 				: `Выбрано: ${displayList.length}`;
 		header.appendChild(title);
+		this.createButton(
+			header,
+			"x",
+			"Скрыть свойства",
+			() => this.togglePropertiesPanelVisibility(false),
+			"my-sc-canvas-prop-close-btn"
+		);
 
 		const quickActions = this.doc.createElement("div");
 		quickActions.className = "my-sc-canvas-property-actions";
@@ -3840,7 +3918,7 @@ export class CanvasSceneEditor {
 
 		this.addOpacitySliderSection(primary.opacity);
 
-		this.addLinkPropertySection(primary.link ?? "", (nextLink) => {
+this.addLinkPropertySection(primary.link ?? "", (nextLink) => {
 			this.updateSelected(
 				(el) => {
 					if (!el.containerId) el.link = nextLink.trim() || null;
@@ -3849,6 +3927,142 @@ export class CanvasSceneEditor {
 				false
 			);
 		});
+		this.updateSelectionFloatingBar();
+	}
+
+private togglePenOnlyMode(force?: boolean): void {
+		this.penOnlyMode = force !== undefined ? force : !this.penOnlyMode;
+		this.penOnlyBtn?.classList.toggle("is-active", this.penOnlyMode);
+		this.penOnlyBtn?.setAttribute("aria-pressed", String(this.penOnlyMode));
+		this.updateMenuToggles();
+		new Notice(
+			this.penOnlyMode
+				? "Режим стилуса включён: перо рисует, палец двигает холст."
+				: "Режим стилуса выключен: касание пальцем работает как обычно."
+		);
+	}
+
+	private togglePropertiesPanelVisibility(force?: boolean): void {
+		if (!this.propertiesEl) return;
+		if (this.getSelectedElements().length === 0) {
+			new Notice("Сначала выдели объект на холсте.");
+			return;
+		}
+		this.propertiesOpen =
+			force !== undefined ? force : !this.propertiesOpen;
+		this.propertiesEl.classList.toggle("is-hidden", !this.propertiesOpen);
+		if (this.propsToggleBtn) {
+			this.propsToggleBtn.classList.toggle("is-active", this.propertiesOpen);
+		}
+		this.updateSelectionFloatingBar();
+	}
+
+	private updateSelectionFloatingBar(): void {
+		if (!this.selectionBarEl) return;
+		const selected = this.getSelectedElements();
+		if (
+			selected.length === 0 ||
+			this.editingElementId !== null ||
+			this.interaction?.kind === "create" ||
+			this.interaction?.kind === "move" ||
+			this.interaction?.kind === "resize" ||
+			this.interaction?.kind === "rotate" ||
+			this.interaction?.kind === "marquee"
+		) {
+			this.selectionBarEl.classList.add("is-hidden");
+			return;
+		}
+
+		const bounds = getSelectionAABB(getSelectionFrameElements(selected));
+		if (!bounds) {
+			this.selectionBarEl.classList.add("is-hidden");
+			return;
+		}
+
+		const wrapRect = this.canvasWrapEl.getBoundingClientRect();
+		if (wrapRect.width <= 0 || wrapRect.height <= 0) {
+			this.selectionBarEl.classList.add("is-hidden");
+			return;
+		}
+
+		this.selectionBarEl.replaceChildren();
+		const isLocked = selected.every((el) => el.locked);
+		const propsOpen =
+			this.propertiesEl && !this.propertiesEl.classList.contains("is-hidden");
+
+		const styleBtn = this.createButton(
+			this.selectionBarEl,
+			"palette",
+			propsOpen ? "Скрыть панель свойств" : "Открыть свойства элемента",
+			() => this.togglePropertiesPanelVisibility(),
+			"my-sc-canvas-sel-btn"
+		);
+		styleBtn.classList.toggle("is-active", Boolean(propsOpen));
+
+		this.createButton(
+			this.selectionBarEl,
+			"copy",
+			"Дублировать (Ctrl+D)",
+			() => this.duplicateSelection(),
+			"my-sc-canvas-sel-btn"
+		);
+		this.createButton(
+			this.selectionBarEl,
+			"layers-2",
+			"На передний план",
+			() => this.changeLayerOrder("front"),
+			"my-sc-canvas-sel-btn"
+		);
+		this.createButton(
+			this.selectionBarEl,
+			"layers",
+			"На задний план",
+			() => this.changeLayerOrder("back"),
+			"my-sc-canvas-sel-btn"
+		);
+
+		const lockBtn = this.createButton(
+			this.selectionBarEl,
+			isLocked ? "lock" : "unlock",
+			isLocked ? "Разблокировать" : "Закрепить",
+			() => this.toggleSelectedLock(),
+			"my-sc-canvas-sel-btn"
+		);
+		lockBtn.classList.toggle("is-active", isLocked);
+
+		const delBtn = this.createButton(
+			this.selectionBarEl,
+			"trash-2",
+			"Удалить (Del)",
+			() => this.deleteSelection(),
+			"my-sc-canvas-sel-btn is-danger"
+		);
+		delBtn.disabled = isLocked;
+
+		this.selectionBarEl.classList.remove("is-hidden");
+
+		const { scrollX, scrollY, zoom } = this.scene.appState;
+		const safeZoom = Math.max(0.1, zoom);
+		const screenCenterX = (bounds.cx + scrollX) * safeZoom;
+		const screenTopY = (bounds.minY + scrollY) * safeZoom;
+		const screenBottomY = (bounds.maxY + scrollY) * safeZoom;
+
+		const barWidth = this.selectionBarEl.offsetWidth || 216;
+		const barHeight = this.selectionBarEl.offsetHeight || 38;
+		const clampedLeft = clamp(
+			screenCenterX - barWidth / 2,
+			10,
+			Math.max(10, wrapRect.width - barWidth - 10)
+		);
+
+		let top = screenTopY - barHeight - 36;
+		if (top < 58) {
+			top = Math.min(wrapRect.height - barHeight - 58, screenBottomY + 18);
+		}
+		top = clamp(top, 54, Math.max(54, wrapRect.height - barHeight - 54));
+
+		this.selectionBarEl.style.left = `${Math.round(clampedLeft)}px`;
+		this.selectionBarEl.style.top = `${Math.round(top)}px`;
 	}
 
 	private getElementTypeTitle(type: SceneElement["type"]): string {
@@ -4198,7 +4412,7 @@ private addSegmentedSection<T extends string | number>(
 		this.updateFrameMembership();
 	}
 
-	private toggleSelectedLock(): void {
+private toggleSelectedLock(): void {
 		const selected = this.getSelectedElements();
 		if (selected.length === 0) return;
 		const shouldLock = selected.some((element) => !element.locked);
@@ -4208,5 +4422,142 @@ private addSegmentedSection<T extends string | number>(
 			element.updated = Date.now();
 		}
 		this.commitHistory(true);
+	}
+
+	private copySelectedStyle(): void {
+		const selected = this.getSelectedElements().filter((el) => !el.containerId);
+		const sample = selected[0] ?? this.getSelectedElements()[0];
+		if (!sample) {
+			new Notice("Сначала выдели элемент, чтобы скопировать его стиль.");
+			return;
+		}
+		this.copiedStyle = {
+			strokeColor: sample.strokeColor,
+			backgroundColor: sample.backgroundColor,
+			fillStyle: sample.fillStyle,
+			strokeWidth: sample.strokeWidth,
+			strokeStyle: sample.strokeStyle,
+			roughness: sample.roughness,
+			opacity: sample.opacity,
+			roundness: sample.roundness,
+			fontFamily: sample.fontFamily,
+			fontSize: sample.fontSize,
+			textAlign: sample.textAlign,
+			verticalAlign: sample.verticalAlign,
+			startArrowhead: sample.startArrowhead ?? "none",
+			endArrowhead: sample.endArrowhead ?? "arrow",
+			curved: Boolean(sample.curved),
+			elbowed: Boolean(sample.elbowed),
+		};
+		new Notice("Стиль скопирован.");
+	}
+
+	private pasteSelectedStyle(): void {
+		const style = this.copiedStyle;
+		if (!style) {
+			new Notice("Буфер стиля пуст (сначала нажми Ctrl+Alt+C).");
+			return;
+		}
+		const selected = this.getSelectedElements();
+		if (selected.length === 0) {
+			new Notice("Выдели элементы, к которым нужно применить стиль.");
+			return;
+		}
+		this.updateSelected(
+			(el) => {
+				if (el.locked) return;
+				if (!el.containerId && el.type !== "image") {
+					el.strokeColor = style.strokeColor;
+					el.backgroundColor = style.backgroundColor;
+					el.fillStyle = style.fillStyle;
+					el.strokeWidth = style.strokeWidth;
+					el.strokeStyle = style.strokeStyle;
+					el.roughness = style.roughness;
+					el.roundness = style.roundness;
+				} else if (el.type === "image") {
+					el.roundness = style.roundness;
+				}
+				el.opacity = style.opacity;
+				el.fontFamily = style.fontFamily;
+				el.fontSize = style.fontSize;
+				if (!el.containerId) {
+					el.textAlign = style.textAlign;
+					el.verticalAlign = style.verticalAlign;
+				}
+				if (el.type === "arrow" || el.type === "line") {
+					el.curved = style.curved;
+					el.elbowed = style.elbowed;
+				}
+				if (el.type === "arrow") {
+					el.startArrowhead = style.startArrowhead;
+					el.endArrowhead = style.endArrowhead;
+				}
+			},
+			(current) => {
+				Object.assign(current, style);
+			},
+			true
+		);
+	}
+
+	private async copySceneAsPng(): Promise<void> {
+		try {
+			const selected = this.getSelectedElements();
+			const blob = await this.renderer.exportToPngBlob(
+				this.scene,
+				selected.length > 0 ? selected : undefined
+			);
+			const nav = this.win.navigator as Navigator & {
+				clipboard?: {
+					write?: (items: unknown[]) => Promise<void>;
+				};
+			};
+			const ClipboardItemCtor = (
+				this.win as Window & typeof globalThis & {
+					ClipboardItem?: new (items: Record<string, Blob>) => unknown;
+				}
+			).ClipboardItem;
+
+			if (nav.clipboard?.write && ClipboardItemCtor) {
+				await nav.clipboard.write([new ClipboardItemCtor({ "image/png": blob })]);
+				new Notice(
+					selected.length > 0
+						? "Выделение скопировано как PNG в буфер обмена."
+						: "Схема скопирована как PNG в буфер обмена."
+				);
+				return;
+			}
+
+			if (this.callbacks.onExportPng) {
+				await this.callbacks.onExportPng(blob);
+				return;
+			}
+			new Notice("Буфер обмена изображений недоступен на этой платформе.");
+		} catch (error: unknown) {
+			new Notice(
+				"Не удалось экспортировать PNG: " +
+					(error instanceof Error ? error.message : String(error))
+			);
+		}
+	}
+
+	private async exportSceneAsPngToVault(): Promise<void> {
+		try {
+			if (!this.callbacks.onExportPng) {
+				new Notice("Сохранение PNG не настроено.");
+				return;
+			}
+			const selected = this.getSelectedElements();
+			const blob = await this.renderer.exportToPngBlob(
+				this.scene,
+				selected.length > 0 ? selected : undefined
+			);
+			await this.callbacks.onExportPng(blob);
+		} catch (error: unknown) {
+			new Notice(
+				"Не удалось сохранить PNG: " +
+					(error instanceof Error ? error.message : String(error))
+			);
+		}
 	}
 }
