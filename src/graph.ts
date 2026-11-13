@@ -170,7 +170,10 @@ export class ProjectGraphView {
 	private viewport: SVGGElement;
 	private edgesLayer: SVGGElement;
 	private nodesLayer: SVGGElement;
-	private statEl: HTMLElement;
+private statEl: HTMLElement;
+	private filterBarEl: HTMLElement;
+	private typeFilterEl: HTMLSelectElement;
+	private searchInputEl: HTMLInputElement;
 	private infoEl: HTMLElement;
 	private infoTitleEl: HTMLElement;
 	private infoSubEl: HTMLElement;
@@ -185,6 +188,9 @@ export class ProjectGraphView {
 	private fresh: Set<string> = new Set();
 	private collapsed = new Set<string>();
 	private selectedPath: string | null = null;
+	private typeFilter = "";
+	private searchQuery = "";
+	private searchOpen = false;
 	private direction: "LR" | "TB" = "LR";
 
 	private placed: LayoutNode[] = [];
@@ -336,11 +342,42 @@ this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", (
 		setIcon(clearBtn, "x");
 		clearBtn.onclick = () => this.select(null);
 
+this.filterBarEl = container.createDiv("my-sc-graph-filter-bar");
+		this.typeFilterEl = this.filterBarEl.createEl("select", {
+			cls: "dropdown my-sc-graph-type-select",
+			attr: { title: "Фильтр узлов по типу материала" },
+		});
+		this.typeFilterEl.onchange = () => {
+			this.typeFilter = this.typeFilterEl.value;
+			this.applySelection();
+		};
+
+		this.searchInputEl = this.filterBarEl.createEl("input", {
+			cls: "my-sc-graph-search is-hidden",
+			attr: {
+				type: "search",
+				placeholder: "Найти узел (Esc — закрыть)…",
+			},
+		});
+		this.searchInputEl.oninput = () => {
+			this.searchQuery = this.searchInputEl.value;
+			this.applySelection();
+			this.focusFirstMatchedNode();
+		};
+		this.searchInputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				e.preventDefault();
+				e.stopPropagation();
+				this.closeSearch();
+			}
+		});
+
 		const footer = container.createDiv("my-sc-graph-footer");
 		this.statEl = footer.createSpan("my-sc-graph-stat");
 
 		this.svg.addEventListener("pointerdown", this.onPointerDown);
 		container.addEventListener("wheel", this.onWheel, { passive: false });
+		this.doc.addEventListener("keydown", this.onDocKeyDown);
 
 		if (typeof ResizeObserver !== "undefined") {
 			this.resizeObserver = new ResizeObserver(() => {
@@ -392,9 +429,16 @@ this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", (
 		this.scan = scan;
 		this.branchRoot = branchRoot;
 		this.fresh = new Set(fresh);
-		if (resetView) {
+if (resetView) {
 			this.collapsed.clear();
 			this.selectedPath = null;
+			this.typeFilter = "";
+			this.searchQuery = "";
+			this.searchOpen = false;
+			if (this.searchInputEl) {
+				this.searchInputEl.value = "";
+				this.searchInputEl.addClass("is-hidden");
+			}
 			if (initialCamera) {
 				this.k = clamp(initialCamera.scale, MIN_K, MAX_K);
 				this.tx = initialCamera.panX;
@@ -432,6 +476,7 @@ this.toggleAllBtn = addCtrl("chevrons-down-up", "Свернуть ветки", (
 			this.win.clearTimeout(this.animTimer);
 			this.animTimer = null;
 		}
+this.doc.removeEventListener("keydown", this.onDocKeyDown);
 		this.svg.removeEventListener("pointerdown", this.onPointerDown);
 		this.container.removeEventListener("wheel", this.onWheel);
 		this.container.empty();
@@ -688,9 +733,10 @@ const tree = make(root, 0);
 		this.recomputeBounds();
 		this.renderLayers(extra);
 
-		if (this.selectedPath && !this.nodeByPath.has(this.selectedPath)) {
+if (this.selectedPath && !this.nodeByPath.has(this.selectedPath)) {
 			this.selectedPath = null;
 		}
+		this.syncTypeFilterOptions();
 		this.applySelection();
 		this.updateInfo();
 		this.syncToggleAll();
@@ -769,9 +815,10 @@ private syncToggleAll(): void {
 			const tone: DeadlineTone = getDeadlineTone(item);
 			const hasMediaOrSchema =
 				item.mediaItems.length > 0 || item.annotationCount > 0;
-			const cls = [
+const cls = [
 				"my-sc-gnode",
 				n.depth === 0 ? "is-root" : "",
+				!item.hasContent ? "is-stub" : "",
 				this.fresh.has(item.path) ? "is-new" : "",
 				tone === "overdue" ? "is-overdue" : tone === "soon" ? "is-soon" : "",
 			]
@@ -786,6 +833,7 @@ private syncToggleAll(): void {
 			const title = d.createElementNS(SVG_NS, "title");
 			title.textContent =
 				`${item.name} · ${item.noteType || "без типа"}` +
+				(!item.hasContent ? " · пустая заметка" : "") +
 				(item.deadline ? ` · ${formatDeadlineBadge(item)}` : "") +
 				(hasMediaOrSchema
 					? ` · Иллюстраций: ${item.mediaItems.length}, аннотаций: ${item.annotationCount}`
@@ -911,9 +959,158 @@ g.addEventListener("mouseenter", (evt: MouseEvent) => {
 		return set;
 	}
 
+private syncTypeFilterOptions(): void {
+		if (!this.typeFilterEl) return;
+		const counts = new Map<string, number>();
+		let stubsCount = 0;
+		for (const n of this.placed) {
+			if (n.depth === 0) continue;
+			const t = n.item.noteType || "без типа";
+			counts.set(t, (counts.get(t) ?? 0) + 1);
+			if (!n.item.hasContent) stubsCount++;
+		}
+
+		this.typeFilterEl.empty();
+		this.typeFilterEl.createEl("option", { text: "Все узлы", value: "" });
+		if (stubsCount > 0) {
+			this.typeFilterEl.createEl("option", {
+				text: `Пустые (${stubsCount})`,
+				value: "__stubs__",
+			});
+		}
+		const sortedTypes = [...counts.entries()].sort(
+			(a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru")
+		);
+		for (const [typeName, count] of sortedTypes) {
+			this.typeFilterEl.createEl("option", {
+				text: `${typeName} (${count})`,
+				value: typeName,
+			});
+		}
+
+		const hasValue =
+			this.typeFilter === "" ||
+			(this.typeFilter === "__stubs__" && stubsCount > 0) ||
+			counts.has(this.typeFilter);
+		if (!hasValue) this.typeFilter = "";
+		this.typeFilterEl.value = this.typeFilter;
+
+		const hasFilters = sortedTypes.length > 1 || stubsCount > 0;
+		this.typeFilterEl.toggleClass("is-hidden", !hasFilters);
+		this.syncFilterBarVisibility();
+	}
+
+	private syncFilterBarVisibility(): void {
+		if (!this.filterBarEl) return;
+		const hasSelect = !this.typeFilterEl.hasClass("is-hidden");
+		const hasSearch = this.searchOpen;
+		const infoVisible = !this.infoEl.hasClass("is-hidden");
+		this.filterBarEl.toggleClass(
+			"is-hidden",
+			infoVisible || (!hasSelect && !hasSearch)
+		);
+	}
+
+	private getFilteredHighlightSet(): Set<string> | null {
+		const q = this.searchQuery.trim().toLowerCase();
+		const tf = this.typeFilter;
+		if (!q && !tf) return null;
+
+		const matched = new Set<string>();
+		if (this.branchRoot) matched.add(this.branchRoot.path);
+		for (const n of this.placed) {
+			const it = n.item;
+			const typeOk =
+				!tf ||
+				(tf === "__stubs__"
+					? !it.hasContent
+					: (it.noteType || "без типа") === tf);
+			const queryOk =
+				!q ||
+				it.name.toLowerCase().includes(q) ||
+				it.noteType.toLowerCase().includes(q);
+			if (typeOk && queryOk) {
+				matched.add(it.path);
+			}
+		}
+		return matched;
+	}
+
+	private focusFirstMatchedNode(): void {
+		const q = this.searchQuery.trim().toLowerCase();
+		if (!q) return;
+		const target = this.placed.find(
+			(n) => n.depth > 0 && n.item.name.toLowerCase().includes(q)
+		);
+		if (!target) return;
+		const w = this.svg.clientWidth;
+		const h = this.svg.clientHeight;
+		if (w <= 0 || h <= 0) return;
+		this.tx = Math.round(w / 2 - (target.x + target.w / 2) * this.k);
+		this.ty = Math.round(h / 2 - (target.y + target.h / 2) * this.k);
+		this.userMovedViewport = true;
+		this.applyTransform(true);
+	}
+
+	private closeSearch(): void {
+		this.searchOpen = false;
+		this.searchQuery = "";
+		this.searchInputEl.value = "";
+		this.searchInputEl.addClass("is-hidden");
+		this.applySelection();
+		this.syncFilterBarVisibility();
+	}
+
+	private onDocKeyDown = (e: KeyboardEvent): void => {
+		if (!this.container.isConnected || this.container.hasClass("is-hidden")) {
+			return;
+		}
+		const activeEl = this.doc.activeElement;
+		const inInput =
+			activeEl instanceof HTMLInputElement ||
+			activeEl instanceof HTMLTextAreaElement ||
+			activeEl instanceof HTMLSelectElement;
+
+		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+			e.preventDefault();
+			e.stopPropagation();
+			if (this.selectedPath) this.select(null);
+			this.searchOpen = true;
+			this.searchInputEl.removeClass("is-hidden");
+			this.syncFilterBarVisibility();
+			this.searchInputEl.focus();
+			this.searchInputEl.select();
+			return;
+		}
+
+		if (inInput) return;
+
+		if (e.key === "Escape") {
+			if (this.searchOpen) {
+				e.preventDefault();
+				this.closeSearch();
+			} else if (this.selectedPath) {
+				e.preventDefault();
+				this.select(null);
+			}
+			return;
+		}
+
+		if (
+			!e.ctrlKey &&
+			!e.metaKey &&
+			!e.altKey &&
+			e.key.toLowerCase() === "s" &&
+			this.selectedPath
+		) {
+			e.preventDefault();
+			this.callbacks.onOpenSchema(this.selectedPath);
+		}
+	};
+
 	private applySelection(): void {
 		const sel = this.selectedPath;
-		const lineage = sel ? this.lineageOf(sel) : null;
+		const lineage = sel ? this.lineageOf(sel) : this.getFilteredHighlightSet();
 		for (const [path, el] of this.nodeEls) {
 			el.classList.toggle("is-selected", path === sel);
 			el.classList.toggle("is-dim", lineage !== null && !lineage.has(path));
@@ -931,11 +1128,13 @@ g.addEventListener("mouseenter", (evt: MouseEvent) => {
 			: undefined;
 		if (!node) {
 			this.infoEl.addClass("is-hidden");
+			this.syncFilterBarVisibility();
 			return;
 		}
 		const it = node.item;
 		const meta = getWorkMeta(it.noteType, it.icon);
 		this.infoEl.removeClass("is-hidden");
+		this.syncFilterBarVisibility();
 		this.infoTitleEl.setText(`${meta.icon} ${it.name}`);
 		const parts = [it.noteType || "без типа"];
 		if (it.deadline) parts.push(formatDeadlineBadge(it));

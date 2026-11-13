@@ -985,6 +985,15 @@ button.my-sc-row-more:hover {
   fill: color-mix(in srgb, var(--node-color, #599ed6) 18%, var(--background-primary));
 }
 
+.my-sc-gnode.is-stub .my-sc-gnode-body {
+  stroke-dasharray: 4 3;
+  fill: color-mix(in srgb, var(--node-color, #599ed6) 4%, var(--background-primary));
+}
+
+.my-sc-gnode.is-stub .my-sc-gnode-label {
+  fill: var(--text-muted);
+}
+
 .my-sc-gnode.is-selected .my-sc-gnode-body {
   stroke: var(--interactive-accent);
   stroke-width: 2.4;
@@ -1126,6 +1135,49 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
 
 .my-sc-graph-info.is-hidden {
   display: none !important;
+}
+
+.my-sc-graph-filter-bar {
+  position: absolute;
+  top: var(--my-sc-s2);
+  left: var(--my-sc-s2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 240px);
+  z-index: 5;
+}
+
+.my-sc-graph-filter-bar.is-hidden {
+  display: none !important;
+}
+
+.my-sc-graph-type-select {
+  height: var(--my-sc-hit) !important;
+  min-height: var(--my-sc-hit) !important;
+  padding: 0 24px 0 10px !important;
+  border-radius: 8px !important;
+  background: var(--background-primary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  font-size: var(--my-sc-fs-xs) !important;
+  font-weight: 500;
+}
+
+.my-sc-graph-type-select.is-hidden,
+.my-sc-graph-search.is-hidden {
+  display: none !important;
+}
+
+.my-sc-graph-search {
+  width: 210px;
+  max-width: 45vw;
+  height: var(--my-sc-hit) !important;
+  min-height: var(--my-sc-hit) !important;
+  padding: 0 10px !important;
+  border-radius: 8px !important;
+  background: var(--background-primary) !important;
+  border: 1px solid var(--interactive-accent) !important;
+  font-size: var(--my-sc-fs-xs) !important;
 }
 
 .my-sc-graph-info-text {

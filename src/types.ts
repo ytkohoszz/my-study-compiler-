@@ -315,8 +315,9 @@ export interface StudyNoteItem {
   parentPaths: string[];
   hasExplicitParent: boolean;
   hasExplicitStudyArea: boolean;
-  mediaItems: StudyMediaItem[];
+mediaItems: StudyMediaItem[];
   annotationCount: number;
+  hasContent: boolean;
 }
 
 export interface TreeNode {

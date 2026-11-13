@@ -360,7 +360,9 @@ function buildNoteItemFromFile(
     : "";
   const rawFinished = fm ? readString(fm[KEYS.finishedAt]).slice(0, 10) : "";
 
-  const { mediaItems, annotationCount } = extractMediaAndAnnotationMeta(app, file);
+const { mediaItems, annotationCount } = extractMediaAndAnnotationMeta(app, file);
+  const sections = app.metadataCache.getFileCache(file)?.sections ?? [];
+  const hasContent = sections.some((sec) => sec.type !== "yaml");
 
   return {
     file,
@@ -379,6 +381,7 @@ function buildNoteItemFromFile(
     hasExplicitStudyArea,
     mediaItems,
     annotationCount,
+    hasContent,
   };
 }
 
