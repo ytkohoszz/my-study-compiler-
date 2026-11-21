@@ -74,12 +74,25 @@ export class SceneCanvasRenderer {
 		};
 	}
 
-	private get win(): Window & typeof globalThis {
+private get win(): Window & typeof globalThis {
 		const win = this.canvas.ownerDocument.defaultView;
 		if (!win) {
 			throw new Error("Не удалось определить окно холста");
 		}
 		return win;
+	}
+
+	private getCanvasBackgroundColor(theme: "dark" | "light"): string {
+		if (theme === "light") return "#f8f9fa";
+		const doc = this.canvas.ownerDocument;
+		if (doc.body?.classList.contains("theme-dark")) {
+			const host = this.canvas.parentElement ?? doc.body;
+			const bg = this.win.getComputedStyle(host).backgroundColor?.trim();
+			if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") {
+				return bg;
+			}
+		}
+		return "#1e1e1e";
 	}
 
 private applyCanvasSize(cssWidth: number, cssHeight: number): boolean {
@@ -145,8 +158,8 @@ public renderImmediate(payload: RenderFramePayload): void {
 		ctx.save();
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-		// 1. Фон бесконечного холста
-		ctx.fillStyle = theme === "light" ? "#f8f9fa" : "#16181d";
+// 1. Фон бесконечного холста
+		ctx.fillStyle = this.getCanvasBackgroundColor(theme);
 		ctx.fillRect(0, 0, viewportWidth, viewportHeight);
 
 		// 2. Бесконечная сетка (точечная/клеточная с адаптивным шагом при отдалении)
@@ -483,8 +496,8 @@ public async exportToPngBlob(
 		offCtx.save();
 		offCtx.scale(dpr, dpr);
 
-		if (options.withBackground !== false) {
-			offCtx.fillStyle = scene.appState.theme === "light" ? "#f8f9fa" : "#16181d";
+if (options.withBackground !== false) {
+			offCtx.fillStyle = this.getCanvasBackgroundColor(scene.appState.theme);
 			offCtx.fillRect(0, 0, exportW, exportH);
 		}
 
