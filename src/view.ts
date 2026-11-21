@@ -272,13 +272,14 @@ const onFileEvent = (file: TAbstractFile) => {
 			})
 		);
 
-		if (typeof ResizeObserver !== "undefined") {
+if (typeof ResizeObserver !== "undefined") {
 			this.rootResizeObserver = new ResizeObserver(() => {
 				if (this.closed) return;
 				this.graphView?.notifyResize();
 				this.schemaView?.notifyResize();
 			});
 			this.rootResizeObserver.observe(this.rootHostEl);
+			this.rootResizeObserver.observe(this.workspaceBodyEl);
 		}
 
 		this.scan = scanStudyVault(this.app, this.plugin.settings);
@@ -631,12 +632,18 @@ const onFileEvent = (file: TAbstractFile) => {
 		this.scheduleViewportResize();
 	}
 
-	private scheduleViewportResize(): void {
-		this.win.requestAnimationFrame(() => {
+private scheduleViewportResize(): void {
+		const trigger = () => {
 			if (this.closed) return;
 			this.graphView?.notifyResize();
 			this.schemaView?.notifyResize();
+		};
+		this.win.requestAnimationFrame(() => {
+			trigger();
+			this.win.requestAnimationFrame(trigger);
 		});
+		this.win.setTimeout(trigger, 120);
+		this.win.setTimeout(trigger, 320);
 	}
 
 	private async toggleFullscreen(): Promise<void> {

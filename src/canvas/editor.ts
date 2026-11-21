@@ -370,6 +370,7 @@ export class CanvasSceneEditor {
 	private readonly onContextMenuBound = (event: MouseEvent) =>
 		this.handleContextMenu(event);
 	private readonly onWindowBlurBound = () => this.handleWindowBlur();
+	private readonly onWindowResizeBound = () => this.resizeCanvas();
 
 	constructor(
 		host: HTMLElement,
@@ -525,7 +526,12 @@ export class CanvasSceneEditor {
 		this.doc.removeEventListener("copy", this.onCopyBound);
 		this.doc.removeEventListener("cut", this.onCutBound);
 		this.doc.removeEventListener("keydown", this.onDocKeyDownBound, true);
-		this.win.removeEventListener("blur", this.onWindowBlurBound);
+this.win.removeEventListener("blur", this.onWindowBlurBound);
+		this.win.removeEventListener("resize", this.onWindowResizeBound);
+		this.win.visualViewport?.removeEventListener(
+			"resize",
+			this.onWindowResizeBound
+		);
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		this.renderer.destroy();
@@ -823,7 +829,12 @@ const actions: MenuAction[] = [
 		this.doc.addEventListener("keydown", this.onDocKeyDownBound, true);
 		this.canvasEl.addEventListener("dragover", this.onDragOverBound);
 		this.canvasEl.addEventListener("drop", this.onDropBound);
-		this.win.addEventListener("blur", this.onWindowBlurBound);
+this.win.addEventListener("blur", this.onWindowBlurBound);
+		this.win.addEventListener("resize", this.onWindowResizeBound);
+		this.win.visualViewport?.addEventListener(
+			"resize",
+			this.onWindowResizeBound
+		);
 
 		if ("ResizeObserver" in this.win) {
 			this.resizeObserver = new this.win.ResizeObserver(() => {
@@ -843,13 +854,14 @@ const actions: MenuAction[] = [
 		}
 	}
 
-	private resizeCanvas(): void {
+private resizeCanvas(): void {
 		if (this.destroyed || !this.renderer) return;
 		const rect = this.canvasWrapEl.getBoundingClientRect();
 		if (rect.width <= 0 || rect.height <= 0) return;
 		this.renderer.resizeCanvas(rect.width, rect.height);
 		this.positionTextEditor();
 		this.updateZoomLabel();
+		this.updateSelectionFloatingBar();
 	}
 
 	private renderFrame(): void {

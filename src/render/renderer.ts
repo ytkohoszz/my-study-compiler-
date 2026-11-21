@@ -82,28 +82,33 @@ export class SceneCanvasRenderer {
 		return win;
 	}
 
-	public resizeCanvas(cssWidth: number, cssHeight: number): void {
+private applyCanvasSize(cssWidth: number, cssHeight: number): boolean {
 		const w = Math.max(1, Math.round(cssWidth));
 		const h = Math.max(1, Math.round(cssHeight));
 		const nextDpr = Math.max(1, this.win.devicePixelRatio || 1);
+		const targetW = Math.round(w * nextDpr);
+		const targetH = Math.round(h * nextDpr);
 
 		if (
 			this.viewportWidth === w &&
 			this.viewportHeight === h &&
-			this.dpr === nextDpr
+			this.dpr === nextDpr &&
+			this.canvas.width === targetW &&
+			this.canvas.height === targetH
 		) {
-			return;
+			return false;
 		}
 
 		this.viewportWidth = w;
 		this.viewportHeight = h;
 		this.dpr = nextDpr;
+		this.canvas.width = targetW;
+		this.canvas.height = targetH;
+		return true;
+	}
 
-		this.canvas.width = Math.round(w * nextDpr);
-		this.canvas.height = Math.round(h * nextDpr);
-		this.canvas.style.width = `${w}px`;
-		this.canvas.style.height = `${h}px`;
-
+	public resizeCanvas(cssWidth: number, cssHeight: number): void {
+		if (!this.applyCanvasSize(cssWidth, cssHeight)) return;
 		if (this.lastPayload) {
 			this.renderImmediate(this.lastPayload);
 		}
@@ -123,8 +128,14 @@ export class SceneCanvasRenderer {
 		});
 	}
 
-	public renderImmediate(payload: RenderFramePayload): void {
+public renderImmediate(payload: RenderFramePayload): void {
 		this.lastPayload = payload;
+		const rect =
+			this.canvas.parentElement?.getBoundingClientRect() ??
+			this.canvas.getBoundingClientRect();
+		if (rect.width > 0 && rect.height > 0) {
+			this.applyCanvasSize(rect.width, rect.height);
+		}
 		const { ctx, viewportWidth, viewportHeight, dpr } = this;
 		const { scene, selectedIds, editingElementId, marqueeBox, snapGuides } =
 			payload;
