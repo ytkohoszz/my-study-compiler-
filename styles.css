@@ -2126,48 +2126,51 @@ flex-direction: column !important;
 }
 
 .my-sc-workspace-root {
---my-sc-s1: 4px;
---my-sc-s2: 8px;
---my-sc-s3: 12px;
---my-sc-s4: 16px;
---my-sc-fs: 0.9rem;
---my-sc-fs-sm: 0.78rem;
---my-sc-fs-xs: 0.72rem;
---my-sc-hit: 32px;
---my-sc-row-h: 36px;
---my-sc-rail: var(--background-modifier-border);
+  --my-sc-s1: 4px;
+  --my-sc-s2: 8px;
+  --my-sc-s3: 12px;
+  --my-sc-s4: 16px;
+  --my-sc-fs: 0.9rem;
+  --my-sc-fs-sm: 0.78rem;
+  --my-sc-fs-xs: 0.72rem;
+  --my-sc-hit: 32px;
+  --my-sc-row-h: 36px;
+  --my-sc-rail: var(--background-modifier-border);
+  --my-sc-pad-top: 8px;
+  --my-sc-pad-x: 10px;
+  --my-sc-pad-bottom: 8px;
 }
 
 .my-sc-workspace-root.my-sc-modal {
-position: relative;
-display: flex !important;
-flex-direction: column !important;
-flex: 1 1 0% !important;
-width: 100% !important;
-height: 100% !important;
-min-width: 0 !important;
-min-height: 0 !important;
-max-height: 100% !important;
-margin: 0 !important;
-padding: 8px 10px !important;
-background: var(--background-primary);
-overflow: hidden !important;
-gap: 6px;
-outline: none !important;
-box-sizing: border-box !important;
+  position: relative;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  padding: var(--my-sc-pad-top) var(--my-sc-pad-x) var(--my-sc-pad-bottom) var(--my-sc-pad-x) !important;
+  background: var(--background-primary);
+  overflow: hidden !important;
+  gap: 6px;
+  outline: none !important;
+  box-sizing: border-box !important;
 }
+
 .my-sc-workspace-root:fullscreen,
 .my-sc-workspace-root:-webkit-full-screen,
 .my-sc-workspace-root.is-fullscreen {
+  --my-sc-pad-top: 4px;
+  --my-sc-pad-x: 4px;
+  --my-sc-pad-bottom: 4px;
   width: 100vw !important;
   height: 100vh !important;
   height: 100dvh !important;
   max-width: 100vw !important;
   max-height: 100dvh !important;
-  padding: max(4px, var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))
-           max(4px, env(safe-area-inset-right, 0px))
-           max(4px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))
-           max(4px, env(safe-area-inset-left, 0px)) !important;
   background: var(--background-primary) !important;
 }
 
@@ -2185,6 +2188,9 @@ box-sizing: border-box !important;
 }
 
 .my-sc-workspace-root.is-pseudo-fullscreen {
+  --my-sc-pad-top: 4px;
+  --my-sc-pad-x: 4px;
+  --my-sc-pad-bottom: 4px;
   position: fixed !important;
   inset: 0 !important;
   width: auto !important;
@@ -2194,10 +2200,6 @@ box-sizing: border-box !important;
   z-index: 9999 !important;
   margin: 0 !important;
   border-radius: 0 !important;
-  padding: max(4px, var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))
-           max(4px, env(safe-area-inset-right, 0px))
-           max(4px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))
-           max(4px, env(safe-area-inset-left, 0px)) !important;
   background: var(--background-primary) !important;
 }
 
@@ -2225,10 +2227,9 @@ overflow: hidden;
 }
 
 .my-sc-workspace-root.is-focus-mode {
-  padding: max(4px, var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))
-           max(4px, env(safe-area-inset-right, 0px))
-           max(4px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))
-           max(4px, env(safe-area-inset-left, 0px)) !important;
+  --my-sc-pad-top: 4px;
+  --my-sc-pad-x: 4px;
+  --my-sc-pad-bottom: 4px;
   gap: 4px;
 }
 
@@ -2241,28 +2242,31 @@ overflow: hidden;
 
 .my-sc-focus-floating-bar {
   position: absolute;
-  top: calc(max(4px, var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) + 2px);
-  right: calc(max(4px, env(safe-area-inset-right, 0px)) + 4px);
+  top: var(--my-sc-pad-top);
+  right: var(--my-sc-pad-x);
   z-index: 60;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px;
-  border-radius: var(--radius-m, 12px);
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-sm, 10px);
   -electron-corner-smoothing: var(--corner-smoothing, 60%);
-  background: var(--modal-small-background, var(--background-primary-alt, var(--background-secondary)));
-  border: 1px solid var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border)));
-  box-shadow: var(--glass-base-l, none), var(--menu-shadow, 0 10px 28px rgba(0, 0, 0, 0.3));
+  background: var(--trans-faint-05, var(--background-secondary));
+  box-shadow:
+    var(--glass-base-m, none),
+    0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border));
   backdrop-filter: var(--blur-m, blur(12px));
   -webkit-backdrop-filter: var(--blur-m, blur(12px));
 }
 
 .my-sc-workspace-root.is-focus-mode .my-sc-canvas-project-header {
-  padding-right: 84px;
+  margin-right: calc(var(--my-sc-hit) * 2 + 16px);
+  padding-right: 6px;
 }
 
 .my-sc-workspace-root.is-focus-mode .my-sc-graph-controls {
-  right: 88px;
+  right: calc(var(--my-sc-hit) * 2 + 20px);
 }
 
 .my-sc-focus-floating-bar.is-hidden {
@@ -3382,6 +3386,14 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	max-width: 300px;
 }
 
+.my-sc-workspace-root .my-sc-canvas-project-header button.msc-tree-trigger {
+	height: var(--my-sc-hit) !important;
+	min-height: var(--my-sc-hit) !important;
+	padding: 0 8px !important;
+	font-size: 0.8rem !important;
+	line-height: 1 !important;
+}
+
 .my-sc-workspace-root .my-sc-canvas-project-slides {
 	flex-wrap: nowrap;
 	overflow-x: auto;
@@ -3395,10 +3407,30 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	display: none;
 }
 
+.my-sc-workspace-root .my-sc-canvas-project-header button.my-sc-canvas-slide {
+	height: var(--my-sc-hit) !important;
+	min-height: var(--my-sc-hit) !important;
+	padding: 0 9px !important;
+	font-size: 0.78rem !important;
+	line-height: 1 !important;
+}
+
 .my-sc-workspace-root .my-sc-canvas-project-header-right {
 	flex-wrap: nowrap;
 	flex-shrink: 0;
 	gap: 4px;
+}
+
+.my-sc-workspace-root .my-sc-canvas-project-header-right button.my-sc-canvas-project-button {
+	width: var(--my-sc-hit) !important;
+	min-width: var(--my-sc-hit) !important;
+	height: var(--my-sc-hit) !important;
+	min-height: var(--my-sc-hit) !important;
+	padding: 0 !important;
+	margin-left: 0 !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
 }
 
 .my-sc-workspace-root.is-focus-mode .my-sc-canvas-project-stage,
@@ -3409,9 +3441,29 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 }
 
 /* iPadOS (с трекпадом/клавиатурой и тач) и мобильные устройства */
+body.is-tablet .my-sc-workspace-root,
+body.is-mobile .my-sc-workspace-root {
+	--my-sc-pad-top: 4px;
+	--my-sc-pad-x: 6px;
+	--my-sc-pad-bottom: 4px;
+}
+
+body.is-tablet .my-sc-workspace-root.is-schema-mode,
+body.is-mobile .my-sc-workspace-root.is-schema-mode {
+	--my-sc-hit: 30px;
+}
+
+body.is-tablet .my-sc-workspace-root.is-focus-mode,
+body.is-mobile .my-sc-workspace-root.is-focus-mode,
+body.is-tablet .my-sc-workspace-root.is-pseudo-fullscreen,
+body.is-mobile .my-sc-workspace-root.is-pseudo-fullscreen {
+	--my-sc-pad-top: 4px;
+	--my-sc-pad-x: 4px;
+	--my-sc-pad-bottom: 4px;
+}
+
 body.is-tablet .my-sc-workspace-root.my-sc-modal,
 body.is-mobile .my-sc-workspace-root.my-sc-modal {
-	padding: 4px 6px !important;
 	gap: 4px;
 }
 
@@ -3429,38 +3481,75 @@ body.is-mobile .my-sc-workspace-root .my-sc-work-select {
 
 body.is-tablet .my-sc-workspace-root .my-sc-canvas-project-header .msc-tree-select,
 body.is-mobile .my-sc-workspace-root .my-sc-canvas-project-header .msc-tree-select {
-	flex: 0 1 210px;
+	flex: 0 1 200px;
 	min-width: 110px;
 }
 
-body.is-tablet .my-sc-focus-floating-bar button.my-sc-icon-btn,
-body.is-mobile .my-sc-focus-floating-bar button.my-sc-icon-btn {
-	width: 36px !important;
-	min-width: 36px !important;
-	height: 36px !important;
-	min-height: 36px !important;
+/* Компактные кнопки и иконки на iPad в шапке, тулбаре и нижней панели */
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-project-header svg.svg-icon,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-project-header svg.svg-icon,
+body.is-tablet .my-sc-workspace-root .my-sc-focus-floating-bar svg.svg-icon,
+body.is-mobile .my-sc-workspace-root .my-sc-focus-floating-bar svg.svg-icon,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-toolbar svg.svg-icon,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-toolbar svg.svg-icon,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls svg.svg-icon,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls svg.svg-icon {
+	width: 15px !important;
+	height: 15px !important;
+	min-width: 15px !important;
+	min-height: 15px !important;
 }
 
-body.is-tablet .my-sc-workspace-root.is-focus-mode .my-sc-canvas-project-header,
-body.is-mobile .my-sc-workspace-root.is-focus-mode .my-sc-canvas-project-header {
-	padding-right: 92px;
-	min-height: 44px;
-}
-
-body.is-tablet .my-sc-workspace-root.is-focus-mode .my-sc-graph-controls,
-body.is-mobile .my-sc-workspace-root.is-focus-mode .my-sc-graph-controls {
-	right: 96px;
-}
-
-body.is-tablet .my-sc-canvas-toolbar,
-body.is-mobile .my-sc-canvas-toolbar {
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-toolbar,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-toolbar {
 	top: 6px;
-	padding: 3px 5px;
+	padding: 3px 4px;
+	gap: 2px;
+	border-radius: var(--radius-sm, 10px);
 }
 
-body.is-tablet .my-sc-canvas-controls,
-body.is-mobile .my-sc-canvas-controls {
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-toolbar button,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-toolbar button,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls button.my-sc-canvas-control,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls button.my-sc-canvas-control,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls button.my-sc-canvas-menu-trigger,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls button.my-sc-canvas-menu-trigger {
+	width: 30px !important;
+	min-width: 30px !important;
+	height: 30px !important;
+	min-height: 30px !important;
+	padding: 0 !important;
+	border-radius: var(--radius-xs, 6px) !important;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls {
 	left: 6px;
 	right: 6px;
-	bottom: max(6px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+	bottom: 6px;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls-left,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls-left,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls-right,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls-right {
+	padding: 2px;
+	gap: 2px;
+	border-radius: var(--radius-s, 8px);
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-controls button.my-sc-canvas-zoom-label,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-controls button.my-sc-canvas-zoom-label {
+	width: auto !important;
+	min-width: 44px !important;
+	height: 30px !important;
+	min-height: 30px !important;
+	padding: 0 6px !important;
+	font-size: 0.72rem !important;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-menu,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-menu {
+	bottom: 44px;
+	left: 6px;
 }
