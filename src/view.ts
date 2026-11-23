@@ -580,10 +580,14 @@ if (typeof ResizeObserver !== "undefined") {
 		);
 
 		const exitFocusBtn = this.focusFloatingBarEl.createEl("button", {
-			cls: "my-sc-chip-btn",
-			text: "Показать шапку",
-			attr: { type: "button", title: "Выйти из режима фокусировки (Esc)" },
+			cls: "my-sc-icon-btn",
+			attr: {
+				type: "button",
+				title: "Показать шапку (Esc)",
+				"aria-label": "Показать шапку (Esc)",
+			},
 		});
+		setIcon(exitFocusBtn, "panel-top-open");
 		exitFocusBtn.onclick = () => this.toggleFocusMode(false);
 
 		this.floatingFullscreenBtn = this.focusFloatingBarEl.createEl("button", {
@@ -1349,40 +1353,7 @@ const addGroup = (label: string, list: StudyNoteItem[]) => {
 			this.syncExpandToggle();
 		}
 
-		this.iconBtn(
-			topActions,
-			this.form.open ? "x" : "plus",
-			this.form.open ? "Закрыть форму" : "Добавить материал",
-			() => {
-				if (this.form.open) {
-					this.form.open = false;
-					this.formEl.empty();
-					this.renderBar();
-					this.focusSafeContainer();
-				} else {
-					this.openForm(branchRoot.path, true);
-				}
-			},
-			{ primary: true, active: this.form.open }
-		);
-
 		topActions.createSpan("my-sc-top-divider");
-
-		this.iconBtn(
-			topActions,
-			"external-link",
-			"Открыть в отдельном окне (popout)",
-			() => {
-				void this.plugin.openCompiler({
-					rootPath: root.path,
-					schemaNotePath: this.schemaNotePath || branchRoot.path,
-					activeCanvasKey:
-						this.schemaView?.getActiveSlideKey() || this.activeCanvasKey,
-					viewMode: this.viewMode,
-					location: "window",
-				});
-			}
-		);
 
 		this.focusModeBtn = this.iconBtn(
 			topActions,
