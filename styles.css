@@ -28,7 +28,17 @@
            max(var(--my-sc-s4), env(safe-area-inset-right, 0px))
            max(var(--my-sc-s4), env(safe-area-inset-bottom, 0px))
            max(var(--my-sc-s4), env(safe-area-inset-left, 0px)) !important;
-  border-radius: 14px;
+  border: none !important;
+  border-radius: var(--radius-xl, 20px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-background, var(--background-primary)) !important;
+  backdrop-filter: var(--blur-l, blur(16px));
+  -webkit-backdrop-filter: var(--blur-l, blur(16px));
+  box-shadow:
+    var(--glass-base-l, none),
+    0 0 0 0.5px var(--trans-faint-30, var(--background-modifier-border)),
+    var(--menu-shadow, 0 18px 48px rgba(0, 0, 0, 0.35)) !important;
+  font-family: var(--font-interface);
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -39,6 +49,8 @@
   top: max(var(--my-sc-s4), env(safe-area-inset-top, 0px));
   right: max(var(--my-sc-s3), env(safe-area-inset-right, 0px));
   z-index: 10;
+  border-radius: var(--radius-xxl, 22px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
 }
 
 .modal.my-sc-modal-container > .modal-content.my-sc-modal,
@@ -69,21 +81,44 @@
 
 .my-sc-modal button:focus-visible,
 .my-sc-modal select:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--shadow-input-active, 0 0 0 2px var(--interactive-accent)) !important;
+}
+
+.my-sc-modal input[type="text"],
+.my-sc-modal input[type="search"],
+.my-sc-modal input[type="date"],
+.my-sc-modal select {
+  border: none !important;
+  outline: none !important;
+  border-radius: var(--input-radius, var(--radius-s, 8px)) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--background-primary) !important;
+  color: var(--text-normal) !important;
+  box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-30, var(--background-modifier-border))) !important;
+  font-family: var(--font-interface);
+  transition: box-shadow var(--anim-duration-fast, 150ms) var(--vl-ease-out, cubic-bezier(0.3, 0.75, 0, 1));
+}
+
+.my-sc-modal input[type="text"]:focus,
+.my-sc-modal input[type="search"]:focus,
+.my-sc-modal input[type="date"]:focus,
+.my-sc-modal select:focus {
+  box-shadow: var(--shadow-input-active, 0 0 0 2.5px var(--interactive-accent)) !important;
 }
 
 .my-sc-modal svg.svg-icon {
-  width: 18px !important;
-  height: 18px !important;
-  min-width: 18px !important;
-  min-height: 18px !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
   flex-shrink: 0 !important;
   stroke: currentColor !important;
-  stroke-width: 2px !important;
+  stroke-width: 1.9px !important;
   fill: none !important;
   display: block !important;
   pointer-events: none;
+  transition: transform var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-datalists-host {
@@ -94,15 +129,26 @@
 .modal.my-sc-small-dialog {
   width: min(400px, 92vw) !important;
   max-width: 400px !important;
-  padding: 16px !important;
-  border-radius: 12px !important;
+  padding: 18px 20px !important;
+  border: none !important;
+  border-radius: var(--radius-xl, 20px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-background, var(--background-primary)) !important;
+  backdrop-filter: var(--blur-l, blur(16px));
+  -webkit-backdrop-filter: var(--blur-l, blur(16px));
+  box-shadow:
+    var(--glass-base-l, none),
+    0 0 0 0.5px var(--trans-faint-30, var(--background-modifier-border)),
+    var(--menu-shadow, 0 18px 48px rgba(0, 0, 0, 0.35)) !important;
+  font-family: var(--font-interface);
 }
 
 .my-sc-dialog-title {
   margin: 0 0 10px 0;
-  font-size: 0.98rem;
-  font-weight: 650;
-  color: var(--text-normal);
+  font-size: 1rem;
+  font-weight: var(--font-semibold, 600);
+  font-variation-settings: "opsz" 24;
+  color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-dialog-desc {
@@ -151,7 +197,7 @@
 .my-sc-top-divider {
   width: 1px;
   height: 18px;
-  background: var(--background-modifier-border);
+  background: var(--trans-faint-20, var(--background-modifier-border));
   margin: 0 2px;
   flex-shrink: 0;
 }
@@ -188,40 +234,51 @@
 .my-sc-view-seg {
   display: inline-flex;
   align-items: center;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  gap: 2px;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-xl, 20px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--tab-sidebar-container-bg, var(--trans-faint-05, var(--background-secondary)));
+  box-shadow:
+    var(--glass-base-s, none),
+    inset 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border));
+  gap: 3px;
 }
 
 button.my-sc-view-seg-btn {
   height: calc(var(--my-sc-hit) - 4px) !important;
   min-height: calc(var(--my-sc-hit) - 4px) !important;
-  padding: 0 10px !important;
-  border-radius: 6px !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-xxl, 22px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
-  color: var(--text-muted) !important;
+  color: var(--icon-color, var(--text-muted)) !important;
   font-size: var(--my-sc-fs-sm) !important;
-  font-weight: 500 !important;
+  font-weight: var(--font-semi-medium, 500) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
   cursor: pointer;
   white-space: nowrap;
+  text-box-trim: trim-both;
+  text-box-edge: cap alphabetic;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 button.my-sc-view-seg-btn:hover {
-  color: var(--text-normal) !important;
+  color: var(--color-base-100, var(--text-normal)) !important;
 }
 
 button.my-sc-view-seg-btn.is-active {
-  background: var(--background-primary) !important;
-  color: var(--text-normal) !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16) !important;
+  background: var(--tab-sidebar-bg, var(--background-primary)) !important;
+  color: var(--color-base-100, var(--text-normal)) !important;
+  box-shadow: var(--shadow-tab, var(--shadow-s, 0 1px 2px rgba(0, 0, 0, 0.16))) !important;
 }
 
 .my-sc-view-seg-icon {
@@ -231,10 +288,10 @@ button.my-sc-view-seg-btn.is-active {
 }
 
 .my-sc-view-seg-icon svg.svg-icon {
-  width: 15px !important;
-  height: 15px !important;
-  min-width: 15px !important;
-  min-height: 15px !important;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
 }
 
 button.my-sc-icon-btn {
@@ -247,51 +304,69 @@ button.my-sc-icon-btn {
   align-items: center !important;
   justify-content: center !important;
   flex-shrink: 0;
-  border-radius: 8px !important;
-  background: var(--background-secondary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  box-shadow: none !important;
-  color: var(--text-normal) !important;
+  border: none !important;
+  border-radius: var(--radius-s, 8px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--background-primary) !important;
+  box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border))) !important;
+  color: var(--control-icon-color, var(--icon-color, var(--text-muted))) !important;
   cursor: pointer;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 button.my-sc-icon-btn:hover {
-  background: var(--background-modifier-hover) !important;
-  border-color: var(--text-faint) !important;
+  background: var(--control-icon-background, var(--background-modifier-hover)) !important;
+  color: var(--color-base-100, var(--text-normal)) !important;
+}
+
+button.my-sc-icon-btn:active > svg {
+  transform: scale3d(0.84, 0.84, 0.84);
 }
 
 button.my-sc-icon-btn.is-primary {
-  color: var(--interactive-accent) !important;
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary)) !important;
-  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border)) !important;
+  color: var(--color-accent-1, var(--text-accent)) !important;
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 16%, transparent)) !important;
+  box-shadow:
+    var(--glass-base, none),
+    inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent)) !important;
 }
 
 button.my-sc-icon-btn.is-primary:hover {
-  background: color-mix(in srgb, var(--interactive-accent) 22%, var(--background-secondary)) !important;
+  filter: brightness(1.06);
 }
 
 .my-sc-empty-group-box {
   padding: var(--my-sc-s3);
-  border-radius: 8px;
-  border: 1px dashed var(--background-modifier-border);
+  border: none;
+  border-radius: var(--radius-sm, 10px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--trans-faint-05, var(--background-secondary));
+  box-shadow: inset 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border));
   font-size: var(--my-sc-fs-sm);
-  color: var(--text-muted);
+  color: var(--icon-color, var(--text-muted));
 }
 
 .my-sc-chip-btn {
   min-height: var(--my-sc-hit);
   padding: 0 var(--my-sc-s3);
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-s, 8px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border)));
   font-size: var(--my-sc-fs-sm);
-  font-weight: 500;
+  font-weight: var(--font-semi-medium, 500);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .my-sc-chip-btn.is-schema-btn {
-  color: #e5a158;
-  border-color: color-mix(in srgb, #e5a158 45%, var(--background-modifier-border));
-  background: color-mix(in srgb, #e5a158 14%, var(--background-secondary));
+  color: var(--color-orange, #e5a158);
+  background: color-mix(in oklab, var(--color-orange, #e5a158) 14%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--color-orange, #e5a158) 45%, transparent);
 }
 
 /* ---------- Поиск ---------- */
@@ -315,16 +390,21 @@ button.my-sc-icon-btn.is-primary:hover {
 }
 
 .my-sc-filter-chip {
-  min-height: 26px;
-  padding: 0 var(--my-sc-s2);
-  border-radius: 99px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--pill-radius, var(--radius-l, 18px));
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   font-size: var(--my-sc-fs-xs);
-  font-weight: 500;
-  background: transparent;
-  border: 1px solid var(--background-modifier-border);
-  box-shadow: none;
-  color: var(--text-muted);
+  font-weight: var(--font-semi-medium, 500);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border)));
+  color: var(--icon-color, var(--text-muted));
   cursor: pointer;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-search-panel .my-sc-filter-chip {
@@ -332,13 +412,16 @@ button.my-sc-icon-btn.is-primary:hover {
 }
 
 .my-sc-filter-chip:hover {
-  background: var(--background-modifier-hover);
+  color: var(--color-base-100, var(--text-normal));
+  background: var(--trans-faint-05, var(--background-modifier-hover));
 }
 
 .my-sc-filter-chip.is-active {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  color: var(--color-accent-1, var(--text-accent));
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 14%, transparent));
+  box-shadow:
+    var(--glass-base, none),
+    inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
 }
 
 /* ---------- Хлебные крошки ---------- */
@@ -409,10 +492,15 @@ button.my-sc-icon-btn.is-primary:hover {
   flex-direction: column;
   min-width: 0;
   gap: var(--my-sc-s2);
-  padding: var(--my-sc-s3);
-  border-radius: 10px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  padding: 14px 16px;
+  border: none;
+  border-radius: calc(var(--radius-ml, 14px) + 2px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--trans-faint-05, var(--background-secondary));
+  box-shadow:
+    var(--glass-base-m, none),
+    0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border)),
+    var(--shadow-setting-items, none);
 }
 
 .my-sc-form-row {
@@ -537,7 +625,12 @@ button.my-sc-icon-btn.is-primary:hover {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: var(--my-sc-s1);
+  scrollbar-width: none;
+  padding: 2px var(--my-sc-s1) 12px 2px;
+}
+
+.my-sc-body::-webkit-scrollbar {
+  display: none;
 }
 
 .my-sc-body.is-hidden {
@@ -564,22 +657,25 @@ button.my-sc-icon-btn.is-primary:hover {
   gap: var(--my-sc-s2);
   min-height: var(--my-sc-row-h);
   padding: 2px var(--my-sc-s2) 2px var(--my-sc-s1);
-  border-radius: 8px;
+  border-radius: var(--radius-s, 8px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   background: transparent;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-tree-row:hover {
-  background: var(--background-modifier-hover);
+  background: var(--trans-faint-05, var(--background-modifier-hover));
 }
 
 .my-sc-tree-row.is-kb-active {
-  background: var(--background-modifier-hover);
-  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+  background: var(--trans-faint-05, var(--background-modifier-hover));
+  box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
 }
 
 .my-sc-tree-row.is-match {
-  background: color-mix(in srgb, var(--color-yellow, #e5a158) 14%, transparent);
+  background: color-mix(in oklab, var(--color-orange, #e5a158) 14%, transparent);
 }
 
 .my-sc-tree-row.is-dragging {
@@ -588,7 +684,7 @@ button.my-sc-icon-btn.is-primary:hover {
 
 .my-sc-tree-row.is-drop-target,
 .my-sc-crumb-btn.is-drop-target {
-  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent) !important;
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 18%, transparent)) !important;
   box-shadow: inset 0 0 0 1.5px var(--interactive-accent) !important;
 }
 
@@ -598,7 +694,7 @@ button.my-sc-icon-btn.is-primary:hover {
 
 @keyframes my-sc-row-fresh {
   from {
-    background: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+    background: color-mix(in oklab, var(--interactive-accent) 24%, transparent);
     box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
 }
@@ -611,15 +707,17 @@ button.my-sc-icon-btn.is-primary:hover {
   gap: var(--my-sc-s2);
   margin: var(--my-sc-s1) var(--my-sc-s2) var(--my-sc-s2) 36px;
   padding: var(--my-sc-s2) var(--my-sc-s3);
-  border-radius: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  border: none;
+  border-radius: var(--radius-sm, 10px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--trans-faint-05, var(--background-secondary));
+  box-shadow: 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border));
 }
 
 .my-sc-inline-label {
   font-size: var(--my-sc-fs-sm);
-  font-weight: 500;
-  color: var(--text-muted);
+  font-weight: var(--font-semi-medium, 500);
+  color: var(--icon-color, var(--text-muted));
 }
 
 .my-sc-children-container {
@@ -629,7 +727,7 @@ button.my-sc-icon-btn.is-primary:hover {
   min-width: 0;
   margin-left: 15px;
   padding-left: var(--my-sc-s3);
-  border-left: 1.5px solid var(--my-sc-rail);
+  border-left: 1px solid var(--trans-faint-20, var(--my-sc-rail));
 }
 
 .my-sc-tree-left {
@@ -641,41 +739,46 @@ button.my-sc-icon-btn.is-primary:hover {
 }
 
 button.my-sc-toggle-btn {
-  width: 30px !important;
-  min-width: 30px !important;
-  height: 30px !important;
-  min-height: 30px !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
   padding: 0 !important;
-  border-radius: 7px !important;
+  border: none !important;
+  border-radius: var(--radius-s, 8px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background: var(--background-secondary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  box-shadow: none !important;
-  color: var(--text-normal) !important;
+  background: var(--trans-faint-05, var(--background-secondary)) !important;
+  box-shadow: 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border)) !important;
+  color: var(--icon-color, var(--text-muted)) !important;
   cursor: pointer;
   flex-shrink: 0;
-  transition: transform 0.16s ease, background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform 160ms var(--vl-ease-out, cubic-bezier(0.3, 0.75, 0, 1)),
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 button.my-sc-toggle-btn svg.svg-icon {
-  width: 16px !important;
-  height: 16px !important;
-  min-width: 16px !important;
-  min-height: 16px !important;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
 }
 
 button.my-sc-toggle-btn:hover {
-  background: var(--background-modifier-hover) !important;
-  border-color: var(--interactive-accent) !important;
-  color: var(--interactive-accent) !important;
+  background: var(--control-icon-background, var(--background-modifier-hover)) !important;
+  color: var(--color-base-100, var(--text-normal)) !important;
 }
 
 button.my-sc-toggle-btn.is-open {
   transform: rotate(90deg);
-  color: var(--interactive-accent) !important;
-  border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border)) !important;
+  color: var(--color-accent-1, var(--text-accent)) !important;
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 14%, transparent)) !important;
+  box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent)) !important;
 }
 
 .my-sc-leaf-marker {
@@ -746,19 +849,20 @@ button.my-sc-media-pill {
   height: 24px !important;
   min-height: 24px !important;
   padding: 0 var(--my-sc-s2) !important;
-  border-radius: 99px !important;
+  border: none !important;
+  border-radius: var(--pill-radius, var(--radius-l, 18px)) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   font-size: var(--my-sc-fs-xs) !important;
-  font-weight: 600 !important;
+  font-weight: var(--font-semibold, 600) !important;
   font-variant-numeric: tabular-nums;
-  color: #e5a158 !important;
-  background: color-mix(in srgb, #e5a158 14%, var(--background-secondary)) !important;
-  border: 1px solid color-mix(in srgb, #e5a158 38%, var(--background-modifier-border)) !important;
-  box-shadow: none !important;
+  color: var(--color-orange, #e5a158) !important;
+  background: color-mix(in oklab, var(--color-orange, #e5a158) 14%, transparent) !important;
+  box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--color-orange, #e5a158) 40%, transparent) !important;
   cursor: pointer;
 }
 
 button.my-sc-media-pill:hover {
-  background: color-mix(in srgb, #e5a158 24%, var(--background-secondary)) !important;
+  background: color-mix(in oklab, var(--color-orange, #e5a158) 22%, transparent) !important;
 }
 
 button.my-sc-type-badge {
@@ -770,19 +874,20 @@ button.my-sc-type-badge {
   height: 26px !important;
   min-height: 26px !important;
   padding: 0 var(--my-sc-s2) !important;
-  border-radius: 6px !important;
+  border-radius: var(--radius-xs, 6px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   font-size: var(--my-sc-fs-xs) !important;
-  font-weight: 400 !important;
+  font-weight: var(--font-semi-medium, 500) !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  color: var(--text-muted) !important;
+  color: var(--icon-color, var(--text-muted)) !important;
   white-space: nowrap;
   cursor: pointer;
 }
 
 button.my-sc-type-badge:hover {
-  background: var(--background-modifier-hover) !important;
+  background: var(--control-icon-background, var(--background-modifier-hover)) !important;
 }
 
 .my-sc-type-icon {
@@ -793,7 +898,7 @@ button.my-sc-type-badge:hover {
 .my-sc-type-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--badge-color, #599ed6) 75%, var(--text-muted));
+  color: color-mix(in oklab, var(--badge-color, var(--color-blue, #599ed6)) 75%, var(--text-muted));
 }
 
 button.my-sc-subcount-pill {
@@ -801,68 +906,74 @@ button.my-sc-subcount-pill {
   height: 24px !important;
   min-height: 24px !important;
   padding: 0 var(--my-sc-s2) !important;
-  border-radius: 99px !important;
+  border: none !important;
+  border-radius: var(--pill-radius, var(--radius-l, 18px)) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   font-size: var(--my-sc-fs-xs) !important;
-  font-weight: 600 !important;
+  font-weight: var(--font-semibold, 600) !important;
   font-variant-numeric: tabular-nums;
-  background: var(--background-secondary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  box-shadow: none !important;
-  color: var(--text-muted) !important;
+  background: var(--trans-faint-05, var(--background-secondary)) !important;
+  box-shadow: 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border)) !important;
+  color: var(--icon-color, var(--text-muted)) !important;
   cursor: pointer;
 }
 
 button.my-sc-subcount-pill.is-collapsed {
-  color: var(--interactive-accent) !important;
-  background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-secondary)) !important;
-  border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border)) !important;
+  color: var(--color-accent-1, var(--text-accent)) !important;
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 14%, transparent)) !important;
+  box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent)) !important;
 }
 
 button.my-sc-subcount-pill:hover {
-  color: var(--text-normal) !important;
+  color: var(--color-base-100, var(--text-normal)) !important;
 }
 
 .my-sc-deadline {
   font-size: var(--my-sc-fs-xs);
-  font-weight: 500;
+  font-weight: var(--font-semi-medium, 500);
   padding: 2px var(--my-sc-s2);
-  border-radius: 6px;
+  border-radius: var(--radius-xs, 6px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 .my-sc-deadline.is-far {
   color: var(--color-green, #4aab80);
-  background: color-mix(in srgb, var(--color-green, #4aab80) 14%, transparent);
+  background: color-mix(in oklab, var(--color-green, #4aab80) 14%, transparent);
 }
 
 .my-sc-deadline.is-soon {
   color: var(--color-orange, #e5a158);
-  background: color-mix(in srgb, var(--color-orange, #e5a158) 16%, transparent);
+  background: color-mix(in oklab, var(--color-orange, #e5a158) 16%, transparent);
 }
 
 .my-sc-deadline.is-overdue {
-  color: var(--text-error, #e06c75);
-  background: color-mix(in srgb, var(--text-error, #e06c75) 16%, transparent);
+  color: var(--color-red, #d85b57);
+  background: color-mix(in oklab, var(--color-red, #d85b57) 16%, transparent);
 }
 
 button.my-sc-row-more {
-  width: 30px !important;
-  min-width: 30px !important;
-  height: 30px !important;
-  min-height: 30px !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
   padding: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 6px !important;
+  border: none !important;
+  border-radius: var(--radius-xxl, 22px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   background: transparent !important;
-  border: 1px solid transparent !important;
   box-shadow: none !important;
-  color: var(--text-muted) !important;
+  color: var(--control-icon-color, var(--icon-color, var(--text-muted))) !important;
   opacity: 0;
   cursor: pointer;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition:
+    opacity var(--anim-super-smooth, 75ms ease-out),
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-tree-row:hover button.my-sc-row-more,
@@ -892,11 +1003,15 @@ button.my-sc-row-more:hover {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 10px;
-  border: 1px solid var(--background-modifier-border);
-  background-color: var(--background-secondary);
+  border: none;
+  border-radius: calc(var(--radius-ml, 14px) + 2px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background-color: var(--trans-faint-05, var(--background-secondary));
+  box-shadow:
+    var(--glass-base-m, none),
+    0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border));
   background-image: radial-gradient(
-    color-mix(in srgb, var(--text-faint) 30%, transparent) 1px,
+    color-mix(in oklab, var(--text-faint) 30%, transparent) 1px,
     transparent 1px
   );
   background-size: 20px 20px;
@@ -1020,11 +1135,11 @@ button.my-sc-row-more:hover {
 }
 
 .my-sc-gnode-schema-dot {
-  fill: #9c83e8;
+  fill: var(--color-purple, #9c83e8);
 }
 
 .my-sc-gnode.is-overdue .my-sc-gnode-dot {
-  fill: var(--text-error, #e06c75);
+  fill: var(--color-red, #d85b57);
 }
 
 .my-sc-gtoggle {
@@ -1079,16 +1194,22 @@ button.my-sc-graph-ctrl {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 8px !important;
-  background: var(--background-primary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  box-shadow: none !important;
-  color: var(--text-normal) !important;
+  border: none !important;
+  border-radius: var(--radius-s, 8px) !important;
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--background-primary)) !important;
+  backdrop-filter: var(--blur-m, blur(12px));
+  -webkit-backdrop-filter: var(--blur-m, blur(12px));
+  box-shadow:
+    var(--glass-base-s, none),
+    0 0 0 0.5px var(--trans-faint-30, var(--background-modifier-border)) !important;
+  color: var(--control-icon-color, var(--text-normal)) !important;
   cursor: pointer;
 }
 
 button.my-sc-graph-ctrl:hover {
-  background: var(--background-modifier-hover) !important;
+  background: var(--control-icon-background, var(--background-modifier-hover)) !important;
+  color: var(--color-base-100, var(--text-normal)) !important;
 }
 
 button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset {
@@ -1096,12 +1217,13 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset {
   padding: 0 10px !important;
   gap: 6px !important;
   font-size: var(--my-sc-fs-xs) !important;
-  font-weight: 500 !important;
+  font-weight: var(--font-semi-medium, 500) !important;
 }
 
 button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
-  border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border)) !important;
-  color: var(--interactive-accent) !important;
+  color: var(--color-accent-1, var(--text-accent)) !important;
+  background: var(--color-accent-4, var(--background-primary)) !important;
+  box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent)) !important;
 }
 
 .my-sc-graph-ctrl-icon {
@@ -1127,9 +1249,16 @@ button.my-sc-graph-ctrl.my-sc-graph-ctrl-reset.has-custom-positions {
   justify-content: space-between;
   gap: var(--my-sc-s2);
   padding: var(--my-sc-s1) var(--my-sc-s2) var(--my-sc-s1) var(--my-sc-s3);
-  border-radius: 10px;
-  background: var(--background-primary);
-  border: 1px solid var(--interactive-accent);
+  border: none;
+  border-radius: var(--radius-sm, 10px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--background-primary));
+  backdrop-filter: var(--blur-m, blur(12px));
+  -webkit-backdrop-filter: var(--blur-m, blur(12px));
+  box-shadow:
+    var(--glass-base-m, none),
+    0 0 0 1px var(--color-accent-3, var(--interactive-accent)),
+    var(--menu-shadow, 0 8px 24px rgba(0, 0, 0, 0.2));
   z-index: 5;
 }
 
@@ -2285,9 +2414,11 @@ flex-shrink: 0;
 }
 
 button.my-sc-icon-btn.is-active {
-color: var(--interactive-accent) !important;
-border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border)) !important;
-background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary)) !important;
+  color: var(--color-accent-1, var(--text-accent)) !important;
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 16%, transparent)) !important;
+  box-shadow:
+    var(--glass-base, none),
+    inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent)) !important;
 }
 
 .my-sc-canvas-project-root {
@@ -2323,19 +2454,24 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 9px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-s, 8px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   background: var(--background-primary);
-  color: var(--text-normal);
-  font-weight: 600;
+  box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border)));
+  color: var(--color-base-100, var(--text-normal));
+  font-weight: var(--font-semibold, 600);
   text-align: left;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .msc-tree-trigger:hover,
 .msc-tree-trigger[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border));
-  background: var(--background-modifier-hover);
+  background: var(--trans-faint-05, var(--background-modifier-hover));
+  box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
 }
 
 .msc-tree-trigger-label {
@@ -2366,10 +2502,16 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   max-height: 70vh;
   padding: 6px;
   overflow: hidden;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  background: var(--background-secondary);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+  border: none;
+  border-radius: var(--menu-radius, var(--radius-ml, 14px));
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+  backdrop-filter: var(--blur-l, blur(16px));
+  -webkit-backdrop-filter: var(--blur-l, blur(16px));
+  box-shadow:
+    var(--glass-base-l, none),
+    0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+    var(--menu-shadow, 0 14px 36px rgba(0, 0, 0, 0.32));
 }
 
 .msc-tree-popover.is-hidden {
@@ -2429,32 +2571,29 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   box-sizing: border-box;
 }
 
-.msc-tree-node[data-branch-color="root"] {
-  --msc-branch-color: #599ed6;
-}
-
+.msc-tree-node[data-branch-color="root"],
 .msc-tree-node[data-branch-color="0"] {
-  --msc-branch-color: #599ed6;
+  --msc-branch-color: var(--color-blue, #599ed6);
 }
 
 .msc-tree-node[data-branch-color="1"] {
-  --msc-branch-color: #9c83e8;
+  --msc-branch-color: var(--color-purple, #9c83e8);
 }
 
 .msc-tree-node[data-branch-color="2"] {
-  --msc-branch-color: #4aab80;
+  --msc-branch-color: var(--color-green, #4aab80);
 }
 
 .msc-tree-node[data-branch-color="3"] {
-  --msc-branch-color: #e5a158;
+  --msc-branch-color: var(--color-orange, #e5a158);
 }
 
 .msc-tree-node[data-branch-color="4"] {
-  --msc-branch-color: #e06c75;
+  --msc-branch-color: var(--color-red, #d85b57);
 }
 
 .msc-tree-node[data-branch-color="5"] {
-  --msc-branch-color: #69b5aa;
+  --msc-branch-color: var(--color-cyan, #69b5aa);
 }
 
 .msc-tree-row[data-depth="0"] {
@@ -2578,18 +2717,31 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   min-height: var(--my-sc-hit, 32px);
   overflow: hidden;
   padding: 0 10px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-s, 8px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   background: var(--background-primary);
-  color: var(--text-muted);
+  box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border)));
+  color: var(--icon-color, var(--text-muted));
+  font-weight: var(--font-semi-medium, 500);
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
+}
+
+.my-sc-canvas-slide:hover {
+  color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-canvas-slide.is-active {
-  border-color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-  color: var(--text-normal);
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 14%, var(--background-primary)));
+  color: var(--color-accent-1, var(--text-accent));
+  box-shadow:
+    var(--glass-base, none),
+    inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
 }
 
 .my-sc-canvas-board-menu {
@@ -2601,10 +2753,16 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   width: 220px;
   flex-direction: column;
   padding: 6px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  background: var(--background-secondary);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+  border: none;
+  border-radius: var(--menu-radius, var(--radius-ml, 14px));
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+  backdrop-filter: var(--blur-l, blur(16px));
+  -webkit-backdrop-filter: var(--blur-l, blur(16px));
+  box-shadow:
+    var(--glass-base-l, none),
+    0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+    var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.28));
 }
 
 .my-sc-canvas-board-menu.is-hidden {
@@ -2639,9 +2797,11 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 12px;
+  border: none;
+  border-radius: calc(var(--radius-ml, 14px) + 2px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   background: var(--background-primary);
+  box-shadow: 0 0 0 0.5px var(--trans-faint-25, var(--background-modifier-border));
 }
 
 .my-sc-canvas-editor-host {
@@ -2687,12 +2847,16 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   padding: 4px 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--background-secondary) 88%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  border: none;
+  border-radius: var(--menu-radius, var(--radius-ml, 14px));
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+  backdrop-filter: var(--blur-l, blur(16px));
+  -webkit-backdrop-filter: var(--blur-l, blur(16px));
+  box-shadow:
+    var(--glass-base-l, none),
+    0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+    var(--menu-shadow, 0 10px 28px rgba(0, 0, 0, 0.24));
   pointer-events: auto;
 }
 
@@ -2712,12 +2876,17 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-s, 8px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
   background: transparent;
-  color: var(--text-muted);
+  box-shadow: none;
+  color: var(--control-icon-color, var(--icon-color, var(--text-muted)));
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    background var(--anim-super-smooth, 75ms ease-out),
+    color var(--anim-super-smooth, 75ms ease-out),
+    box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-canvas-tool:hover,
@@ -2725,22 +2894,32 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 .my-sc-canvas-lock:hover,
 .my-sc-canvas-pen-mode:hover,
 .my-sc-canvas-menu-trigger:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+  background: var(--control-icon-background, var(--background-modifier-hover));
+  color: var(--color-base-100, var(--text-normal));
+}
+
+.my-sc-canvas-tool:active > svg,
+.my-sc-canvas-control:active > svg,
+.my-sc-canvas-lock:active > svg,
+.my-sc-canvas-pen-mode:active > svg,
+.my-sc-canvas-menu-trigger:active > svg {
+  transform: scale3d(0.84, 0.84, 0.84);
 }
 
 .my-sc-canvas-tool.is-active,
 .my-sc-canvas-control.is-active,
 .my-sc-canvas-lock.is-active,
 .my-sc-canvas-pen-mode.is-active {
-  border-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary));
-  color: var(--interactive-accent);
+  background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 18%, transparent));
+  color: var(--color-accent-1, var(--text-accent));
+  box-shadow:
+    var(--glass-base, none),
+    inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
 }
 
 .my-sc-canvas-control:disabled {
-  opacity: 0.38;
-  cursor: default;
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .my-sc-canvas-workspace {
@@ -2750,68 +2929,6 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-.my-sc-canvas-properties {
-  z-index: 3;
-  display: flex;
-  width: 250px;
-  min-width: 220px;
-  flex: 0 0 250px;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  overflow: auto;
-  border-right: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
-}
-
-.my-sc-canvas-properties.is-hidden {
-  display: none !important;
-}
-
-.my-sc-canvas-properties h4 {
-  margin: 0;
-  font-size: 0.85rem;
-}
-
-.my-sc-canvas-property {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.my-sc-canvas-property input,
-.my-sc-canvas-property select {
-  width: 100%;
-  min-width: 0;
-  min-height: 30px;
-  padding: 4px 6px;
-}
-
-.my-sc-canvas-property-check {
-  flex-direction: row;
-  align-items: center;
-}
-
-.my-sc-canvas-property-check input {
-  width: auto;
-  min-height: auto;
-}
-
-.my-sc-canvas-property-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.my-sc-canvas-property-actions .my-sc-canvas-control,
-.my-sc-canvas-property-actions .my-sc-canvas-project-button {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
 }
 
 .my-sc-canvas-wrap {
@@ -2851,18 +2968,25 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   align-items: center;
   gap: 3px;
   padding: 3px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 9px;
-  background: var(--background-secondary);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border: none;
+  border-radius: var(--radius-sm, 10px);
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+  backdrop-filter: var(--blur-m, blur(12px));
+  -webkit-backdrop-filter: var(--blur-m, blur(12px));
+  box-shadow:
+    var(--glass-base-m, none),
+    0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+    var(--menu-shadow, 0 6px 18px rgba(0, 0, 0, 0.2));
   pointer-events: auto;
 }
 
 .my-sc-canvas-zoom-label {
   width: auto;
   min-width: 54px;
-  padding: 0 5px;
+  padding: 0 6px;
   font-size: 0.75rem;
+  font-weight: var(--font-semi-medium, 500);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2882,10 +3006,21 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
   gap: 2px;
   padding: 6px;
   overflow: auto;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  background: var(--background-secondary);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+  scrollbar-width: none;
+  border: none;
+  border-radius: var(--menu-radius, var(--radius-ml, 14px));
+  -electron-corner-smoothing: var(--corner-smoothing, 60%);
+  background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+  backdrop-filter: var(--blur-l, blur(16px));
+  -webkit-backdrop-filter: var(--blur-l, blur(16px));
+  box-shadow:
+    var(--glass-base-l, none),
+    0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+    var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.28));
+}
+
+.my-sc-canvas-menu-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .my-sc-canvas-menu-panel.is-hidden {
@@ -2974,16 +3109,6 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
     justify-content: flex-start;
   }
 
-  .my-sc-canvas-properties {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: min(250px, 72vw);
-    min-width: 0;
-    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.28);
-  }
-
   .my-sc-canvas-controls {
     right: 6px;
     bottom: 6px;
@@ -3003,16 +3128,20 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	width: 228px;
+	width: 232px;
 	max-width: calc(100% - 24px);
 	max-height: calc(100% - 116px);
 	padding: 12px;
-	border-radius: 12px;
-	background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+	border: none;
+	border-radius: var(--menu-radius, var(--radius-ml, 14px));
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
+	background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+	backdrop-filter: var(--blur-l, blur(16px));
+	-webkit-backdrop-filter: var(--blur-l, blur(16px));
+	box-shadow:
+		var(--glass-base-l, none),
+		0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+		var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.28));
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-width: none;
@@ -3030,23 +3159,24 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 
 .my-sc-canvas-properties button.my-sc-canvas-prop-close-btn {
 	display: inline-flex;
-	width: 22px;
-	min-width: 22px;
-	height: 22px;
+	width: 24px;
+	min-width: 24px;
+	height: 24px;
 	align-items: center;
 	justify-content: center;
 	padding: 0;
-	border-radius: 6px;
+	border-radius: var(--radius-xxl, 22px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
 	border: none;
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--control-icon-color, var(--icon-color, var(--text-muted)));
 	box-shadow: none;
 	cursor: pointer;
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-prop-close-btn:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--control-icon-background, var(--background-modifier-hover));
+	color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-canvas-selection-bar {
@@ -3056,12 +3186,16 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	align-items: center;
 	gap: 3px;
 	padding: 4px;
-	border-radius: 10px;
-	background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32);
+	border: none;
+	border-radius: var(--radius-sm, 10px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
+	background: var(--modal-small-background, var(--modal-background, var(--background-secondary)));
+	backdrop-filter: var(--blur-m, blur(12px));
+	-webkit-backdrop-filter: var(--blur-m, blur(12px));
+	box-shadow:
+		var(--glass-base-m, none),
+		0 0 0 0.5px var(--menu-border-color, var(--trans-faint-30, var(--background-modifier-border))),
+		var(--menu-shadow, 0 8px 24px rgba(0, 0, 0, 0.24));
 	pointer-events: auto;
 }
 
@@ -3077,29 +3211,33 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	align-items: center;
 	justify-content: center;
 	padding: 0;
-	border-radius: 7px;
-	border: 1px solid transparent;
+	border: none;
+	border-radius: var(--radius-s, 8px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--control-icon-color, var(--icon-color, var(--text-muted)));
 	box-shadow: none;
 	cursor: pointer;
-	transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+	transition:
+		background var(--anim-super-smooth, 75ms ease-out),
+		color var(--anim-super-smooth, 75ms ease-out),
+		box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn:hover:not(:disabled) {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--control-icon-background, var(--background-modifier-hover));
+	color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn.is-active {
-	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary));
-	border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border));
-	color: var(--interactive-accent);
+	background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 18%, transparent));
+	box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
+	color: var(--color-accent-1, var(--text-accent));
 }
 
 .my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn.is-danger:hover:not(:disabled) {
-	background: rgba(224, 108, 117, 0.16);
-	color: #e06c75;
+	background: color-mix(in oklab, var(--color-red, #d85b57) 14%, transparent);
+	color: var(--color-red, #d85b57);
 }
 
 .my-sc-canvas-properties.is-hidden {
@@ -3115,10 +3253,9 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 
 .my-sc-canvas-prop-header h4 {
 	margin: 0;
-	font-size: 12px;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	color: var(--text-normal);
+	font-size: 0.78rem;
+	font-weight: var(--font-semibold, 600);
+	color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-canvas-property-actions {
@@ -3126,7 +3263,7 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	grid-template-columns: repeat(5, 1fr);
 	gap: 4px;
 	padding-bottom: 8px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--trans-faint-20, var(--background-modifier-border));
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-prop-icon-btn {
@@ -3135,29 +3272,33 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	justify-content: center;
 	height: 28px;
 	padding: 0;
-	border-radius: 6px;
-	border: 1px solid transparent;
-	background: var(--background-primary-alt, rgba(255, 255, 255, 0.04));
-	color: var(--text-muted);
+	border: none;
+	border-radius: var(--radius-xs, 6px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
+	background: var(--trans-faint-05, var(--background-primary));
+	box-shadow: 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border));
+	color: var(--icon-color, var(--text-muted));
 	cursor: pointer;
-	box-shadow: none;
-	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+	transition:
+		background var(--anim-super-smooth, 75ms ease-out),
+		color var(--anim-super-smooth, 75ms ease-out),
+		box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-prop-icon-btn:hover:not(:disabled) {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--control-icon-background, var(--background-modifier-hover));
+	color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-prop-icon-btn.is-active {
-	background: rgba(229, 161, 88, 0.18);
-	border-color: rgba(229, 161, 88, 0.55);
-	color: #e5a158;
+	background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 16%, transparent));
+	box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
+	color: var(--color-accent-1, var(--text-accent));
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-prop-icon-btn.is-danger:hover:not(:disabled) {
-	background: rgba(224, 108, 117, 0.16);
-	color: #e06c75;
+	background: color-mix(in oklab, var(--color-red, #d85b57) 14%, transparent);
+	color: var(--color-red, #d85b57);
 }
 
 .my-sc-canvas-prop-section {
@@ -3167,9 +3308,9 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 }
 
 .my-sc-canvas-prop-label {
-	font-size: 11px;
-	font-weight: 500;
-	color: var(--text-muted);
+	font-size: 0.72rem;
+	font-weight: var(--font-semi-medium, 500);
+	color: var(--icon-color, var(--text-muted));
 }
 
 /* Палитра цветов (свотчи) */
@@ -3186,34 +3327,38 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	aspect-ratio: 1 / 1;
 	min-height: 24px;
 	padding: 0 !important;
-	border-radius: 6px;
-	border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
-	background: var(--swatch-color, #e5a158) !important;
-	background-color: var(--swatch-color, #e5a158) !important;
-	box-shadow: none !important;
+	border-radius: var(--radius-xs, 6px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
+	border: none !important;
+	background: var(--swatch-color, var(--color-orange, #e5a158)) !important;
+	background-color: var(--swatch-color, var(--color-orange, #e5a158)) !important;
+	box-shadow: inset 0 0 0 1px var(--trans-faint-30, var(--background-modifier-border)) !important;
 	cursor: pointer;
-	transition: transform 100ms ease, box-shadow 120ms ease, border-color 120ms ease;
+	transition:
+		transform var(--anim-super-smooth, 75ms ease-out),
+		box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-color-swatch:hover,
 .my-sc-canvas-properties label.my-sc-canvas-color-swatch:hover {
 	transform: scale(1.08);
-	border-color: var(--text-normal) !important;
+	box-shadow: inset 0 0 0 1.5px var(--color-base-100, var(--text-normal)) !important;
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-color-swatch.is-active,
 .my-sc-canvas-properties label.my-sc-canvas-color-swatch.is-active {
-	border-color: var(--text-normal) !important;
-	box-shadow: 0 0 0 2px var(--background-secondary), 0 0 0 3.5px #5c8df6 !important;
+	box-shadow:
+		0 0 0 2px var(--background-primary),
+		0 0 0 3.5px var(--interactive-accent) !important;
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-color-swatch.is-transparent {
 	background-color: var(--background-primary) !important;
 	background-image:
-		linear-gradient(45deg, rgba(160, 174, 192, 0.22) 25%, transparent 25%),
-		linear-gradient(-45deg, rgba(160, 174, 192, 0.22) 25%, transparent 25%),
-		linear-gradient(45deg, transparent 75%, rgba(160, 174, 192, 0.22) 75%),
-		linear-gradient(-45deg, transparent 75%, rgba(160, 174, 192, 0.22) 75%) !important;
+		linear-gradient(45deg, var(--trans-faint-15, rgba(160, 174, 192, 0.22)) 25%, transparent 25%),
+		linear-gradient(-45deg, var(--trans-faint-15, rgba(160, 174, 192, 0.22)) 25%, transparent 25%),
+		linear-gradient(45deg, transparent 75%, var(--trans-faint-15, rgba(160, 174, 192, 0.22)) 75%),
+		linear-gradient(-45deg, transparent 75%, var(--trans-faint-15, rgba(160, 174, 192, 0.22)) 75%) !important;
 	background-size: 8px 8px !important;
 	background-position: 0 0, 0 4px, 4px -4px, -4px 0 !important;
 }
@@ -3225,8 +3370,8 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	background: linear-gradient(
 		to top right,
 		transparent calc(50% - 1px),
-		#e06c75 calc(50% - 1px),
-		#e06c75 calc(50% + 1px),
+		var(--color-red, #d85b57) calc(50% - 1px),
+		var(--color-red, #d85b57) calc(50% + 1px),
 		transparent calc(50% + 1px)
 	);
 	border-radius: 4px;
@@ -3237,7 +3382,7 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	align-items: center;
 	justify-content: center;
 	overflow: hidden;
-	border-style: dashed !important;
+	box-shadow: inset 0 0 0 1px var(--trans-faint-30, var(--background-modifier-border)) !important;
 }
 
 .my-sc-canvas-properties label.my-sc-canvas-color-swatch.is-custom-picker::after {
@@ -3245,7 +3390,7 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	font-size: 13px;
 	font-weight: 700;
 	color: #ffffff;
-	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
 	pointer-events: none;
 }
 
@@ -3265,11 +3410,13 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	display: grid;
 	grid-auto-flow: column;
 	grid-auto-columns: 1fr;
-	gap: 4px;
+	gap: 3px;
 	padding: 3px;
-	border-radius: 8px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	border: none;
+	border-radius: var(--radius-s, 8px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
+	background: var(--tab-sidebar-container-bg, var(--background-primary));
+	box-shadow: inset 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border));
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-seg-btn {
@@ -3278,24 +3425,28 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	justify-content: center;
 	height: 26px;
 	padding: 0 4px;
-	border: 1px solid transparent;
-	border-radius: 6px;
+	border: none;
+	border-radius: var(--radius-xs, 6px);
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--icon-color, var(--text-muted));
 	box-shadow: none;
 	cursor: pointer;
-	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+	transition:
+		background var(--anim-super-smooth, 75ms ease-out),
+		color var(--anim-super-smooth, 75ms ease-out),
+		box-shadow var(--anim-super-smooth, 75ms ease-out);
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-seg-btn:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--control-icon-background, var(--background-modifier-hover));
+	color: var(--color-base-100, var(--text-normal));
 }
 
 .my-sc-canvas-properties button.my-sc-canvas-seg-btn.is-active {
-	background: rgba(92, 141, 246, 0.18);
-	border-color: rgba(92, 141, 246, 0.55);
-	color: var(--text-normal);
+	background: var(--color-accent-4, color-mix(in oklab, var(--interactive-accent) 18%, transparent));
+	box-shadow: inset 0 0 0 1px var(--color-accent-3, var(--interactive-accent));
+	color: var(--color-accent-1, var(--text-accent));
 }
 
 .my-sc-canvas-seg-svg {
@@ -3306,7 +3457,7 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 
 .my-sc-canvas-seg-text {
 	font-size: 11px;
-	font-weight: 600;
+	font-weight: var(--font-semibold, 600);
 	line-height: 1;
 }
 
@@ -3320,7 +3471,7 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 .my-sc-canvas-opacity-slider {
 	flex: 1;
 	height: 4px;
-	accent-color: #5c8df6;
+	accent-color: var(--interactive-accent);
 	cursor: pointer;
 }
 
@@ -3329,23 +3480,25 @@ background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-s
 	text-align: right;
 	font-size: 11px;
 	font-variant-numeric: tabular-nums;
-	color: var(--text-muted);
+	color: var(--icon-color, var(--text-muted));
 }
 
 /* Поле ссылки */
 .my-sc-canvas-link-input {
 	width: 100%;
-	height: 28px;
+	height: 30px;
 	padding: 4px 8px;
 	font-size: 12px;
-	border-radius: 6px;
-	border: 1px solid var(--background-modifier-border);
+	border: none;
+	border-radius: var(--input-radius, var(--radius-xs, 6px));
+	-electron-corner-smoothing: var(--corner-smoothing, 60%);
 	background: var(--background-primary);
+	box-shadow: var(--shadow-input, 0 0 0 0.5px var(--trans-faint-30, var(--background-modifier-border)));
 	color: var(--text-normal);
 }
 
 .my-sc-canvas-link-input:focus {
-	border-color: #5c8df6;
+	box-shadow: var(--shadow-input-active, 0 0 0 2px var(--interactive-accent));
 	outline: none;
 }
 
@@ -3552,4 +3705,98 @@ body.is-tablet .my-sc-workspace-root .my-sc-canvas-menu,
 body.is-mobile .my-sc-workspace-root .my-sc-canvas-menu {
 	bottom: 44px;
 	left: 6px;
+}
+
+/* Тач-таргеты iPadOS / Mobile для режимов «Дерево», «Граф», меню и инспектора свойств */
+body.is-tablet .my-sc-workspace-root:not(.is-schema-mode),
+body.is-mobile .my-sc-workspace-root:not(.is-schema-mode) {
+	--my-sc-hit: 38px;
+	--my-sc-row-h: 44px;
+}
+
+body.is-tablet .my-sc-workspace-root button.my-sc-toggle-btn,
+body.is-mobile .my-sc-workspace-root button.my-sc-toggle-btn {
+	width: 36px !important;
+	min-width: 36px !important;
+	height: 36px !important;
+	min-height: 36px !important;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-leaf-marker,
+body.is-mobile .my-sc-workspace-root .my-sc-leaf-marker {
+	width: 36px;
+	min-width: 36px;
+	height: 36px;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-children-container,
+body.is-mobile .my-sc-workspace-root .my-sc-children-container {
+	margin-left: 18px;
+}
+
+body.is-tablet .my-sc-workspace-root button.my-sc-row-more,
+body.is-mobile .my-sc-workspace-root button.my-sc-row-more {
+	width: 36px !important;
+	min-width: 36px !important;
+	height: 36px !important;
+	min-height: 36px !important;
+	opacity: 0.85 !important;
+	background: var(--trans-faint-05, var(--background-secondary)) !important;
+	box-shadow: 0 0 0 0.5px var(--trans-faint-20, var(--background-modifier-border)) !important;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-filter-chip,
+body.is-mobile .my-sc-workspace-root .my-sc-filter-chip {
+	min-height: 36px;
+	padding: 0 13px;
+}
+
+body.is-tablet .my-sc-workspace-root .msc-tree-row,
+body.is-mobile .my-sc-workspace-root .msc-tree-row,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-board-menu-item,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-board-menu-item,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-menu-item,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-menu-item,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-menu-toggle,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-menu-toggle {
+	min-height: 38px;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-properties button.my-sc-canvas-prop-icon-btn,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-properties button.my-sc-canvas-prop-icon-btn,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-properties button.my-sc-canvas-seg-btn,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-properties button.my-sc-canvas-seg-btn,
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-selection-bar button.my-sc-canvas-sel-btn {
+	min-height: 34px;
+	height: 34px;
+}
+
+body.is-tablet .my-sc-workspace-root .my-sc-canvas-link-input,
+body.is-mobile .my-sc-workspace-root .my-sc-canvas-link-input {
+	height: 36px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.my-sc-modal svg.svg-icon,
+	.my-sc-modal input,
+	.my-sc-modal select,
+	button.my-sc-view-seg-btn,
+	button.my-sc-icon-btn,
+	.my-sc-filter-chip,
+	.my-sc-tree-row,
+	button.my-sc-toggle-btn,
+	button.my-sc-row-more,
+	.my-sc-graph-viewport,
+	.my-sc-gedge,
+	.my-sc-gnode,
+	.msc-tree-trigger,
+	.my-sc-canvas-slide,
+	.my-sc-canvas-tool,
+	.my-sc-canvas-control,
+	.my-sc-canvas-properties button,
+	.my-sc-canvas-selection-bar button {
+		transition: none !important;
+		animation: none !important;
+	}
 }
