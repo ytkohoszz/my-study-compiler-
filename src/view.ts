@@ -66,6 +66,10 @@ interface WebkitFullscreenHTMLElement extends HTMLElement {
 	webkitRequestFullscreen?: () => Promise<void> | void;
 }
 
+interface FocusTrackerApi {
+	openFocusModal?: (options?: { initialProject?: string }) => void;
+}
+
 class ParentPickerModal extends FuzzySuggestModal<StudyNoteItem> {
 	private items: StudyNoteItem[];
 	private onPick: (item: StudyNoteItem) => void;
@@ -1175,6 +1179,23 @@ onOpenSchema: (p) => this.openSchemaForNode(p),
 		btn.setAttribute("aria-label", title);
 	}
 
+	private launchFocusTracker(projectName: string): void {
+		const globalApi = (window as unknown as { __myFocusTracker?: FocusTrackerApi })
+			.__myFocusTracker;
+		const pluginApi = (
+			this.app as unknown as {
+				plugins?: { plugins?: Record<string, FocusTrackerApi | undefined> };
+			}
+		).plugins?.plugins?.["my-focus-tracker"];
+		const tracker = globalApi ?? pluginApi;
+
+		if (tracker && typeof tracker.openFocusModal === "function") {
+			tracker.openFocusModal({ initialProject: projectName });
+			return;
+		}
+		new Notice("Плагин my-focus-tracker не найден или отключён.");
+	}
+
 	private openProjectMenu(e: MouseEvent, root: StudyNoteItem, branchRoot: StudyNoteItem): void {
 		const menu = new Menu();
 		menu.addItem((mi) =>
@@ -1354,6 +1375,13 @@ const addGroup = (label: string, list: StudyNoteItem[]) => {
 		}
 
 		topActions.createSpan("my-sc-top-divider");
+
+		this.iconBtn(
+			topActions,
+			"timer",
+			`Запустить фокус: ${root.name}`,
+			() => this.launchFocusTracker(root.name)
+		);
 
 		this.focusModeBtn = this.iconBtn(
 			topActions,
